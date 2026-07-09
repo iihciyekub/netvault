@@ -43,6 +43,16 @@ services:
       - "traefik.http.routers.netvault.middlewares=netvault-strip"
       - "traefik.http.middlewares.netvault-strip.stripprefix.prefixes=${NETVAULT_BASE_PATH:-/nv}"
       - "traefik.http.services.netvault.loadbalancer.server.port=8000"
+      - "traefik.http.routers.netvault-web-redirect.rule=Host(`${APP_HOST:?APP_HOST is required}`) && PathPrefix(`/web`)"
+      - "traefik.http.routers.netvault-web-redirect.entrypoints=web,websecure"
+      - "traefik.http.routers.netvault-web-redirect.priority=90"
+      - "traefik.http.routers.netvault-web-redirect.tls=true"
+      - "traefik.http.routers.netvault-web-redirect.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.netvault-web-redirect.middlewares=netvault-web-redirect"
+      - "traefik.http.routers.netvault-web-redirect.service=noop@internal"
+      - "traefik.http.middlewares.netvault-web-redirect.redirectregex.regex=^https?://([^/]+)/web(.*)"
+      - "traefik.http.middlewares.netvault-web-redirect.redirectregex.replacement=https://$${1}${NETVAULT_BASE_PATH:-/nv}/web$${2}"
+      - "traefik.http.middlewares.netvault-web-redirect.redirectregex.permanent=true"
     networks:
       - netvault-internal
       - iiaide-data

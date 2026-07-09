@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Upload - NetVault{% endblock %}
 {% block content %}
-<section class="hero compact-hero">
+<section class="page-head compact">
   <p class="eyebrow">Upload</p>
   <h1>Add PDFs</h1>
 </section>
@@ -10,8 +10,8 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="dropzone" id="dropzone">
     <input id="file-input" name="files" type="file" accept="application/pdf,.pdf" multiple required>
-    <span class="drop-title">Drop PDFs here</span>
-    <span class="drop-meta" id="file-summary">or choose files</span>
+    <span class="drop-title">Drop PDF files</span>
+    <span class="drop-meta" id="file-summary">Choose files</span>
   </label>
   <label>Manual DOI <input name="doi" placeholder="Only when uploading one file"></label>
   <label class="check"><input name="no_crossref" type="checkbox" value="true"> Skip Crossref metadata</label>

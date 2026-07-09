@@ -1,21 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - NetVault{% endblock %}
 {% block content %}
-<section class="hero">
-  <p class="eyebrow">Team PDF vault</p>
-  <h1>NetVault</h1>
-  <div class="quick-actions">
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Library</p>
+    <h1>NetVault</h1>
+  </div>
+  <div class="actions">
     <a class="button primary" href="{{ path_for('/web/upload') }}">Upload PDFs</a>
     <a class="button" href="{{ path_for('/web/download') }}">Download by DOI</a>
-    <a class="button quiet" href="{{ path_for('/web/pdfs') }}">Search</a>
+    <a class="button ghost" href="{{ path_for('/web/pdfs') }}">Search</a>
   </div>
 </section>
 
 <section class="metrics">
-  <div><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></div>
-  <div><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></div>
-  <div><span>Users</span><strong>{{ summary.uploaders }}</strong></div>
-  <div><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></div>
+  <article><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></article>
+  <article><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></article>
+  <article><span>Users</span><strong>{{ summary.uploaders }}</strong></article>
+  <article><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></article>
 </section>
 
 <section class="split">

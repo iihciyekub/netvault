@@ -104,11 +104,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     )
     assert upload.status_code == 200
     assert "10.1234/web.test" in upload.text
-    assert "Drop PDFs here" in upload.text
+    assert "Drop PDF files" in upload.text
 
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200
-    assert "No query yet." in pdfs_without_query.text
+    assert "Search by DOI or metadata." in pdfs_without_query.text
     assert "10.1234/web.test" not in pdfs_without_query.text
 
     pdfs_with_query = client.get("/web/pdfs", params={"q": "10.1234/web.test"})

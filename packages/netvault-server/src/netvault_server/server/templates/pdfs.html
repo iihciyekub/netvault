@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Search - NetVault{% endblock %}
 {% block content %}
-<section class="hero compact-hero">
+<section class="page-head compact">
   <p class="eyebrow">Search</p>
   <h1>Find PDFs</h1>
 </section>
 <form method="get" action="{{ path_for('/web/pdfs') }}" class="searchbar">
   <input name="q" value="{{ q }}" placeholder="DOI, title, journal, filename, sha256" autofocus>
-  <button type="submit">Search</button>
-  {% if q %}<a class="button quiet" href="{{ path_for('/web/pdfs') }}">Clear</a>{% endif %}
+  <button class="primary" type="submit">Search</button>
+  {% if q %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}">Clear</a>{% endif %}
 </form>
 {% if searched %}
 <div class="table-scroll">
@@ -31,6 +31,6 @@
   </table>
 </div>
 {% else %}
-<div class="empty-state">No query yet.</div>
+<div class="empty-state">Search by DOI or metadata.</div>
 {% endif %}
 {% endblock %}

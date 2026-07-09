@@ -6,7 +6,7 @@ if (dropzone && fileInput && fileSummary) {
   const updateSummary = () => {
     const count = fileInput.files.length;
     if (!count) {
-      fileSummary.textContent = "or choose files";
+      fileSummary.textContent = "Choose files";
     } else if (count === 1) {
       fileSummary.textContent = fileInput.files[0].name;
     } else {
