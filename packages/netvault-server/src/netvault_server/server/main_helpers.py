@@ -49,7 +49,13 @@ def doi_evidence_json(evidence) -> str:
         {
             "source": evidence.source,
             "candidates": [
-                {"doi": candidate.doi, "source": candidate.source, "detail": candidate.detail}
+                {
+                    "doi": candidate.doi,
+                    "source": candidate.source,
+                    "detail": candidate.detail,
+                    "score": candidate.score,
+                    "context": candidate.context,
+                }
                 for candidate in evidence.candidates
             ],
         },
@@ -65,7 +71,7 @@ async def process_upload(
     db: Session,
 ) -> UploadResponse:
     sha256, size, relative_path, object_deduplicated = await store_pdf(file)
-    evidence = extract_doi_evidence(object_path(sha256), explicit_doi=doi)
+    evidence = extract_doi_evidence(object_path(sha256), explicit_doi=doi, filename=file.filename)
     if evidence.status == "conflict":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=evidence.reason or "DOI conflict")
     if evidence.status != "ok" or not evidence.doi:

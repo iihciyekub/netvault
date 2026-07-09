@@ -8,14 +8,16 @@ from pypdf import PdfReader
 DOI_SUFFIX_RE = r"[-._;()/:,A-Z0-9+%<>=]+"
 DOI_RE = re.compile(rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE})", re.IGNORECASE)
 STRICT_DOI_RE = re.compile(rf"^10\.\d{{4,9}}/{DOI_SUFFIX_RE}$", re.IGNORECASE)
+REFERENCE_HEADING_RE = re.compile(r"(?im)^\s*(references|bibliography|works cited)\s*$")
+DOI_LABEL_RE = re.compile(r"\b(doi|digital object identifier|crossmark)\b", re.IGNORECASE)
 DOI_METADATA_PATTERNS = [
     re.compile(
-        r"(?:prism:doi|crossmark:DOI|pdfx:doi|dc:identifier|WPS-ARTICLEDOI|/DOI|/doi)"
+        r"(?:prism:doi|crossmark:DOI|pdfx:doi|dc:identifier|WPS-ARTICLEDOI)"
         rf"\s*(?:=|>|\\\(|\()?[^<>\r\n]{{0,240}}?(10\.\d{{4,9}}/{DOI_SUFFIX_RE})",
         re.IGNORECASE,
     )
 ]
-DOI_SOURCE_RANK = {"filename": 2, "pdf-content": 3, "pdf-metadata": 4, "explicit": 6}
+DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -24,6 +26,8 @@ class DoiCandidate:
     doi: str
     source: str
     detail: str = ""
+    score: int = 0
+    context: str = ""
 
 
 @dataclass(frozen=True)
@@ -80,17 +84,48 @@ def find_metadata_dois_in_text(text: str) -> list[DoiCandidate]:
     return candidates
 
 
-def find_filename_doi(path: Path) -> DoiCandidate | None:
+def find_filename_doi_from_name(filename: str) -> DoiCandidate | None:
+    path = Path(filename)
     direct = find_doi_in_text(path.stem)
     if direct:
-        return DoiCandidate(direct, "filename", path.name)
+        return DoiCandidate(direct, "filename", path.name, 90)
     safe_name = re.match(r"^10[._](\d{4,9})[_-](.+)$", path.stem, re.IGNORECASE)
-    if not safe_name:
-        return None
-    try:
-        return DoiCandidate(normalize_doi(f"10.{safe_name.group(1)}/{safe_name.group(2)}"), "filename", path.name)
-    except ValueError:
-        return None
+    if safe_name:
+        try:
+            return DoiCandidate(normalize_doi(f"10.{safe_name.group(1)}/{safe_name.group(2)}"), "filename", path.name, 90)
+        except ValueError:
+            return None
+
+    springer = re.match(r"^(s\d{4,9}-\d{3}-\d{5}(?:-\d)?)", path.stem, re.IGNORECASE)
+    if springer:
+        try:
+            return DoiCandidate(normalize_doi(f"10.1007/{springer.group(1)}"), "filename", path.name, 86)
+        except ValueError:
+            return None
+
+    plos = re.match(r"^(journal\.pone\.\d+)", path.stem, re.IGNORECASE)
+    if plos:
+        try:
+            return DoiCandidate(normalize_doi(f"10.1371/{plos.group(1)}"), "filename", path.name, 86)
+        except ValueError:
+            return None
+
+    frontiers = re.match(r"^(fpsyg)-(\d+)-(\d+)", path.stem, re.IGNORECASE)
+    if frontiers:
+        volume = int(frontiers.group(2))
+        # Frontiers in Psychology volume 13 is 2022, volume 14 is 2023, etc.
+        year = 2009 + volume
+        try:
+            return DoiCandidate(
+                normalize_doi(f"10.3389/{frontiers.group(1)}.{year}.{frontiers.group(3)}"),
+                "filename",
+                path.name,
+                82,
+            )
+        except ValueError:
+            return None
+
+    return None
 
 
 def doi_loose_key(value: str) -> str:
@@ -115,9 +150,58 @@ def unique_dois(candidates: list[DoiCandidate], sources: set[str] | None = None)
     ]
 
 
+def choose_candidate(candidates: list[DoiCandidate], doi: str) -> DoiCandidate | None:
+    matching = [candidate for candidate in candidates if candidate.doi == doi]
+    if not matching:
+        return None
+    return max(matching, key=lambda candidate: (candidate.score, DOI_SOURCE_RANK.get(candidate.source, 0)))
+
+
 def choose_source(candidates: list[DoiCandidate], doi: str) -> str:
-    matching = [candidate.source for candidate in candidates if candidate.doi == doi]
-    return max(matching, key=lambda source: DOI_SOURCE_RANK.get(source, 0)) if matching else "pdf-content"
+    candidate = choose_candidate(candidates, doi)
+    return candidate.source if candidate else "pdf-content"
+
+
+def candidate_context(text: str, start: int, end: int, width: int = 90) -> str:
+    context = re.sub(r"\s+", " ", text[max(0, start - width) : min(len(text), end + width)]).strip()
+    return context[:220]
+
+
+def score_text_candidate(text: str, match: re.Match[str], page: int | None = None, in_references: bool = False) -> int:
+    before = text[max(0, match.start() - 140) : match.start()]
+    after = text[match.end() : min(len(text), match.end() + 80)]
+    score = 54
+    if page == 1:
+        score += 18
+    elif page == 2:
+        score += 8
+    if DOI_LABEL_RE.search(before + after):
+        score += 18
+    if in_references or re.search(r"(?i)\b(references|bibliography|works cited|cited by)\b", before[-80:]):
+        score -= 38
+    return max(5, min(score, 88))
+
+
+def candidates_from_text(text: str, source: str, detail: str, page: int | None = None) -> list[DoiCandidate]:
+    reference_match = REFERENCE_HEADING_RE.search(text)
+    reference_start = reference_match.start() if reference_match else None
+    candidates = []
+    for match in DOI_RE.finditer(text):
+        try:
+            doi = normalize_doi(match.group(1))
+        except ValueError:
+            continue
+        in_references = reference_start is not None and match.start() >= reference_start
+        candidates.append(
+            DoiCandidate(
+                doi=doi,
+                source=source,
+                detail=detail,
+                score=score_text_candidate(text, match, page=page, in_references=in_references),
+                context=candidate_context(text, match.start(), match.end()),
+            )
+        )
+    return candidates
 
 
 def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
@@ -133,7 +217,26 @@ def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
         return []
     if result.returncode != 0 or not result.stdout:
         return []
-    return [DoiCandidate(doi, "pdf-content", "pdftotext") for doi in find_dois_in_text(result.stdout)]
+    return candidates_from_text(result.stdout, "pdf-content", "pdftotext")
+
+
+def metadata_candidates(raw_text: str) -> list[DoiCandidate]:
+    candidates = []
+    for pattern in DOI_METADATA_PATTERNS:
+        for match in pattern.finditer(raw_text):
+            try:
+                candidates.append(
+                    DoiCandidate(
+                        normalize_doi(match.group(1)),
+                        "pdf-metadata",
+                        "xmp",
+                        96,
+                        candidate_context(raw_text, match.start(), match.end()),
+                    )
+                )
+            except ValueError:
+                continue
+    return candidates
 
 
 def extract_doi_from_pdf(path: Path) -> str | None:
@@ -141,7 +244,7 @@ def extract_doi_from_pdf(path: Path) -> str | None:
     return evidence.doi if evidence.status == "ok" else None
 
 
-def extract_doi_evidence(path: Path, explicit_doi: str | None = None) -> DoiEvidence:
+def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: str | None = None) -> DoiEvidence:
     if explicit_doi:
         try:
             doi = normalize_doi(explicit_doi)
@@ -164,20 +267,23 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None) -> DoiEvid
 
     raw = path.read_bytes()
     raw_text = raw.decode("latin-1", errors="ignore")
-    for candidate in find_metadata_dois_in_text(raw_text):
+    for candidate in metadata_candidates(raw_text):
         add(candidate)
-    for doi in find_dois_in_text(raw_text)[:5]:
-        add(DoiCandidate(doi, "pdf-content"))
+
+    raw_head = raw_text[:250_000]
+    for candidate in candidates_from_text(raw_head, "pdf-content", "raw-head")[:5]:
+        add(candidate)
 
     try:
         reader = PdfReader(str(path))
-        text = "\n".join(page.extract_text() or "" for page in reader.pages[:3])
+        page_texts = [page.extract_text() or "" for page in reader.pages[:3]]
     except Exception:
-        text = ""
-    for doi in find_dois_in_text(text):
-        add(DoiCandidate(doi, "pdf-content", "pypdf"))
+        page_texts = []
+    for index, text in enumerate(page_texts, start=1):
+        for candidate in candidates_from_text(text, "pdf-content", f"pypdf-page-{index}", page=index):
+            add(candidate)
 
-    filename_candidate = find_filename_doi(path)
+    filename_candidate = find_filename_doi_from_name(filename) if filename else find_filename_doi_from_name(path.name)
     if filename_candidate:
         add(filename_candidate)
 
@@ -189,27 +295,38 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None) -> DoiEvid
     if filename_doi:
         filename_matched = next((doi for doi in pdf_dois if doi_matches(filename_doi, doi)), None)
 
+    scored_dois = []
+    for candidate_doi in unique_dois(candidates):
+        best = choose_candidate(candidates, candidate_doi)
+        if best:
+            scored_dois.append((candidate_doi, best.score, best.source))
+    scored_dois.sort(key=lambda row: (row[1], DOI_SOURCE_RANK.get(row[2], 0)), reverse=True)
+
     doi = None
     source = None
-    if filename_matched:
+    if filename_doi:
+        metadata_conflict = next((metadata_doi for metadata_doi in metadata_dois if not doi_matches(filename_doi, metadata_doi)), None)
+        if metadata_conflict:
+            return DoiEvidence("conflict", None, None, candidates, "Filename DOI conflicts with PDF metadata DOI")
+        doi = filename_matched or filename_doi
+        source = "filename" if not filename_matched else choose_source(candidates, doi)
+    elif filename_matched:
         doi = filename_matched
         source = choose_source(candidates, doi)
-    elif content_dois:
-        if len(content_dois) > 1 and not filename_doi:
-            return DoiEvidence("conflict", None, None, candidates, "Multiple PDF content DOI values")
-        doi = content_dois[0] if len(content_dois) == 1 else filename_doi
-        source = choose_source(candidates, doi)
     elif metadata_dois:
-        if len(metadata_dois) > 1 and not filename_doi:
+        if len(metadata_dois) == 1:
+            doi = metadata_dois[0]
+            source = choose_source(candidates, doi)
+        else:
             return DoiEvidence("conflict", None, None, candidates, "Multiple metadata DOI values")
-        doi = metadata_dois[0] if len(metadata_dois) == 1 else filename_doi
+    elif content_dois:
+        best_doi, best_score, _ = scored_dois[0]
+        second_score = scored_dois[1][1] if len(scored_dois) > 1 else 0
+        if len(content_dois) > 1 and best_score < 72 and best_score - second_score < 18:
+            return DoiEvidence("conflict", None, None, candidates, "Multiple PDF content DOI values")
+        doi = best_doi
         source = choose_source(candidates, doi)
-    elif filename_doi:
-        doi = filename_doi
-        source = "filename"
 
     if not doi:
         return DoiEvidence("no-doi", None, None, candidates, "No DOI found")
-    if filename_doi and not doi_matches(filename_doi, doi):
-        return DoiEvidence("conflict", None, None, candidates, "Filename DOI conflicts with PDF DOI")
     return DoiEvidence("ok", doi, source, candidates)

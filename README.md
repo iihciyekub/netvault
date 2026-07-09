@@ -168,13 +168,28 @@ If you only want DOI indexing and PDF storage, skip Crossref:
 nv upload ./paper.pdf --no-crossref
 ```
 
-DOI extraction follows the same practical model as LitVault:
+DOI extraction uses NetVault's smart resolver:
 
 - explicit `--doi`
-- PDF metadata markers such as `prism:doi`, `crossmark:DOI`, and `dc:identifier`
-- visible PDF text from the first pages when `pdftotext` is available
-- raw PDF text and filename fallback
-- conflict detection when multiple DOI values disagree
+- PDF metadata markers such as `prism:doi`, `crossmark:DOI`, `pdfx:doi`, and `dc:identifier`
+- filename DOI values, including `10.1016_j.chb.2015.03.041.pdf`
+- publisher filename patterns such as Springer `s12144-024-...`, PLOS `journal.pone...`, and Frontiers `fpsyg-...`
+- visible first-page PDF text, with reference-list DOI values heavily down-ranked
+- raw PDF text fallback for unusual encodings
+- confidence scoring when multiple DOI candidates are present
+
+Inspect DOI resolution before upload:
+
+```bash
+nv doi ./paper.pdf
+nv doi ./paper.pdf --verbose
+```
+
+If a PDF is scanned, mislabeled, or still ambiguous, provide the DOI explicitly:
+
+```bash
+nv upload ./paper.pdf --doi 10.1234/example.doi
+```
 
 List and download by DOI:
 

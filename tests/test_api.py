@@ -145,6 +145,27 @@ def test_rejects_missing_doi_and_conflicting_doi(client: TestClient) -> None:
     assert conflict.status_code == 409
 
 
+def test_upload_uses_filename_doi_when_pdf_contains_reference_noise(client: TestClient) -> None:
+    admin_headers = login(client, "admin", "admin-pass")
+    noisy_pdf = (
+        b"%PDF-1.4\n"
+        b"References\n"
+        b"https://doi.org/10.9999/reference.noise\n"
+        b"%%EOF\n"
+    )
+
+    uploaded = upload(
+        client,
+        admin_headers,
+        name="10.1016_j.chb.2015.03.041.pdf",
+        content=noisy_pdf,
+    )
+
+    assert uploaded.status_code == 200
+    assert uploaded.json()["pdf"]["doi"] == "10.1016/j.chb.2015.03.041"
+    assert uploaded.json()["pdf"]["doi_source"] == "filename"
+
+
 def test_rejects_unauthenticated_non_pdf_and_non_admin_delete(client: TestClient) -> None:
     assert client.get("/pdfs").status_code == 401
 

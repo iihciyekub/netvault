@@ -102,16 +102,31 @@ nv upload ~/Downloads/paper.pdf --no-crossref
 
 ## DOI Extraction
 
-NetVault follows the same practical DOI approach as LitVault:
+NetVault uses a smart DOI resolver rather than a single PDF regex:
 
 - explicit `--doi`
 - PDF metadata markers such as `prism:doi`, `crossmark:DOI`, `pdfx:doi`, and `dc:identifier`
-- visible text from the first pages if `pdftotext` is available on the server
-- raw PDF text fallback
-- filename fallback, including names like `10.1234_abc-def.pdf`
-- conflict detection if multiple DOI values disagree
+- filename DOI values, including names like `10.1016_j.chb.2015.03.041.pdf`
+- publisher filename patterns such as Springer `s12144-024-...`, PLOS `journal.pone...`, and Frontiers `fpsyg-...`
+- visible first-page text if `pdftotext` is available
+- reference-list DOI candidates are heavily down-ranked
+- raw PDF text fallback for unusual encodings
+- confidence scoring when multiple DOI candidates are present
 
 PDFs without a DOI are rejected. This keeps the vault DOI-centered.
+
+Inspect how NetVault will resolve a DOI before upload:
+
+```bash
+nv doi ~/Downloads/paper.pdf
+nv doi ~/Downloads/paper.pdf --verbose
+```
+
+If the resolver is still wrong or ambiguous, override it:
+
+```bash
+nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+```
 
 ## List And Search
 
@@ -185,8 +200,8 @@ The PDF may be scanned or have unusual encoding. Upload with `--doi`.
 
 `DOI conflict`
 
-The PDF or filename contains multiple conflicting DOI candidates. Upload with the
-correct `--doi`, or inspect the file first.
+The PDF or filename contains multiple high-confidence DOI candidates. Run
+`nv doi FILE --verbose` to inspect them, then upload with the correct `--doi` if needed.
 
 `PDF not found for DOI`
 

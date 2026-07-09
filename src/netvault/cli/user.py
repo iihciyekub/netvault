@@ -34,6 +34,7 @@ app = typer.Typer(
 Examples:
   nv login https://iiaide.com/nv
   nv upload ./paper.pdf ./papers
+  nv doi ./paper.pdf --verbose
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
   nv update
@@ -232,6 +233,51 @@ def extract_local_doi(path: Path, explicit_doi: str | None) -> str | None:
     if explicit_doi or evidence.status == "conflict":
         raise RuntimeError(evidence.reason or "DOI extraction failed")
     return None
+
+
+def render_doi_evidence(path: Path, explicit_doi: str | None = None, verbose: bool = False) -> None:
+    evidence = extract_doi_evidence(path, explicit_doi=explicit_doi)
+    status_style = "green" if evidence.status == "ok" else "yellow" if evidence.status == "conflict" else "red"
+    selected = evidence.doi or "-"
+    source = evidence.source or "-"
+    console.print(
+        Panel.fit(
+            f"[bold]File[/bold] {path.name}\n"
+            f"[bold]Status[/bold] [{status_style}]{evidence.status}[/{status_style}]\n"
+            f"[bold]Selected[/bold] {selected}\n"
+            f"[bold]Source[/bold] {source}\n"
+            f"[bold]Reason[/bold] {evidence.reason or '-'}",
+            title="DOI Resolver",
+        )
+    )
+    table = Table(title="Candidates", box=box.SIMPLE_HEAVY, show_header=True, header_style="bold")
+    table.add_column("Score", justify="right")
+    table.add_column("Source")
+    table.add_column("DOI")
+    table.add_column("Detail")
+    if verbose:
+        table.add_column("Context")
+    candidates = sorted(
+        evidence.candidates,
+        key=lambda candidate: (candidate.score, candidate.source, candidate.doi),
+        reverse=True,
+    )
+    for candidate in candidates:
+        row = [
+            str(candidate.score),
+            candidate.source,
+            candidate.doi,
+            candidate.detail or "-",
+        ]
+        if verbose:
+            row.append(candidate.context or "-")
+        table.add_row(*row)
+    if not candidates:
+        empty_row = ["-", "-", "-", "-"]
+        if verbose:
+            empty_row.append("-")
+        table.add_row(*empty_row)
+    console.print(table)
 
 
 def find_existing_pdf_before_upload(path: Path, explicit_doi: str | None, on_read=None) -> dict | None:
@@ -435,6 +481,30 @@ def upload_command(
     console.print("; ".join(parts))
     for pdf_path, error in failed:
         console.print(f"failed: {pdf_path}: {error}")
+
+
+@app.command(
+    "doi",
+    epilog="""\b
+Examples:
+  nv doi ./paper.pdf
+  nv doi ./paper.pdf --verbose
+  nv doi ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+
+\b
+Notes:
+  This runs the same smart DOI resolver used by upload.
+  Use --verbose to inspect candidate DOI values and why one was selected.
+""",
+)
+def doi_command(
+    path: Path = typer.Argument(..., exists=True, readable=True, help="PDF file to inspect."),
+    doi: str | None = typer.Option(None, "--doi", help="Explicit DOI to validate and display."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show context for each DOI candidate."),
+) -> None:
+    if path.suffix.lower() != ".pdf":
+        raise typer.BadParameter(f"{path} is not a PDF file")
+    render_doi_evidence(path, explicit_doi=doi, verbose=verbose)
 
 
 @app.command(
