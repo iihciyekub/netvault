@@ -203,8 +203,9 @@ nv logout
 ```
 
 `nv download --file` extracts DOI values from any text file using the same DOI
-regex as upload metadata parsing. Upload and download both use a single-line
-progress bar.
+regex as upload metadata parsing. Downloads use 8 parallel workers by default
+and automatically resume incomplete `.part` files. Upload and download both use
+a single-line progress bar.
 
 ## Admin CLI
 

@@ -164,6 +164,12 @@ nv download --file ./dois.txt --to ~/Downloads
 ```
 
 The downloaded filename uses the original uploaded filename.
+Downloads use 8 parallel workers by default and automatically resume incomplete
+`.part` files. To tune parallelism:
+
+```bash
+nv download --file ./dois.txt --to ~/Downloads --workers 4
+```
 
 ## Status
 

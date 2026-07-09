@@ -3,10 +3,12 @@ import logging
 
 from netvault.cli.user import (
     cached_file_sha256,
+    download_part_path,
     file_sha256,
     find_existing_pdf_before_upload,
     has_pdf_header,
     load_hash_cache,
+    plan_download_destination,
     save_hash_cache,
     collect_dois,
     collect_pdf_paths,
@@ -118,6 +120,48 @@ def test_unique_destination_avoids_overwriting(tmp_path: Path) -> None:
 
     assert unique_destination(tmp_path, "paper.pdf", used) == tmp_path / "paper-2.pdf"
     assert unique_destination(tmp_path, "paper.pdf", used) == tmp_path / "paper-3.pdf"
+
+
+def test_download_plan_skips_complete_file(tmp_path: Path) -> None:
+    existing = tmp_path / "paper.pdf"
+    existing.write_bytes(b"abc")
+    used: set[Path] = set()
+
+    destination, part_path, offset, complete = plan_download_destination(tmp_path, "paper.pdf", 3, used)
+
+    assert destination == existing
+    assert part_path == download_part_path(existing)
+    assert offset == 3
+    assert complete is True
+
+
+def test_download_plan_resumes_part_file(tmp_path: Path) -> None:
+    destination = tmp_path / "paper.pdf"
+    part = download_part_path(destination)
+    part.write_bytes(b"ab")
+    used: set[Path] = set()
+
+    planned_destination, part_path, offset, complete = plan_download_destination(tmp_path, "paper.pdf", 5, used)
+
+    assert planned_destination == destination
+    assert part_path == part
+    assert offset == 2
+    assert complete is False
+
+
+def test_download_plan_restarts_oversized_part_file(tmp_path: Path) -> None:
+    destination = tmp_path / "paper.pdf"
+    part = download_part_path(destination)
+    part.write_bytes(b"abcdef")
+    used: set[Path] = set()
+
+    planned_destination, part_path, offset, complete = plan_download_destination(tmp_path, "paper.pdf", 3, used)
+
+    assert planned_destination == destination
+    assert part_path == part
+    assert offset == 0
+    assert complete is False
+    assert not part.exists()
 
 
 def test_hash_cache_reuses_unchanged_file(tmp_path: Path, monkeypatch) -> None:
