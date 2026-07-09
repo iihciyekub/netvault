@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: netvault
+      POSTGRES_USER: netvault
+      POSTGRES_PASSWORD: netvault-change-me
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netvault -d netvault"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NETVAULT_DATABASE_URL: postgresql+psycopg://netvault:netvault-change-me@db:5432/netvault
+      NETVAULT_STORAGE_ROOT: /netvault/storage
+      NETVAULT_SECRET_KEY: change-this-before-real-use
+      NETVAULT_BOOTSTRAP_ADMIN: admin
+      NETVAULT_BOOTSTRAP_ADMIN_PASSWORD: change-me-now
+    volumes:
+      - ./storage:/netvault/storage
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  postgres-data:

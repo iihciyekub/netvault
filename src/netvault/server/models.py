@@ -1,0 +1,71 @@
+from datetime import datetime, timezone
+from enum import StrEnum
+
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from netvault.server.database import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class UserRole(StrEnum):
+    admin = "admin"
+    user = "user"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.user, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    uploads: Mapped[list["UploadRecord"]] = relationship(back_populates="user")
+
+
+class Pdf(Base):
+    __tablename__ = "pdfs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    doi: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+    uploaded_by: Mapped[User] = relationship(foreign_keys=[uploaded_by_id])
+    uploads: Mapped[list["UploadRecord"]] = relationship(back_populates="pdf")
+
+
+class UploadRecord(Base):
+    __tablename__ = "upload_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pdf_id: Mapped[int] = mapped_column(ForeignKey("pdfs.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    pdf: Mapped[Pdf] = relationship(back_populates="uploads")
+    user: Mapped[User] = relationship(back_populates="uploads")
+
+
+class DownloadRecord(Base):
+    __tablename__ = "download_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pdf_id: Mapped[int] = mapped_column(ForeignKey("pdfs.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

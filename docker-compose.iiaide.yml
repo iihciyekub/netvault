@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-netvault}
+      POSTGRES_USER: ${POSTGRES_USER:-netvault}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-netvault} -d ${POSTGRES_DB:-netvault}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netvault-internal
+
+  server:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NETVAULT_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-netvault}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-netvault}
+      NETVAULT_STORAGE_ROOT: /netvault/storage
+      NETVAULT_SECRET_KEY: ${NETVAULT_SECRET_KEY:?NETVAULT_SECRET_KEY is required}
+      NETVAULT_BOOTSTRAP_ADMIN: ${NETVAULT_BOOTSTRAP_ADMIN:-admin}
+      NETVAULT_BOOTSTRAP_ADMIN_PASSWORD: ${NETVAULT_BOOTSTRAP_ADMIN_PASSWORD:?NETVAULT_BOOTSTRAP_ADMIN_PASSWORD is required}
+    volumes:
+      - ./storage:/netvault/storage
+    expose:
+      - "8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.netvault.rule=Host(`${APP_HOST:?APP_HOST is required}`) && PathPrefix(`${NETVAULT_BASE_PATH:-/nv}`)"
+      - "traefik.http.routers.netvault.entrypoints=web,websecure"
+      - "traefik.http.routers.netvault.priority=75"
+      - "traefik.http.routers.netvault.tls=true"
+      - "traefik.http.routers.netvault.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.netvault.middlewares=netvault-strip"
+      - "traefik.http.middlewares.netvault-strip.stripprefix.prefixes=${NETVAULT_BASE_PATH:-/nv}"
+      - "traefik.http.services.netvault.loadbalancer.server.port=8000"
+    networks:
+      - netvault-internal
+      - iiaide-data
+
+volumes:
+  postgres-data:
+
+networks:
+  netvault-internal:
+  iiaide-data:
+    external: true
