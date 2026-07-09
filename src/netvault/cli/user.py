@@ -1,10 +1,14 @@
+from datetime import datetime, timezone
 import hashlib
+import json
 from pathlib import Path
 from typing import Iterable
 
 import requests
 import typer
+from rich import box
 from rich.console import Console
+from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     DownloadColumn,
@@ -176,6 +180,49 @@ def unique_destination(directory: Path, filename: str, used_destinations: set[Pa
             used_destinations.add(candidate)
             return candidate
         counter += 1
+
+
+def format_bytes(size: int) -> str:
+    value = float(size)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+    return f"{size:,} B"
+
+
+def decode_token_payload(token: str) -> dict:
+    try:
+        _, payload, _ = token.split(".", 2)
+        padded_payload = payload + "=" * (-len(payload) % 4)
+        import base64
+
+        return json.loads(base64.urlsafe_b64decode(padded_payload))
+    except (ValueError, json.JSONDecodeError):
+        return {}
+
+
+def format_token_expiry(token: str) -> tuple[str, str]:
+    payload = decode_token_payload(token)
+    expires_at = payload.get("exp")
+    if not isinstance(expires_at, int):
+        return "-", "-"
+    expires = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+    now = datetime.now(timezone.utc)
+    remaining_seconds = int((expires - now).total_seconds())
+    if remaining_seconds <= 0:
+        return expires.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"), "expired"
+    days, remainder = divmod(remaining_seconds, 24 * 60 * 60)
+    hours, remainder = divmod(remainder, 60 * 60)
+    minutes, _ = divmod(remainder, 60)
+    if days:
+        remaining = f"{days}d {hours}h"
+    elif hours:
+        remaining = f"{hours}h {minutes}m"
+    else:
+        remaining = f"{minutes}m"
+    return expires.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"), remaining
 
 
 def extract_local_doi(path: Path, explicit_doi: str | None) -> str | None:
@@ -513,10 +560,47 @@ def status() -> None:
     me = api_get("/me")
     pdfs = api_get("/pdfs")
     total_size = sum(row["size"] for row in pdfs)
-    console.print(f"Server: {server_url()}")
-    console.print(f"User: {me['username']} ({me['role']})")
-    console.print(f"PDFs: {len(pdfs)}")
-    console.print(f"Total bytes: {total_size:,}")
+    credentials = load_credentials()
+    token = credentials.get("token", "")
+    expires_at, remaining = format_token_expiry(token) if isinstance(token, str) else ("-", "-")
+
+    console.print(Panel.fit("NetVault Status", style="bold"))
+
+    account_table = Table(title="Connection", box=box.SIMPLE_HEAVY, show_header=True, header_style="bold")
+    account_table.add_column("Field")
+    account_table.add_column("Value")
+    account_table.add_row("Server", server_url())
+    account_table.add_row("User", str(me["username"]))
+    account_table.add_row("Role", str(me["role"]))
+    account_table.add_row("Account Active", "yes" if me.get("is_active") else "no")
+    account_table.add_row("Token Expires", expires_at)
+    account_table.add_row("Token Remaining", remaining)
+
+    years = [row["published_year"] for row in pdfs if row.get("published_year")]
+    uploaders = sorted({row["uploaded_by"] for row in pdfs if row.get("uploaded_by")})
+    summary_table = Table(title="Library", box=box.SIMPLE_HEAVY, show_header=True, header_style="bold")
+    summary_table.add_column("Metric")
+    summary_table.add_column("Value", justify="right")
+    summary_table.add_row("Active PDFs", f"{len(pdfs):,}")
+    summary_table.add_row("Total Size", format_bytes(total_size))
+    summary_table.add_row("Uploaders", f"{len(uploaders):,}")
+    summary_table.add_row("Year Range", f"{min(years)}-{max(years)}" if years else "-")
+
+    status_counts: dict[str, int] = {}
+    for row in pdfs:
+        crossref_status = row.get("crossref_status") or "unknown"
+        status_counts[crossref_status] = status_counts.get(crossref_status, 0) + 1
+    crossref_table = Table(title="Metadata", box=box.SIMPLE_HEAVY, show_header=True, header_style="bold")
+    crossref_table.add_column("Crossref Status")
+    crossref_table.add_column("PDFs", justify="right")
+    for crossref_status, count in sorted(status_counts.items()):
+        crossref_table.add_row(crossref_status, f"{count:,}")
+    if not status_counts:
+        crossref_table.add_row("-", "0")
+
+    console.print(account_table)
+    console.print(summary_table)
+    console.print(crossref_table)
 
 
 @app.command(
