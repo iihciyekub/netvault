@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-from threading import Lock
 from typing import Iterable
 
 import requests
@@ -14,12 +13,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
-    DownloadColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
-    TransferSpeedColumn,
 )
 from rich.table import Table
 
@@ -553,7 +550,6 @@ def upload_command(
         task = progress.add_task("Hashing PDFs", total=len(pdfs))
         for pdf_path in pdfs:
             try:
-                progress.update(task, description=f"Hashing {pdf_path.name}")
                 if not has_pdf_header(pdf_path):
                     failed.append((pdf_path, "invalid PDF file: expected %PDF- header"))
                     continue
@@ -588,7 +584,6 @@ def upload_command(
 
         for pdf_path in new_pdfs:
             try:
-                progress.update(task, description=f"Checking {pdf_path.name}")
                 sha256 = hashes_by_path[pdf_path]
                 existing_pdf = find_existing_pdf_before_upload(
                     pdf_path,
@@ -601,13 +596,11 @@ def upload_command(
                     skipped += 1
                     continue
 
-                progress.update(task, description=f"Uploading {pdf_path.name}")
                 result = upload_pdf(
                     pdf_path,
                     doi=doi,
                     no_crossref=no_crossref,
                 )
-                progress.update(task, description=f"Indexed {pdf_path.name}")
                 latest_pdf = result["pdf"]
                 if result["deduplicated"]:
                     deduped += 1
@@ -746,78 +739,60 @@ def download(
                     details_by_doi[doi] = detail
                 progress.advance(task, 1)
 
-    details = [details_by_doi[doi] for doi in requested_dois if doi in details_by_doi]
+        details = [details_by_doi[doi] for doi in requested_dois if doi in details_by_doi]
 
-    if not details:
-        console.print(f"done: 0/{len(requested_dois)} downloaded; {len(failed)} failed")
-        for doi, error in failed:
-            console.print(f"failed: {doi}: {error}")
-        return
+        if not details:
+            progress.update(task, description="Done", completed=len(requested_dois), total=len(requested_dois))
+            console.print(f"done: 0/{len(requested_dois)} downloaded; {len(failed)} failed")
+            for doi, error in failed:
+                console.print(f"failed: {doi}: {error}")
+            return
 
-    to.mkdir(parents=True, exist_ok=True)
-    downloaded = 0
-    resumed = 0
-    skipped = 0
-    used_destinations: set[Path] = set()
-    plans: list[DownloadPlan] = []
-    skipped_bytes = 0
-    resumed_bytes = 0
-    for detail in details:
-        size = int(detail["size"])
-        destination, part_path, resume_offset, complete = plan_download_destination(
-            to,
-            detail["original_name"],
-            size,
-            used_destinations,
-        )
-        if complete:
-            skipped += 1
-            skipped_bytes += size
-            continue
-        resumed_bytes += resume_offset
-        plans.append(
-            DownloadPlan(
-                doi=detail["doi"],
-                original_name=detail["original_name"],
-                size=size,
-                destination=destination,
-                part_path=part_path,
-                resume_offset=resume_offset,
+        to.mkdir(parents=True, exist_ok=True)
+        downloaded = 0
+        resumed = 0
+        skipped = 0
+        used_destinations: set[Path] = set()
+        plans: list[DownloadPlan] = []
+        for detail in details:
+            size = int(detail["size"])
+            destination, part_path, resume_offset, complete = plan_download_destination(
+                to,
+                detail["original_name"],
+                size,
+                used_destinations,
             )
-        )
+            if complete:
+                skipped += 1
+                continue
+            plans.append(
+                DownloadPlan(
+                    doi=detail["doi"],
+                    original_name=detail["original_name"],
+                    size=size,
+                    destination=destination,
+                    part_path=part_path,
+                    resume_offset=resume_offset,
+                )
+            )
 
-    total_bytes = sum(int(detail["size"]) for detail in details)
-    if not plans:
-        parts = [f"done: {skipped}/{len(requested_dois)} processed"]
-        if skipped:
-            parts.append(f"{skipped} skipped")
-        if failed:
-            parts.append(f"{len(failed)} failed")
-        parts.append(f"to: {to}")
-        console.print("; ".join(parts))
-        for doi, error in failed:
-            console.print(f"failed: {doi}: {error}")
-        return
+        if not plans:
+            progress.update(task, description="Done", completed=len(requested_dois), total=len(requested_dois))
+            parts = [f"done: {skipped}/{len(requested_dois)} processed"]
+            if skipped:
+                parts.append(f"{skipped} skipped")
+            if failed:
+                parts.append(f"{len(failed)} failed")
+            parts.append(f"to: {to}")
+            console.print("; ".join(parts))
+            for doi, error in failed:
+                console.print(f"failed: {doi}: {error}")
+            return
 
-    progress_lock = Lock()
-    base_url = server_url()
-    headers = auth_headers()
-    worker_count = min(workers, max(1, len(plans)))
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("Downloading PDFs", total=total_bytes)
-        if skipped_bytes:
-            progress.advance(task, skipped_bytes)
-        if resumed_bytes:
-            progress.advance(task, resumed_bytes)
+        base_url = server_url()
+        headers = auth_headers()
+        worker_count = min(workers, max(1, len(plans)))
+        progress.reset(task, total=len(plans), completed=0, description="Downloading PDFs")
 
         def run_plan(plan: DownloadPlan) -> tuple[str, str, Path]:
             request_headers = dict(headers)
@@ -842,8 +817,6 @@ def download(
                 for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
                     if chunk:
                         handle.write(chunk)
-                        with progress_lock:
-                            progress.advance(task, len(chunk))
             actual_size = plan.part_path.stat().st_size
             if actual_size != plan.size:
                 raise RuntimeError(f"incomplete download: expected {plan.size} bytes, got {actual_size}")
@@ -854,7 +827,6 @@ def download(
             futures = {executor.submit(run_plan, plan): plan for plan in plans}
             for future in as_completed(futures):
                 plan = futures[future]
-                progress.update(task, description=f"Downloading {plan.doi}")
                 try:
                     _, status_name, _ = future.result()
                     if status_name == "resumed":
@@ -863,6 +835,8 @@ def download(
                         downloaded += 1
                 except (RuntimeError, OSError, requests.RequestException) as exc:
                     failed.append((plan.doi, str(exc)))
+                finally:
+                    progress.advance(task, 1)
 
     ok_count = downloaded + resumed + skipped
     parts = [f"done: {ok_count}/{len(requested_dois)} processed"]
