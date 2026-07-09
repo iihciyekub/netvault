@@ -253,9 +253,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert dashboard.status_code == 200
     assert "<h1" not in dashboard.text
     assert "No journal-year data." in dashboard.text
-    assert "Current View" in dashboard.text
     assert "UTD24" in dashboard.text
     assert "ABS 4*" in dashboard.text
+    assert "0 PDFs" in dashboard.text
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
     assert "By Year" not in dashboard.text

@@ -2,24 +2,22 @@
 {% block title %}Dashboard - NetVault{% endblock %}
 {% block body_class %}dashboard-body{% endblock %}
 {% block content %}
-<div class="filter-tabs" aria-label="Journal filters">
-  {% for option in journal_filters %}
-    <a
-      class="{% if option.key == journal_filter %}active{% endif %}"
-      href="{{ path_for('/web') }}?filter={{ option.key }}"
-    >{{ option.label }}</a>
-  {% endfor %}
+<div class="dashboard-toolbar">
+  <div class="filter-tabs" aria-label="Journal filters">
+    {% for option in journal_filters %}
+      <a
+        class="{% if option.key == journal_filter %}active{% endif %}"
+        href="{{ path_for('/web') }}?filter={{ option.key }}"
+      >{{ option.label }}</a>
+    {% endfor %}
+  </div>
+  <div class="summary-tags" aria-label="Current filter summary">
+    <span>{% for option in journal_filters %}{% if option.key == journal_filter %}{{ option.label }}{% endif %}{% endfor %}</span>
+    <span>{{ summary.active_pdfs }} PDFs</span>
+    <span>{{ summary.total_size|bytes }}</span>
+    <span>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</span>
+  </div>
 </div>
-
-<section class="metrics summary-metrics" aria-label="Current filter summary">
-  <article>
-    <span>Current View</span>
-    <strong>{% for option in journal_filters %}{% if option.key == journal_filter %}{{ option.label }}{% endif %}{% endfor %}</strong>
-  </article>
-  <article><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></article>
-  <article><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></article>
-  <article><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></article>
-</section>
 
 <section class="panel heatmap-panel">
     <div class="panel-heading">
