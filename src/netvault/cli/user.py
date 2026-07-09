@@ -3,17 +3,48 @@ from pathlib import Path
 import requests
 import typer
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TransferSpeedColumn,
+)
 from rich.table import Table
 
-from netvault.cli.config import clear_credentials, save_credentials
+from netvault import __version__
+from netvault.cli.config import clear_credentials, load_credentials, save_credentials
 from netvault.cli.http import api_get, auth_headers, raise_for_api_error, server_url, upload_pdf
 from netvault.cli.update import update_from_github
+
+DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 
 app = typer.Typer(
     help="NetVault team PDF vault CLI.",
     context_settings={"token_normalize_func": str.lower},
 )
 console = Console()
+
+
+def version_callback(value: bool) -> None:
+    if value:
+        console.print(f"NetVault {__version__}")
+        raise typer.Exit
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=version_callback,
+        is_eager=True,
+        help="Show the NetVault version and exit.",
+    ),
+) -> None:
+    _ = version
 
 
 def render_pdf_table(rows: list[dict]) -> None:
@@ -44,12 +75,7 @@ def iter_pdf_paths(path: Path) -> list[Path]:
     raise typer.BadParameter(f"{path} does not exist")
 
 
-@app.command()
-def login(
-    server: str = typer.Argument(..., help="NetVault server URL, for example http://127.0.0.1:8000"),
-    username: str = typer.Option(..., prompt=True),
-    password: str = typer.Option(..., prompt=True, hide_input=True),
-) -> None:
+def save_login(server: str, username: str, password: str) -> None:
     response = requests.post(
         f"{server.rstrip('/')}/auth/login",
         json={"username": username, "password": password},
@@ -57,6 +83,44 @@ def login(
     )
     raise_for_api_error(response)
     save_credentials(server, response.json()["access_token"])
+
+
+def credentials_valid() -> bool:
+    credentials = load_credentials()
+    saved_server = credentials.get("server_url")
+    token = credentials.get("token")
+    if not isinstance(saved_server, str) or not isinstance(token, str):
+        return False
+    response = requests.get(
+        f"{saved_server}/me",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    if response.status_code in {401, 403}:
+        clear_credentials()
+        return False
+    raise_for_api_error(response)
+    return True
+
+
+def ensure_logged_in() -> None:
+    if credentials_valid():
+        return
+    console.print("Login required.")
+    server = typer.prompt("Server", default=DEFAULT_SERVER_URL)
+    username = typer.prompt("Username")
+    password = typer.prompt("Password", hide_input=True)
+    save_login(server, username, password)
+    console.print(f"Logged in to {server.rstrip('/')} as {username}.")
+
+
+@app.command()
+def login(
+    server: str = typer.Argument(DEFAULT_SERVER_URL, help="NetVault server URL."),
+    username: str = typer.Option(..., prompt=True),
+    password: str = typer.Option(..., prompt=True, hide_input=True),
+) -> None:
+    save_login(server, username, password)
     console.print(f"Logged in to {server.rstrip('/')} as {username}.")
 
 
@@ -76,24 +140,76 @@ def upload_command(
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
 ) -> None:
+    ensure_logged_in()
     pdfs = iter_pdf_paths(path)
     if not pdfs:
         console.print("No PDF files found.")
         return
 
-    uploaded = 0
     if doi and len(pdfs) != 1:
         raise typer.BadParameter("--doi can only be used when uploading one PDF file")
-    for pdf_path in pdfs:
-        try:
-            result = upload_pdf(pdf_path, doi=doi, no_crossref=no_crossref)
-            marker = "deduped" if result["deduplicated"] else "uploaded"
-            title = result["pdf"].get("title") or result["pdf"]["original_name"]
-            console.print(f"{marker}: {pdf_path} -> {result['pdf']['doi']}  {title}")
-            uploaded += 1
-        except RuntimeError as exc:
-            console.print(f"failed: {pdf_path}: {exc}")
-    console.print(f"Processed {uploaded}/{len(pdfs)} PDF file(s).")
+
+    uploaded = 0
+    deduped = 0
+    failed: list[tuple[Path, str]] = []
+    latest_pdf: dict | None = None
+    total_bytes = sum(pdf_path.stat().st_size for pdf_path in pdfs)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Uploading PDFs", total=total_bytes)
+        for pdf_path in pdfs:
+            progress.update(task, description=f"Uploading {pdf_path.name}")
+            pdf_size = pdf_path.stat().st_size
+            uploaded_for_file = 0
+
+            def show_upload_progress(bytes_sent: int, _total_for_file: int) -> None:
+                nonlocal uploaded_for_file
+                visible_sent = min(bytes_sent, pdf_size)
+                delta = visible_sent - uploaded_for_file
+                if delta > 0:
+                    progress.advance(task, delta)
+                    uploaded_for_file = visible_sent
+
+            try:
+                result = upload_pdf(
+                    pdf_path,
+                    doi=doi,
+                    no_crossref=no_crossref,
+                    progress_callback=show_upload_progress,
+                )
+                if uploaded_for_file < pdf_size:
+                    progress.advance(task, pdf_size - uploaded_for_file)
+                progress.update(task, description=f"Indexed {pdf_path.name}")
+                latest_pdf = result["pdf"]
+                if result["deduplicated"]:
+                    deduped += 1
+                else:
+                    uploaded += 1
+            except RuntimeError as exc:
+                failed.append((pdf_path, str(exc)))
+
+    ok_count = uploaded + deduped
+    parts = [f"done: {ok_count}/{len(pdfs)} processed"]
+    if uploaded:
+        parts.append(f"{uploaded} uploaded")
+    if deduped:
+        parts.append(f"{deduped} deduped")
+    if failed:
+        parts.append(f"{len(failed)} failed")
+    if latest_pdf:
+        title = latest_pdf.get("title") or latest_pdf["original_name"]
+        parts.append(f"latest: {latest_pdf['doi']}  {title}")
+    console.print("; ".join(parts))
+    for pdf_path, error in failed:
+        console.print(f"failed: {pdf_path}: {error}")
 
 
 @app.command("list")

@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from requests_toolbelt import MultipartEncoder, MultipartEncoderMonitor
 
 from netvault.cli.config import require_credentials
 
@@ -55,18 +56,33 @@ def api_delete(path: str) -> Any:
     return response.json()
 
 
-def upload_pdf(path: Path, doi: str | None = None, no_crossref: bool = False) -> Any:
+def upload_pdf(
+    path: Path,
+    doi: str | None = None,
+    no_crossref: bool = False,
+    progress_callback: Any | None = None,
+) -> Any:
     with path.open("rb") as handle:
-        data = {}
+        fields: dict[str, Any] = {}
         if doi:
-            data["doi"] = doi
+            fields["doi"] = doi
         if no_crossref:
-            data["no_crossref"] = "true"
+            fields["no_crossref"] = "true"
+        fields["file"] = (path.name, handle, "application/pdf")
+
+        encoder = MultipartEncoder(fields=fields)
+
+        def notify_upload_progress(monitor: MultipartEncoderMonitor) -> None:
+            if progress_callback:
+                progress_callback(monitor.bytes_read, monitor.len)
+
+        monitor = MultipartEncoderMonitor(encoder, notify_upload_progress)
+        headers = auth_headers()
+        headers["Content-Type"] = monitor.content_type
         response = requests.post(
             f"{server_url()}/pdfs/upload",
-            headers=auth_headers(),
-            data=data or None,
-            files={"file": (path.name, handle, "application/pdf")},
+            headers=headers,
+            data=monitor,
             timeout=300,
         )
     raise_for_api_error(response)

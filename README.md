@@ -15,6 +15,12 @@ server stores files in a shared deduplicated repository.
 The default Docker Compose setup binds the API to `127.0.0.1:8000`, so it is meant
 to be reached through SSH tunneling, VPN, or a trusted internal network.
 
+## Documentation
+
+- [User Guide](docs/user-guide.md)
+- [Admin Guide](docs/admin-guide.md)
+- [Migration Guide](docs/migration.md)
+
 ## Remote Server Setup
 
 On the remote machine:
@@ -120,6 +126,11 @@ Login:
 ```bash
 nv login http://127.0.0.1:8000
 ```
+
+Login credentials are saved in `~/.config/netvault/credentials.toml`. The server
+token is valid for 7 days by default and can be changed with
+`NETVAULT_TOKEN_MINUTES`. If `nv upload` finds no valid login, it prompts for
+server, username, and password before uploading.
 
 Upload PDFs. NetVault extracts a DOI from the PDF, asks Crossref for metadata,
 and stores the PDF under that DOI:

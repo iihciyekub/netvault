@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
     crossref_mailto: str | None = Field(default=None, validation_alias="NETVAULT_CROSSREF_MAILTO")
     crossref_user_agent: str = Field(
-        default="NetVault/0.3.1 (https://github.com/iihciyekub/netvault)",
+        default="NetVault/0.3.2 (https://github.com/iihciyekub/netvault)",
         validation_alias="NETVAULT_CROSSREF_USER_AGENT",
     )
 

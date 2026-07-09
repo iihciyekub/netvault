@@ -106,7 +106,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="NetVault", version="0.3.1", lifespan=lifespan)
+app = FastAPI(title="NetVault", version="0.3.2", lifespan=lifespan)
 
 
 @app.get("/health")
