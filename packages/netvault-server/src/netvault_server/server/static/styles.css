@@ -354,6 +354,7 @@ tr:last-child td { border-bottom: 0; }
   --heat-row-height: 24px;
   display: grid;
   grid-template-columns: minmax(300px, 390px) repeat(var(--year-count), var(--cell-column)) 54px;
+  grid-template-rows: 54px;
   grid-auto-rows: var(--heat-row-height);
   gap: 8px var(--cell-gap);
   align-items: center;
