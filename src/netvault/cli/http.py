@@ -55,12 +55,17 @@ def api_delete(path: str) -> Any:
     return response.json()
 
 
-def upload_pdf(path: Path, doi: str | None = None) -> Any:
+def upload_pdf(path: Path, doi: str | None = None, no_crossref: bool = False) -> Any:
     with path.open("rb") as handle:
+        data = {}
+        if doi:
+            data["doi"] = doi
+        if no_crossref:
+            data["no_crossref"] = "true"
         response = requests.post(
             f"{server_url()}/pdfs/upload",
             headers=auth_headers(),
-            data={"doi": doi} if doi else None,
+            data=data or None,
             files={"file": (path.name, handle, "application/pdf")},
             timeout=300,
         )

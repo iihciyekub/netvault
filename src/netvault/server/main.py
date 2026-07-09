@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
@@ -8,9 +9,10 @@ from sqlalchemy import inspect, or_, select, text
 from sqlalchemy.orm import Session
 
 from netvault.server.config import get_settings
+from netvault.server.crossref import CrossrefMetadata, fetch_crossref_metadata
 from netvault.server.database import Base, engine, get_db
 from netvault.server.deps import get_current_user, require_admin
-from netvault.server.doi import extract_doi_from_pdf, normalize_doi
+from netvault.server.doi import extract_doi_evidence, normalize_doi
 from netvault.server.models import DownloadRecord, Pdf, UploadRecord, User, UserRole, utc_now
 from netvault.server.schemas import (
     LoginRequest,
@@ -29,8 +31,16 @@ def pdf_to_read(pdf: Pdf) -> PdfRead:
     return PdfRead(
         id=pdf.id,
         doi=pdf.doi,
+        doi_source=pdf.doi_source,
         sha256=pdf.sha256,
         original_name=pdf.original_name,
+        title=pdf.title,
+        authors=pdf.authors,
+        container_title=pdf.container_title,
+        publisher=pdf.publisher,
+        published_year=pdf.published_year,
+        crossref_status=pdf.crossref_status or "pending",
+        crossref_url=pdf.crossref_url,
         size=pdf.size,
         uploaded_at=pdf.uploaded_at,
         uploaded_by=pdf.uploaded_by.username,
@@ -42,13 +52,14 @@ def pdf_to_detail(pdf: Pdf) -> PdfDetail:
         **pdf_to_read(pdf).model_dump(),
         storage_path=pdf.storage_path,
         upload_count=len(pdf.uploads),
+        doi_evidence=pdf.doi_evidence,
     )
 
 
 def initialize_app() -> None:
     ensure_storage_dirs()
     Base.metadata.create_all(bind=engine)
-    ensure_doi_column()
+    ensure_pdf_columns()
     settings = get_settings()
     if settings.bootstrap_admin and settings.bootstrap_admin_password:
         with Session(engine) as db:
@@ -64,14 +75,28 @@ def initialize_app() -> None:
                 db.commit()
 
 
-def ensure_doi_column() -> None:
+def ensure_pdf_columns() -> None:
     inspector = inspect(engine)
     if "pdfs" not in inspector.get_table_names():
         return
     column_names = {column["name"] for column in inspector.get_columns("pdfs")}
     with engine.begin() as connection:
-        if "doi" not in column_names:
-            connection.execute(text("ALTER TABLE pdfs ADD COLUMN doi VARCHAR(255)"))
+        columns = {
+            "doi": "VARCHAR(255)",
+            "doi_source": "VARCHAR(32)",
+            "doi_evidence": "TEXT",
+            "title": "TEXT",
+            "authors": "TEXT",
+            "container_title": "TEXT",
+            "publisher": "VARCHAR(255)",
+            "published_year": "INTEGER",
+            "crossref_status": "VARCHAR(32) DEFAULT 'pending'",
+            "crossref_url": "TEXT",
+            "crossref_fetched_at": "TIMESTAMP",
+        }
+        for name, sql_type in columns.items():
+            if name not in column_names:
+                connection.execute(text(f"ALTER TABLE pdfs ADD COLUMN {name} {sql_type}"))
         connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pdfs_doi ON pdfs (doi)"))
 
 
@@ -81,12 +106,38 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="NetVault", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="NetVault", version="0.3.0", lifespan=lifespan)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata) -> None:
+    pdf.crossref_status = metadata.status
+    if metadata.status != "ok":
+        return
+    pdf.title = metadata.title or pdf.title
+    pdf.authors = metadata.authors or pdf.authors
+    pdf.container_title = metadata.container_title or pdf.container_title
+    pdf.publisher = metadata.publisher or pdf.publisher
+    pdf.published_year = metadata.published_year or pdf.published_year
+    pdf.crossref_url = metadata.resource_url or pdf.crossref_url
+    pdf.crossref_fetched_at = metadata.fetched_at or pdf.crossref_fetched_at
+
+
+def doi_evidence_json(evidence) -> str:
+    return json.dumps(
+        {
+            "source": evidence.source,
+            "candidates": [
+                {"doi": candidate.doi, "source": candidate.source, "detail": candidate.detail}
+                for candidate in evidence.candidates
+            ],
+        },
+        ensure_ascii=False,
+    )
 
 
 @app.post("/auth/login", response_model=TokenResponse)
@@ -111,19 +162,20 @@ def me(user: User = Depends(get_current_user)) -> User:
 async def upload_pdf(
     file: UploadFile = File(...),
     doi: str | None = Form(default=None),
+    no_crossref: bool = Form(default=False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
     sha256, size, relative_path, object_deduplicated = await store_pdf(file)
-    try:
-        normalized_doi = normalize_doi(doi) if doi else extract_doi_from_pdf(object_path(sha256))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    if not normalized_doi:
+    evidence = extract_doi_evidence(object_path(sha256), explicit_doi=doi)
+    if evidence.status == "conflict":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=evidence.reason or "DOI conflict")
+    if evidence.status != "ok" or not evidence.doi:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No DOI found in PDF. Pass --doi DOI when uploading.",
+            detail=evidence.reason or "No DOI found in PDF. Pass --doi DOI when uploading.",
         )
+    normalized_doi = evidence.doi
 
     pdf_by_doi = db.scalar(select(Pdf).where(Pdf.doi == normalized_doi))
     pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
@@ -144,6 +196,8 @@ async def upload_pdf(
     if pdf is None:
         pdf = Pdf(
             doi=normalized_doi,
+            doi_source=evidence.source,
+            doi_evidence=doi_evidence_json(evidence),
             sha256=sha256,
             original_name=file.filename or f"{sha256}.pdf",
             size=size,
@@ -157,6 +211,14 @@ async def upload_pdf(
         pdf.is_deleted = False
         pdf.deleted_at = None
         pdf.deleted_by_id = None
+
+    if evidence.source and not pdf.doi_source:
+        pdf.doi_source = evidence.source
+        pdf.doi_evidence = doi_evidence_json(evidence)
+    if not no_crossref and (created_pdf or not pdf.title or pdf.crossref_status in (None, "pending", "unavailable")):
+        apply_crossref_metadata(pdf, fetch_crossref_metadata(normalized_doi))
+    elif no_crossref and not pdf.crossref_status:
+        pdf.crossref_status = "skipped"
 
     db.add(
         UploadRecord(
@@ -200,6 +262,9 @@ def search_pdfs(
         .where(
             or_(
                 Pdf.doi.ilike(pattern),
+                Pdf.title.ilike(pattern),
+                Pdf.authors.ilike(pattern),
+                Pdf.container_title.ilike(pattern),
                 Pdf.original_name.ilike(pattern),
                 Pdf.sha256.ilike(pattern),
                 User.username.ilike(pattern),

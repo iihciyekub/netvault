@@ -20,16 +20,18 @@ def render_pdf_table(rows: list[dict]) -> None:
     table = Table(show_header=True, header_style="bold")
     table.add_column("ID", justify="right")
     table.add_column("DOI")
-    table.add_column("Name")
-    table.add_column("Size", justify="right")
-    table.add_column("Uploader")
+    table.add_column("Year", justify="right")
+    table.add_column("Title")
+    table.add_column("Venue")
+    table.add_column("Meta")
     for row in rows:
         table.add_row(
             str(row["id"]),
             row["doi"],
-            row["original_name"],
-            f"{row['size']:,}",
-            row["uploaded_by"],
+            str(row["published_year"] or "-"),
+            row["title"] or row["original_name"],
+            row["container_title"] or "-",
+            row["crossref_status"],
         )
     console.print(table)
 
@@ -72,6 +74,7 @@ def logout() -> None:
 def upload_command(
     path: Path = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
+    no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
 ) -> None:
     pdfs = iter_pdf_paths(path)
     if not pdfs:
@@ -83,9 +86,10 @@ def upload_command(
         raise typer.BadParameter("--doi can only be used when uploading one PDF file")
     for pdf_path in pdfs:
         try:
-            result = upload_pdf(pdf_path, doi=doi)
+            result = upload_pdf(pdf_path, doi=doi, no_crossref=no_crossref)
             marker = "deduped" if result["deduplicated"] else "uploaded"
-            console.print(f"{marker}: {pdf_path} -> {result['pdf']['doi']}")
+            title = result["pdf"].get("title") or result["pdf"]["original_name"]
+            console.print(f"{marker}: {pdf_path} -> {result['pdf']['doi']}  {title}")
             uploaded += 1
         except RuntimeError as exc:
             console.print(f"failed: {pdf_path}: {exc}")

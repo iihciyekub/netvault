@@ -19,6 +19,11 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="NETVAULT_BOOTSTRAP_ADMIN_PASSWORD",
     )
+    crossref_mailto: str | None = Field(default=None, validation_alias="NETVAULT_CROSSREF_MAILTO")
+    crossref_user_agent: str = Field(
+        default="NetVault/0.3.0 (https://github.com/iihciyekub/netvault)",
+        validation_alias="NETVAULT_CROSSREF_USER_AGENT",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

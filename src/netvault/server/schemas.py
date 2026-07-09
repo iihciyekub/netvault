@@ -37,8 +37,16 @@ class PasswordResetRequest(BaseModel):
 class PdfRead(BaseModel):
     id: int
     doi: str
+    doi_source: str | None = None
     sha256: str
     original_name: str
+    title: str | None = None
+    authors: str | None = None
+    container_title: str | None = None
+    publisher: str | None = None
+    published_year: int | None = None
+    crossref_status: str
+    crossref_url: str | None = None
     size: int
     uploaded_at: datetime
     uploaded_by: str
@@ -47,6 +55,7 @@ class PdfRead(BaseModel):
 class PdfDetail(PdfRead):
     storage_path: str
     upload_count: int
+    doi_evidence: str | None = None
 
 
 class UploadResponse(BaseModel):

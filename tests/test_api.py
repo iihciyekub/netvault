@@ -25,6 +25,20 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             del sys.modules[module_name]
 
     main = importlib.import_module("netvault.server.main")
+    crossref = importlib.import_module("netvault.server.crossref")
+
+    def fake_crossref_metadata(doi: str):
+        return crossref.CrossrefMetadata(
+            status="ok",
+            title=f"Title for {doi}",
+            authors="Ada Lovelace; Alan Turing",
+            container_title="NetVault Journal",
+            publisher="NetVault Press",
+            published_year=2026,
+            resource_url=f"https://doi.org/{doi}",
+        )
+
+    monkeypatch.setattr(main, "fetch_crossref_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
         yield test_client
 
@@ -73,6 +87,10 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     assert first.status_code == 200
     assert first.json()["deduplicated"] is False
     assert first.json()["pdf"]["doi"] == DOI
+    assert first.json()["pdf"]["doi_source"] == "pdf-content"
+    assert first.json()["pdf"]["title"] == f"Title for {DOI}"
+    assert first.json()["pdf"]["published_year"] == 2026
+    assert first.json()["pdf"]["crossref_status"] == "ok"
     pdf_id = first.json()["pdf"]["id"]
 
     second = upload(client, admin_headers, "paper-copy.pdf")
@@ -91,6 +109,7 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     detail = client.get("/pdfs/by-doi", headers=admin_headers, params={"doi": DOI})
     assert detail.status_code == 200
     assert detail.json()["id"] == pdf_id
+    assert "pdf-content" in detail.json()["doi_evidence"]
 
     downloaded = client.get("/pdfs/by-doi/download", headers=admin_headers, params={"doi": DOI})
     assert downloaded.status_code == 200

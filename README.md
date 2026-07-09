@@ -121,7 +121,8 @@ Login:
 nv login http://127.0.0.1:8000
 ```
 
-Upload PDFs. NetVault extracts a DOI from the PDF and stores the file under that DOI:
+Upload PDFs. NetVault extracts a DOI from the PDF, asks Crossref for metadata,
+and stores the PDF under that DOI:
 
 ```bash
 nv upload ~/Documents/papers
@@ -133,6 +134,20 @@ If a scanned or unusually encoded PDF cannot be parsed, provide the DOI explicit
 ```bash
 nv upload ./paper.pdf --doi 10.1234/example.doi
 ```
+
+If you only want DOI indexing and PDF storage, skip Crossref:
+
+```bash
+nv upload ./paper.pdf --no-crossref
+```
+
+DOI extraction follows the same practical model as LitVault:
+
+- explicit `--doi`
+- PDF metadata markers such as `prism:doi`, `crossmark:DOI`, and `dc:identifier`
+- visible PDF text from the first pages when `pdftotext` is available
+- raw PDF text and filename fallback
+- conflict detection when multiple DOI values disagree
 
 List and download by DOI:
 
