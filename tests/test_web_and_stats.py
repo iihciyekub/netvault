@@ -170,6 +170,7 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     journal_year = client.get("/stats/by-journal-year", headers=headers)
     assert journal_year.status_code == 200
     assert journal_year.json()["max_count"] == 1
+    assert journal_year.json()["years"] == sorted(journal_year.json()["years"], reverse=True)
     assert "Fish & Chips Journal" in {row["journal"] for row in journal_year.json()["rows"]}
     fish_row = next(row for row in journal_year.json()["rows"] if row["journal"] == "Fish & Chips Journal")
     assert next(cell for cell in fish_row["cells"] if cell["year"] == 2026) == {"year": 2026, "count": 1, "level": 4}

@@ -7,7 +7,7 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='7' fill='%23000'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='12' font-weight='700' fill='%23fff'%3ENV%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}?v={{ asset_version }}">
   </head>
-  <body>
+  <body class="{% block body_class %}{% endblock %}">
     <div class="top-loader" aria-hidden="true"></div>
     <header class="topbar">
       <a class="brand" href="{{ path_for('/web') }}">

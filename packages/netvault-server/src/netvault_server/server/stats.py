@@ -142,7 +142,7 @@ def get_by_journal_year(db: Session, journal_filter: str = "all", limit: int = 2
     if not top_journals:
         return {"years": [], "max_count": 0, "rows": []}
     rows = [row for row in filtered_rows if row.journal in top_journals]
-    years = sorted({row.published_year for row in rows})
+    years = sorted({row.published_year for row in rows}, reverse=True)
     display_names = {raw: clean_label(raw) or raw for raw in top_journals}
     by_journal = {name: {year: 0 for year in years} for name in top_journals}
     for row in rows:

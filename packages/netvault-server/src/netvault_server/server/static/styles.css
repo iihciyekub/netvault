@@ -120,6 +120,23 @@ html.is-loading nav a.active {
   padding: 36px 0 72px;
 }
 
+.dashboard-body {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.dashboard-body .topbar {
+  position: static;
+}
+
+.dashboard-body .page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 64px);
+  min-height: 0;
+  padding: 24px 0;
+}
+
 .page-head {
   display: flex;
   align-items: flex-end;
@@ -178,6 +195,7 @@ h2 {
 }
 
 .summary-metrics {
+  flex: 0 0 auto;
   grid-template-columns: minmax(160px, 1.05fr) repeat(4, minmax(0, 1fr));
 }
 
@@ -218,6 +236,7 @@ h2 {
   gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+  flex: 0 0 auto;
 }
 
 .filter-tabs a {
@@ -244,9 +263,17 @@ h2 {
   min-width: 0;
 }
 
+.dashboard-body .heatmap-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .panel { padding: 16px; }
 .panel-heading {
   display: flex;
+  flex: 0 0 auto;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
@@ -288,10 +315,15 @@ tr:last-child td { border-bottom: 0; }
 .num { text-align: right; white-space: nowrap; }
 
 .heatmap-scroll {
-  overflow-x: auto;
+  overflow: auto;
   padding-top: 8px;
   padding-bottom: 4px;
   scrollbar-gutter: stable;
+}
+
+.dashboard-body .heatmap-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .journal-heatmap {
@@ -323,7 +355,8 @@ tr:last-child td { border-bottom: 0; }
 .heat-corner {
   position: sticky;
   left: 0;
-  z-index: 4;
+  top: 0;
+  z-index: 6;
   align-self: stretch;
   height: calc(100% + 18px);
   margin-bottom: -18px;
@@ -343,11 +376,14 @@ tr:last-child td { border-bottom: 0; }
 }
 
 .heat-year {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 3;
   justify-self: stretch;
   overflow: visible;
   width: var(--cell-column);
   height: 54px;
+  background: #ffffff;
 }
 
 .heat-year span {
@@ -359,6 +395,13 @@ tr:last-child td { border-bottom: 0; }
   transform: translateX(-50%) rotate(-90deg);
   transform-origin: center;
   white-space: nowrap;
+}
+
+.heat-total-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #ffffff;
 }
 
 .heat-journal {
@@ -771,6 +814,11 @@ ul {
 }
 
 @media (max-width: 760px) {
+  .dashboard-body {
+    height: auto;
+    overflow: auto;
+  }
+
   .topbar {
     grid-template-columns: 1fr auto;
     gap: 12px;
@@ -791,6 +839,10 @@ ul {
     justify-self: end;
   }
   .page { padding-top: 24px; }
+  .dashboard-body .page {
+    height: auto;
+    min-height: calc(100dvh - 112px);
+  }
   .page-head { display: grid; align-items: start; gap: 16px; }
   .panel-heading { display: grid; gap: 10px; }
   .actions { width: 100%; }
