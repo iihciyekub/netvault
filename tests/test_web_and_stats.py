@@ -95,12 +95,31 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
                 uploaded_by_id=admin.id,
             )
         )
+        db.add(
+            models.Pdf(
+                doi="10.1234/amp.test",
+                doi_source="manual",
+                sha256="1" * 64,
+                original_name="amp.pdf",
+                title="Encoded venue",
+                authors="[]",
+                container_title="Fish &amp; Chips Journal",
+                publisher=None,
+                published_year=2026,
+                crossref_status="ok",
+                size=12,
+                storage_path="objects/11/amp.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
         db.commit()
     by_journal = client.get("/stats/by-journal", headers=headers)
-    assert by_journal.json() == [{"journal": "Web Journal", "count": 1}]
+    assert {"journal": "Web Journal", "count": 1} in by_journal.json()
+    assert {"journal": "Fish & Chips Journal", "count": 1} in by_journal.json()
     journal_year = client.get("/stats/by-journal-year", headers=headers)
     assert journal_year.status_code == 200
     assert journal_year.json()["max_count"] == 1
+    assert "Fish & Chips Journal" in {row["journal"] for row in journal_year.json()["rows"]}
     assert journal_year.json()["rows"][0]["cells"][0] == {"year": 2026, "count": 1, "level": 4}
 
 

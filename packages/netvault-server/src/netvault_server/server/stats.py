@@ -1,3 +1,4 @@
+from html import unescape
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -22,6 +23,13 @@ def known_journal():
         journal != "",
         func.lower(journal).not_in(["unknown", "(unknown)"]),
     )
+
+
+def clean_label(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = unescape(value).strip()
+    return cleaned or None
 
 
 def get_summary(db: Session) -> dict[str, Any]:
@@ -62,14 +70,21 @@ def get_by_journal(db: Session, limit: int = 20) -> list[dict[str, Any]]:
         .order_by(func.count(Pdf.id).desc(), journal.asc())
         .limit(limit)
     ).all()
-    return [{"journal": row.journal, "count": row.count} for row in rows]
+    return [{"journal": clean_label(row.journal), "count": row.count} for row in rows]
 
 
 def get_by_journal_year(db: Session, limit: int = 20) -> dict[str, Any]:
-    top_journals = [row["journal"] for row in get_by_journal(db, limit=limit)]
+    journal = func.trim(Pdf.container_title)
+    top_rows = db.execute(
+        select(journal.label("journal"), func.count(Pdf.id).label("count"))
+        .where(*active_pdfs(), *known_journal())
+        .group_by(journal)
+        .order_by(func.count(Pdf.id).desc(), journal.asc())
+        .limit(limit)
+    ).all()
+    top_journals = [row.journal for row in top_rows]
     if not top_journals:
         return {"years": [], "max_count": 0, "rows": []}
-    journal = func.trim(Pdf.container_title)
     rows = db.execute(
         select(journal.label("journal"), Pdf.published_year, func.count(Pdf.id).label("count"))
         .where(*active_pdfs(), *known_journal(), journal.in_(top_journals), Pdf.published_year.is_not(None))
@@ -77,6 +92,7 @@ def get_by_journal_year(db: Session, limit: int = 20) -> dict[str, Any]:
         .order_by(journal.asc(), Pdf.published_year.asc())
     ).all()
     years = sorted({row.published_year for row in rows})
+    display_names = {raw: clean_label(raw) or raw for raw in top_journals}
     by_journal = {name: {year: 0 for year in years} for name in top_journals}
     for row in rows:
         by_journal[row.journal][row.published_year] = row.count
@@ -99,7 +115,7 @@ def get_by_journal_year(db: Session, limit: int = 20) -> dict[str, Any]:
         "max_count": max_count,
         "rows": [
             {
-                "journal": journal_name,
+                "journal": display_names[journal_name],
                 "total": sum(counts.values()),
                 "cells": [
                     {
