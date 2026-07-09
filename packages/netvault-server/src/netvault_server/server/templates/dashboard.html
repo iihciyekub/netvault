@@ -1,18 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - NetVault{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
-<section class="metrics">
-  <div><span>Active PDFs</span><strong>{{ summary.active_pdfs }}</strong></div>
-  <div><span>Total Size</span><strong>{{ summary.total_size|bytes }}</strong></div>
-  <div><span>Uploaders</span><strong>{{ summary.uploaders }}</strong></div>
-  <div><span>Year Range</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></div>
+<section class="hero">
+  <p class="eyebrow">Team PDF vault</p>
+  <h1>NetVault</h1>
+  <div class="quick-actions">
+    <a class="button primary" href="{{ path_for('/web/upload') }}">Upload PDFs</a>
+    <a class="button" href="{{ path_for('/web/download') }}">Download by DOI</a>
+    <a class="button quiet" href="{{ path_for('/web/pdfs') }}">Search</a>
+  </div>
 </section>
 
-<section class="grid two">
-  <div>
+<section class="metrics">
+  <div><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></div>
+  <div><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></div>
+  <div><span>Users</span><strong>{{ summary.uploaders }}</strong></div>
+  <div><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></div>
+</section>
+
+<section class="split">
+  <div class="panel">
     <h2>By Year</h2>
-    <table>
+    <table class="compact">
       <thead><tr><th>Year</th><th class="num">PDFs</th></tr></thead>
       <tbody>
       {% for row in by_year %}
@@ -23,9 +32,9 @@
       </tbody>
     </table>
   </div>
-  <div>
+  <div class="panel">
     <h2>Top Journals</h2>
-    <table>
+    <table class="compact">
       <thead><tr><th>Journal</th><th class="num">PDFs</th></tr></thead>
       <tbody>
       {% for row in by_journal %}
@@ -38,10 +47,10 @@
   </div>
 </section>
 
-<section>
+<section class="panel">
   <h2>Journal by Year</h2>
   <div class="table-scroll">
-    <table>
+    <table class="compact">
       <thead>
         <tr><th>Journal</th>{% for year in journal_year.years %}<th class="num">{{ year }}</th>{% endfor %}</tr>
       </thead>
@@ -50,35 +59,6 @@
         <tr><td>{{ row.journal }}</td>{% for count in row.counts %}<td class="num">{{ count }}</td>{% endfor %}</tr>
       {% else %}
         <tr><td>No journal-year data.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section class="grid two">
-  <div>
-    <h2>Recent Uploads</h2>
-    <table>
-      <thead><tr><th>DOI</th><th>User</th><th>Time</th></tr></thead>
-      <tbody>
-      {% for row in recent_uploads %}
-        <tr><td>{{ row.doi }}</td><td>{{ row.username }}</td><td>{{ row.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</td></tr>
-      {% else %}
-        <tr><td colspan="3">No uploads yet.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div>
-    <h2>Recent Downloads</h2>
-    <table>
-      <thead><tr><th>DOI</th><th>User</th><th>Time</th></tr></thead>
-      <tbody>
-      {% for row in recent_downloads %}
-        <tr><td>{{ row.doi }}</td><td>{{ row.username }}</td><td>{{ row.downloaded_at.strftime("%Y-%m-%d %H:%M") }}</td></tr>
-      {% else %}
-        <tr><td colspan="3">No downloads yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>

@@ -18,8 +18,6 @@ from netvault_server.server.stats import (
     get_by_journal,
     get_by_journal_year,
     get_by_year,
-    get_recent_downloads,
-    get_recent_uploads,
     get_summary,
 )
 from netvault_server.server.storage import object_path
@@ -158,8 +156,6 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> Any:
             "by_year": get_by_year(db),
             "by_journal": get_by_journal(db),
             "journal_year": get_by_journal_year(db),
-            "recent_uploads": get_recent_uploads(db),
-            "recent_downloads": get_recent_downloads(db),
         },
     )
 
@@ -173,21 +169,29 @@ def pdfs_page(
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    query = select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.doi.is_not(None))
+    q = q.strip()
+    pdfs = []
     if q:
         pattern = f"%{q}%"
-        query = query.where(
-            or_(
-                Pdf.doi.ilike(pattern),
-                Pdf.title.ilike(pattern),
-                Pdf.authors.ilike(pattern),
-                Pdf.container_title.ilike(pattern),
-                Pdf.original_name.ilike(pattern),
-                Pdf.sha256.ilike(pattern),
+        query = (
+            select(Pdf)
+            .where(
+                Pdf.is_deleted.is_(False),
+                Pdf.doi.is_not(None),
+                or_(
+                    Pdf.doi.ilike(pattern),
+                    Pdf.title.ilike(pattern),
+                    Pdf.authors.ilike(pattern),
+                    Pdf.container_title.ilike(pattern),
+                    Pdf.original_name.ilike(pattern),
+                    Pdf.sha256.ilike(pattern),
+                ),
             )
+            .order_by(Pdf.uploaded_at.desc())
+            .limit(100)
         )
-    pdfs = db.scalars(query.order_by(Pdf.uploaded_at.desc())).all()
-    return render(request, "pdfs.html", {"user": user, "pdfs": pdfs, "q": q})
+        pdfs = db.scalars(query).all()
+    return render(request, "pdfs.html", {"user": user, "pdfs": pdfs, "q": q, "searched": bool(q)})
 
 
 @router.get("/web/upload", response_class=HTMLResponse, include_in_schema=False)

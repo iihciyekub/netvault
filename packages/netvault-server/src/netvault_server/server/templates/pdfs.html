@@ -1,14 +1,18 @@
 {% extends "base.html" %}
-{% block title %}PDFs - NetVault{% endblock %}
+{% block title %}Search - NetVault{% endblock %}
 {% block content %}
-<h1>PDFs</h1>
-<form method="get" action="{{ path_for('/web/pdfs') }}" class="toolbar">
-  <input name="q" value="{{ q }}" placeholder="Search DOI, title, journal, filename, sha256">
+<section class="hero compact-hero">
+  <p class="eyebrow">Search</p>
+  <h1>Find PDFs</h1>
+</section>
+<form method="get" action="{{ path_for('/web/pdfs') }}" class="searchbar">
+  <input name="q" value="{{ q }}" placeholder="DOI, title, journal, filename, sha256" autofocus>
   <button type="submit">Search</button>
-  <a class="button" href="{{ path_for('/web/pdfs') }}">Clear</a>
+  {% if q %}<a class="button quiet" href="{{ path_for('/web/pdfs') }}">Clear</a>{% endif %}
 </form>
+{% if searched %}
 <div class="table-scroll">
-  <table>
+  <table class="results">
     <thead><tr><th>DOI</th><th>Year</th><th>Title</th><th>Journal</th><th>Size</th><th></th></tr></thead>
     <tbody>
     {% for pdf in pdfs %}
@@ -26,4 +30,7 @@
     </tbody>
   </table>
 </div>
+{% else %}
+<div class="empty-state">No query yet.</div>
+{% endif %}
 {% endblock %}

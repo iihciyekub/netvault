@@ -1,18 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Upload - NetVault{% endblock %}
 {% block content %}
-<h1>Upload PDFs</h1>
+<section class="hero compact-hero">
+  <p class="eyebrow">Upload</p>
+  <h1>Add PDFs</h1>
+</section>
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
 <form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label>PDF files <input name="files" type="file" accept="application/pdf,.pdf" multiple required></label>
+  <label class="dropzone" id="dropzone">
+    <input id="file-input" name="files" type="file" accept="application/pdf,.pdf" multiple required>
+    <span class="drop-title">Drop PDFs here</span>
+    <span class="drop-meta" id="file-summary">or choose files</span>
+  </label>
   <label>Manual DOI <input name="doi" placeholder="Only when uploading one file"></label>
   <label class="check"><input name="no_crossref" type="checkbox" value="true"> Skip Crossref metadata</label>
-  <button type="submit">Upload</button>
+  <button class="primary" type="submit">Upload</button>
 </form>
 {% if results %}
 <h2>Results</h2>
-<table>
+<table class="results">
   <thead><tr><th>File</th><th>Status</th><th>DOI / Error</th></tr></thead>
   <tbody>
   {% for row in results %}
@@ -25,4 +32,7 @@
   </tbody>
 </table>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ path_for('/static/upload.js') }}"></script>
 {% endblock %}
