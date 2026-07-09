@@ -4,6 +4,7 @@ from netvault.cli.user import (
     cached_file_sha256,
     file_sha256,
     find_existing_pdf_before_upload,
+    has_pdf_header,
     load_hash_cache,
     save_hash_cache,
     collect_dois,
@@ -78,6 +79,16 @@ def test_collect_pdf_paths_recurses_and_deduplicates(tmp_path: Path) -> None:
     ignored.write_text("not a pdf", encoding="utf-8")
 
     assert collect_pdf_paths([papers, first]) == [first, second]
+
+
+def test_has_pdf_header_rejects_html_saved_as_pdf(tmp_path: Path) -> None:
+    html_pdf = tmp_path / "download.pdf"
+    real_pdf = tmp_path / "paper.pdf"
+    html_pdf.write_bytes(b"<!DOCTYPE html><title>Access denied</title>")
+    real_pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    assert has_pdf_header(real_pdf) is True
+    assert has_pdf_header(html_pdf) is False
 
 
 def test_collect_dois_from_arguments_and_file(tmp_path: Path) -> None:

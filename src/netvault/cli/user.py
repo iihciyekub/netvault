@@ -27,6 +27,7 @@ from netvault.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
 
 DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 HASH_CACHE_VERSION = 1
+PDF_MAGIC = b"%PDF-"
 
 app = typer.Typer(
     help="NetVault team PDF vault CLI.",
@@ -109,6 +110,11 @@ def collect_pdf_paths(paths: Iterable[Path]) -> list[Path]:
             seen.add(resolved)
             pdfs.append(pdf_path)
     return pdfs
+
+
+def has_pdf_header(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(len(PDF_MAGIC)) == PDF_MAGIC
 
 
 def file_sha256(path: Path, progress_callback=None) -> str:
@@ -490,6 +496,9 @@ def upload_command(
         for pdf_path in pdfs:
             try:
                 progress.update(hash_task, description=f"Hashing {pdf_path.name}")
+                if not has_pdf_header(pdf_path):
+                    failed.append((pdf_path, "invalid PDF file: expected %PDF- header"))
+                    continue
                 cached_before = file_cache_key(pdf_path) in hash_cache
                 sha256, from_cache = cached_file_sha256(pdf_path, hash_cache)
                 hashes_by_path[pdf_path] = sha256
