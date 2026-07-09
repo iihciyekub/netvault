@@ -16,17 +16,17 @@ from rich.progress import (
     SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
-    TransferSpeedColumn,
 )
 from rich.table import Table
 
 from netvault import __version__
-from netvault.cli.config import clear_credentials, load_credentials, save_credentials
-from netvault.cli.http import api_get, auth_headers, raise_for_api_error, server_url, upload_pdf
+from netvault.cli.config import HASH_CACHE_PATH, clear_credentials, load_credentials, save_credentials
+from netvault.cli.http import api_get, api_post, auth_headers, raise_for_api_error, server_url, upload_pdf
 from netvault.cli.update import update_from_github
 from netvault.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
 
 DEFAULT_SERVER_URL = "https://iiaide.com/nv"
+HASH_CACHE_VERSION = 1
 
 app = typer.Typer(
     help="NetVault team PDF vault CLI.",
@@ -121,6 +121,54 @@ def file_sha256(path: Path, progress_callback=None) -> str:
     return digest.hexdigest()
 
 
+def file_cache_key(path: Path) -> str:
+    return str(path.resolve())
+
+
+def file_signature(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_size, stat.st_mtime_ns
+
+
+def load_hash_cache() -> dict[str, dict]:
+    if not HASH_CACHE_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(HASH_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if payload.get("version") != HASH_CACHE_VERSION:
+        return {}
+    files = payload.get("files")
+    return files if isinstance(files, dict) else {}
+
+
+def save_hash_cache(files: dict[str, dict]) -> None:
+    HASH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    HASH_CACHE_PATH.write_text(
+        json.dumps({"version": HASH_CACHE_VERSION, "files": files}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    HASH_CACHE_PATH.chmod(0o600)
+
+
+def cached_file_sha256(path: Path, cache: dict[str, dict], progress_callback=None) -> tuple[str, bool]:
+    size, mtime_ns = file_signature(path)
+    cached = cache.get(file_cache_key(path))
+    if (
+        isinstance(cached, dict)
+        and cached.get("size") == size
+        and cached.get("mtime_ns") == mtime_ns
+        and isinstance(cached.get("sha256"), str)
+    ):
+        if progress_callback:
+            progress_callback(size)
+        return cached["sha256"], True
+    sha256 = file_sha256(path, progress_callback=progress_callback)
+    cache[file_cache_key(path)] = {"size": size, "mtime_ns": mtime_ns, "sha256": sha256}
+    return sha256, False
+
+
 def existing_pdf_from_response(response: requests.Response) -> dict | None:
     if response.status_code == 404:
         return None
@@ -135,6 +183,27 @@ def get_existing_pdf_by_sha256(sha256: str) -> dict | None:
         timeout=30,
     )
     return existing_pdf_from_response(response)
+
+
+def get_existing_pdfs_by_sha256(hashes: Iterable[str]) -> dict[str, dict]:
+    unique_hashes = sorted({sha256 for sha256 in hashes if sha256})
+    if not unique_hashes:
+        return {}
+    existing: dict[str, dict] = {}
+    chunk_size = 500
+    try:
+        for index in range(0, len(unique_hashes), chunk_size):
+            response = api_post("/pdfs/exists", json={"sha256": unique_hashes[index : index + chunk_size]})
+            existing_payload = response.get("existing", {})
+            if isinstance(existing_payload, dict):
+                existing.update(existing_payload)
+        return existing
+    except RuntimeError:
+        for sha256 in unique_hashes:
+            pdf = get_existing_pdf_by_sha256(sha256)
+            if pdf:
+                existing[sha256] = pdf
+        return existing
 
 
 def get_existing_pdf_by_doi(doi: str) -> dict | None:
@@ -280,14 +349,21 @@ def render_doi_evidence(path: Path, explicit_doi: str | None = None, verbose: bo
     console.print(table)
 
 
-def find_existing_pdf_before_upload(path: Path, explicit_doi: str | None, on_read=None) -> dict | None:
-    sha256 = file_sha256(path, progress_callback=on_read)
+def find_existing_pdf_before_upload(
+    path: Path,
+    explicit_doi: str | None,
+    sha256: str,
+    existing_by_sha: dict[str, dict],
+) -> dict | None:
+    existing_by_hash = existing_by_sha.get(sha256)
+    if existing_by_hash:
+        return existing_by_hash
     doi = extract_local_doi(path, explicit_doi)
     if doi:
         existing = get_existing_pdf_by_doi(doi)
         if existing:
             return existing
-    return get_existing_pdf_by_sha256(sha256)
+    return None
 
 
 def save_login(server: str, username: str, password: str) -> None:
@@ -373,7 +449,8 @@ Examples:
 \b
 Notes:
   Directories are scanned recursively for .pdf/.PDF files.
-  Existing PDFs are skipped before upload by checking DOI and sha256.
+  Existing PDFs are skipped before DOI extraction/upload by checking sha256 first.
+  File hashes are cached locally in ~/.config/netvault/hash-cache.json.
 """,
 )
 def upload_command(
@@ -395,64 +472,65 @@ def upload_command(
     skipped = 0
     failed: list[tuple[Path, str]] = []
     latest_pdf: dict | None = None
-    total_bytes = sum(pdf_path.stat().st_size for pdf_path in pdfs) * 2
+    hash_cache = load_hash_cache()
+    cache_changed = False
+    hashes_by_path: dict[Path, str] = {}
+    existing_by_sha: dict[str, dict] = {}
+
     with Progress(
         SpinnerColumn(),
         TextColumn("{task.description}"),
         BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
+        TextColumn("{task.completed:.0f}/{task.total:.0f} PDFs"),
         TimeElapsedColumn(),
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("Processing PDFs", total=total_bytes)
+        hash_task = progress.add_task("Hashing PDFs", total=len(pdfs))
         for pdf_path in pdfs:
-            progress.update(task, description=f"Checking {pdf_path.name}")
-            pdf_size = pdf_path.stat().st_size
-            processed_for_file = 0
-
-            def advance_file(delta: int) -> None:
-                nonlocal processed_for_file
-                if delta > 0:
-                    progress.advance(task, delta)
-                    processed_for_file += delta
-
-            def show_check_progress(bytes_read: int) -> None:
-                advance_file(bytes_read)
-
-            uploaded_for_file = 0
-
-            def show_upload_progress(bytes_sent: int, _total_for_file: int) -> None:
-                nonlocal uploaded_for_file
-                visible_sent = min(bytes_sent, pdf_size)
-                delta = visible_sent - uploaded_for_file
-                advance_file(delta)
-                if delta > 0:
-                    uploaded_for_file = visible_sent
-
             try:
+                progress.update(hash_task, description=f"Hashing {pdf_path.name}")
+                cached_before = file_cache_key(pdf_path) in hash_cache
+                sha256, from_cache = cached_file_sha256(pdf_path, hash_cache)
+                hashes_by_path[pdf_path] = sha256
+                cache_changed = cache_changed or not from_cache or not cached_before
+            except OSError as exc:
+                failed.append((pdf_path, str(exc)))
+            finally:
+                progress.advance(hash_task, 1)
+
+        if cache_changed:
+            save_hash_cache(hash_cache)
+
+        progress.update(hash_task, description="Checking server")
+        existing_by_sha = get_existing_pdfs_by_sha256(hashes_by_path.values())
+        process_task = progress.add_task("Processing PDFs", total=len(pdfs))
+
+        for pdf_path in pdfs:
+            if pdf_path not in hashes_by_path:
+                progress.advance(process_task, 1)
+                continue
+            try:
+                progress.update(process_task, description=f"Checking {pdf_path.name}")
+                sha256 = hashes_by_path[pdf_path]
                 existing_pdf = find_existing_pdf_before_upload(
                     pdf_path,
                     doi,
-                    on_read=show_check_progress,
+                    sha256,
+                    existing_by_sha,
                 )
                 if existing_pdf:
                     latest_pdf = existing_pdf
                     skipped += 1
-                    advance_file(pdf_size)
                     continue
 
-                progress.update(task, description=f"Uploading {pdf_path.name}")
+                progress.update(process_task, description=f"Uploading {pdf_path.name}")
                 result = upload_pdf(
                     pdf_path,
                     doi=doi,
                     no_crossref=no_crossref,
-                    progress_callback=show_upload_progress,
                 )
-                if uploaded_for_file < pdf_size:
-                    advance_file(pdf_size - uploaded_for_file)
-                progress.update(task, description=f"Indexed {pdf_path.name}")
+                progress.update(process_task, description=f"Indexed {pdf_path.name}")
                 latest_pdf = result["pdf"]
                 if result["deduplicated"]:
                     deduped += 1
@@ -461,9 +539,7 @@ def upload_command(
             except RuntimeError as exc:
                 failed.append((pdf_path, str(exc)))
             finally:
-                expected_for_file = pdf_size * 2
-                if processed_for_file < expected_for_file:
-                    advance_file(expected_for_file - processed_for_file)
+                progress.advance(process_task, 1)
 
     ok_count = uploaded + deduped + skipped
     parts = [f"done: {ok_count}/{len(pdfs)} processed"]

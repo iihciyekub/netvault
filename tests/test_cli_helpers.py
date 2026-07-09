@@ -1,6 +1,15 @@
 from pathlib import Path
 
-from netvault.cli.user import collect_dois, collect_pdf_paths, unique_destination
+from netvault.cli.user import (
+    cached_file_sha256,
+    file_sha256,
+    find_existing_pdf_before_upload,
+    load_hash_cache,
+    save_hash_cache,
+    collect_dois,
+    collect_pdf_paths,
+    unique_destination,
+)
 from netvault.doi import extract_doi_evidence
 
 
@@ -38,6 +47,42 @@ def test_unique_destination_avoids_overwriting(tmp_path: Path) -> None:
 
     assert unique_destination(tmp_path, "paper.pdf", used) == tmp_path / "paper-2.pdf"
     assert unique_destination(tmp_path, "paper.pdf", used) == tmp_path / "paper-3.pdf"
+
+
+def test_hash_cache_reuses_unchanged_file(tmp_path: Path, monkeypatch) -> None:
+    cache_path = tmp_path / "hash-cache.json"
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", cache_path)
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/cache\n%%EOF\n")
+
+    cache = load_hash_cache()
+    sha256, from_cache = cached_file_sha256(pdf, cache)
+    assert from_cache is False
+    assert sha256 == file_sha256(pdf)
+    save_hash_cache(cache)
+
+    reloaded_cache = load_hash_cache()
+    cached_sha256, cached = cached_file_sha256(pdf, reloaded_cache)
+    assert cached is True
+    assert cached_sha256 == sha256
+
+
+def test_existing_sha_skips_doi_extraction(monkeypatch) -> None:
+    def fail_extract(*args, **kwargs):
+        raise AssertionError("DOI extraction should not run for an existing sha256")
+
+    monkeypatch.setattr("netvault.cli.user.extract_local_doi", fail_extract)
+    existing = {"sha256": "a" * 64, "doi": "10.1234/existing"}
+
+    assert (
+        find_existing_pdf_before_upload(
+            Path("paper.pdf"),
+            None,
+            "a" * 64,
+            {"a" * 64: existing},
+        )
+        == existing
+    )
 
 
 def test_smart_doi_prefers_filename_over_content_noise(tmp_path: Path) -> None:

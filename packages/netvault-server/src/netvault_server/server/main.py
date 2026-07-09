@@ -19,6 +19,8 @@ from netvault_server.server.schemas import (
     PasswordResetRequest,
     PdfDetail,
     PdfRead,
+    Sha256ExistsRequest,
+    Sha256ExistsResponse,
     TokenResponse,
     UploadResponse,
     UserCreateRequest,
@@ -89,7 +91,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="NetVault", version="0.5.7", lifespan=lifespan)
+app = FastAPI(title="NetVault", version="0.5.8", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(stats_router)
 app.include_router(web_router)
@@ -149,6 +151,20 @@ def list_pdfs(
         .order_by(Pdf.uploaded_at.desc())
     ).all()
     return [pdf_to_read(pdf) for pdf in pdfs]
+
+
+@app.post("/pdfs/exists", response_model=Sha256ExistsResponse)
+def existing_pdfs_by_sha256(
+    payload: Sha256ExistsRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Sha256ExistsResponse:
+    _ = user
+    hashes = sorted({sha256 for sha256 in payload.sha256 if len(sha256) == 64})
+    if not hashes:
+        return Sha256ExistsResponse(existing={})
+    pdfs = db.scalars(select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))).all()
+    return Sha256ExistsResponse(existing={pdf.sha256: pdf_to_read(pdf) for pdf in pdfs})
 
 
 @app.get("/pdfs/search", response_model=list[PdfRead])

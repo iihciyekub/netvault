@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from netvault_server.server.crossref import CrossrefMetadata, fetch_crossref_metadata
-from netvault_server.server.doi import extract_doi_evidence
+from netvault_server.server.doi import extract_doi_evidence, normalize_doi
 from netvault_server.server.models import Pdf, UploadRecord, User
 from netvault_server.server.schemas import PdfRead, UploadResponse
 from netvault_server.server.storage import object_path, store_pdf
@@ -63,6 +63,17 @@ def doi_evidence_json(evidence) -> str:
     )
 
 
+def add_upload_record(pdf: Pdf, file: UploadFile, size: int, user: User, db: Session) -> None:
+    db.add(
+        UploadRecord(
+            pdf_id=pdf.id,
+            user_id=user.id,
+            original_name=file.filename or pdf.original_name,
+            size=size,
+        )
+    )
+
+
 async def process_upload(
     file: UploadFile,
     doi: str | None,
@@ -71,6 +82,30 @@ async def process_upload(
     db: Session,
 ) -> UploadResponse:
     sha256, size, relative_path, object_deduplicated = await store_pdf(file)
+    pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
+    if pdf_by_sha is not None:
+        if doi:
+            try:
+                normalized_explicit_doi = normalize_doi(doi)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            if pdf_by_sha.doi and pdf_by_sha.doi != normalized_explicit_doi:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"This PDF is already linked to DOI {pdf_by_sha.doi}",
+                )
+        if pdf_by_sha.is_deleted:
+            pdf_by_sha.is_deleted = False
+            pdf_by_sha.deleted_at = None
+            pdf_by_sha.deleted_by_id = None
+        add_upload_record(pdf_by_sha, file, size, user, db)
+        db.commit()
+        from netvault_server.server.stats import invalidate_stats_cache
+
+        invalidate_stats_cache()
+        db.refresh(pdf_by_sha)
+        return UploadResponse(pdf=pdf_to_read(pdf_by_sha), deduplicated=True)
+
     evidence = extract_doi_evidence(object_path(sha256), explicit_doi=doi, filename=file.filename)
     if evidence.status == "conflict":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=evidence.reason or "DOI conflict")
@@ -82,7 +117,6 @@ async def process_upload(
     normalized_doi = evidence.doi
 
     pdf_by_doi = db.scalar(select(Pdf).where(Pdf.doi == normalized_doi))
-    pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
     if pdf_by_doi is not None and pdf_by_doi.sha256 != sha256:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -128,14 +162,7 @@ async def process_upload(
     elif no_crossref and not pdf.crossref_status:
         pdf.crossref_status = "skipped"
 
-    db.add(
-        UploadRecord(
-            pdf_id=pdf.id,
-            user_id=user.id,
-            original_name=file.filename or pdf.original_name,
-            size=size,
-        )
-    )
+    add_upload_record(pdf, file, size, user, db)
     db.commit()
     from netvault_server.server.stats import invalidate_stats_cache
 

@@ -61,3 +61,11 @@ class PdfDetail(PdfRead):
 class UploadResponse(BaseModel):
     pdf: PdfRead
     deduplicated: bool
+
+
+class Sha256ExistsRequest(BaseModel):
+    sha256: list[str]
+
+
+class Sha256ExistsResponse(BaseModel):
+    existing: dict[str, PdfRead]

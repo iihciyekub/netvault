@@ -98,6 +98,13 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     assert second.status_code == 200
     assert second.json()["deduplicated"] is True
     assert second.json()["pdf"]["id"] == pdf_id
+    exists = client.post(
+        "/pdfs/exists",
+        headers=admin_headers,
+        json={"sha256": [hashlib.sha256(PDF_BYTES).hexdigest(), "f" * 64]},
+    )
+    assert exists.status_code == 200
+    assert list(exists.json()["existing"]) == [hashlib.sha256(PDF_BYTES).hexdigest()]
 
     listed = client.get("/pdfs", headers=admin_headers)
     assert listed.status_code == 200
@@ -118,6 +125,24 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
 
     stored_objects = list((tmp_path / "storage" / "objects").rglob("*.pdf"))
     assert len(stored_objects) == 1
+
+
+def test_duplicate_upload_by_sha_returns_before_doi_extraction(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    admin_headers = login(client, "admin", "admin-pass")
+    first = upload(client, admin_headers, "paper.pdf")
+    assert first.status_code == 200
+
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+
+    def fail_extract(*args, **kwargs):
+        raise AssertionError("DOI extraction should not run for an existing sha256")
+
+    monkeypatch.setattr(main_helpers, "extract_doi_evidence", fail_extract)
+    second = upload(client, admin_headers, "paper-copy.pdf")
+
+    assert second.status_code == 200
+    assert second.json()["deduplicated"] is True
+    assert second.json()["pdf"]["id"] == first.json()["pdf"]["id"]
 
 
 def test_rejects_missing_doi_and_conflicting_doi(client: TestClient) -> None:
