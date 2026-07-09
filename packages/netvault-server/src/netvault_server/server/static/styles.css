@@ -180,13 +180,6 @@ h2 {
   font-weight: 600;
 }
 
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
 .panel { padding: 16px; }
 .panel-heading {
   display: flex;
@@ -509,7 +502,7 @@ ul {
   .panel-heading { display: grid; gap: 10px; }
   .actions { width: 100%; }
   .actions .button { flex: 1 1 auto; }
-  .metrics, .split { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
   .journal-heatmap {
     --cell-column: 18px;

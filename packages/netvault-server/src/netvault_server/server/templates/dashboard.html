@@ -20,35 +20,6 @@
   <article><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></article>
 </section>
 
-<section class="split">
-  <div class="panel">
-    <h2>By Year</h2>
-    <table class="compact">
-      <thead><tr><th>Year</th><th class="num">PDFs</th></tr></thead>
-      <tbody>
-      {% for row in by_year %}
-        <tr><td>{{ row.year }}</td><td class="num">{{ row.count }}</td></tr>
-      {% else %}
-        <tr><td colspan="2">No yearly data.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div class="panel">
-    <h2>Top Journals</h2>
-    <table class="compact">
-      <thead><tr><th>Journal</th><th class="num">PDFs</th></tr></thead>
-      <tbody>
-      {% for row in by_journal %}
-        <tr><td>{{ row.journal }}</td><td class="num">{{ row.count }}</td></tr>
-      {% else %}
-        <tr><td colspan="2">No journal data.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
-
 <section class="panel">
   <div class="panel-heading">
     <div>
