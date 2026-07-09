@@ -177,6 +177,10 @@ h2 {
   margin-bottom: 12px;
 }
 
+.summary-metrics {
+  grid-template-columns: minmax(160px, 1.05fr) repeat(4, minmax(0, 1fr));
+}
+
 .metrics article,
 .panel,
 .form {
@@ -205,6 +209,10 @@ h2 {
   font-weight: 600;
 }
 
+.summary-metrics article:first-child strong {
+  font-size: 24px;
+}
+
 .filter-tabs {
   display: flex;
   gap: 6px;
@@ -230,64 +238,6 @@ h2 {
   border-color: #000000;
   color: #ffffff;
   background: #000000;
-}
-
-.dashboard-layout {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.toc-metrics {
-  position: sticky;
-  top: 82px;
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #ffffff;
-}
-
-.toc-label {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.toc-filter {
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
-  font-size: 18px;
-  line-height: 1.1;
-  font-weight: 620;
-}
-
-.toc-metrics dl {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-}
-
-.toc-metrics dl div {
-  display: grid;
-  gap: 2px;
-}
-
-.toc-metrics dt {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.toc-metrics dd {
-  margin: 0;
-  font-size: 22px;
-  line-height: 1.1;
-  font-weight: 620;
 }
 
 .heatmap-panel {
@@ -339,6 +289,7 @@ tr:last-child td { border-bottom: 0; }
 
 .heatmap-scroll {
   overflow-x: auto;
+  padding-top: 8px;
   padding-bottom: 4px;
   scrollbar-gutter: stable;
 }
@@ -394,15 +345,15 @@ tr:last-child td { border-bottom: 0; }
 .heat-year {
   position: relative;
   justify-self: stretch;
-  overflow: hidden;
+  overflow: visible;
   width: var(--cell-column);
-  height: 44px;
+  height: 54px;
 }
 
 .heat-year span {
   display: block;
   position: absolute;
-  bottom: 6px;
+  bottom: 12px;
   left: 50%;
   line-height: 1;
   transform: translateX(-50%) rotate(-90deg);
@@ -778,6 +729,9 @@ ul {
     width: min(100vw - var(--page-gutter), var(--page-width));
   }
   .panel { padding: 12px; }
+  .summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .heatmap-scroll {
     margin-inline: 0;
@@ -799,7 +753,11 @@ ul {
   }
 
   .heat-year {
-    height: 38px;
+    height: 46px;
+  }
+
+  .heat-year span {
+    bottom: 10px;
   }
 
   .heat-journal {
@@ -838,8 +796,7 @@ ul {
   .actions { width: 100%; }
   .actions .button { flex: 1 1 auto; }
   .metrics { grid-template-columns: 1fr; }
-  .dashboard-layout { grid-template-columns: 1fr; }
-  .toc-metrics { position: static; }
+  .summary-metrics { grid-template-columns: 1fr; }
   .command-grid { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
 }
@@ -860,7 +817,11 @@ ul {
   }
 
   .heat-year {
-    height: 36px;
+    height: 42px;
+  }
+
+  .heat-year span {
+    bottom: 9px;
   }
 
   .heat-journal {

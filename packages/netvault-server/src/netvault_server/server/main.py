@@ -91,7 +91,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="NetVault", version="0.5.16", lifespan=lifespan)
+app = FastAPI(title="NetVault", version="0.5.17", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(stats_router)
 app.include_router(web_router)

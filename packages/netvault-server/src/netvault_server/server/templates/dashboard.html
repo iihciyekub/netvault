@@ -10,21 +10,18 @@
   {% endfor %}
 </div>
 
-<div class="dashboard-layout">
-  <aside class="toc-metrics" aria-label="Current filter summary">
-    <div class="toc-label">Current View</div>
-    <div class="toc-filter">
-      {% for option in journal_filters %}{% if option.key == journal_filter %}{{ option.label }}{% endif %}{% endfor %}
-    </div>
-    <dl>
-      <div><dt>PDFs</dt><dd>{{ summary.active_pdfs }}</dd></div>
-      <div><dt>Size</dt><dd>{{ summary.total_size|bytes }}</dd></div>
-      <div><dt>Users</dt><dd>{{ summary.uploaders }}</dd></div>
-      <div><dt>Years</dt><dd>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</dd></div>
-    </dl>
-  </aside>
+<section class="metrics summary-metrics" aria-label="Current filter summary">
+  <article>
+    <span>Current View</span>
+    <strong>{% for option in journal_filters %}{% if option.key == journal_filter %}{{ option.label }}{% endif %}{% endfor %}</strong>
+  </article>
+  <article><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></article>
+  <article><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></article>
+  <article><span>Users</span><strong>{{ summary.uploaders }}</strong></article>
+  <article><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></article>
+</section>
 
-  <section class="panel heatmap-panel">
+<section class="panel heatmap-panel">
     <div class="panel-heading">
       <div>
         <h2>Journal by Year</h2>
@@ -68,6 +65,5 @@
     {% else %}
     <div class="empty-state">No journal-year data.</div>
     {% endif %}
-  </section>
-</div>
+</section>
 {% endblock %}
