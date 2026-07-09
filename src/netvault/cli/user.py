@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from typing import Iterable
 
 import requests
 import typer
@@ -19,7 +20,7 @@ from netvault import __version__
 from netvault.cli.config import clear_credentials, load_credentials, save_credentials
 from netvault.cli.http import api_get, auth_headers, raise_for_api_error, server_url, upload_pdf
 from netvault.cli.update import update_from_github
-from netvault.server.doi import extract_doi_evidence
+from netvault.server.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
 
 DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 
@@ -71,10 +72,29 @@ def render_pdf_table(rows: list[dict]) -> None:
 
 def iter_pdf_paths(path: Path) -> list[Path]:
     if path.is_file():
+        if path.suffix.lower() != ".pdf":
+            raise typer.BadParameter(f"{path} is not a PDF file")
         return [path]
     if path.is_dir():
-        return sorted(candidate for candidate in path.rglob("*.pdf") if candidate.is_file())
+        return sorted(
+            candidate
+            for candidate in path.rglob("*")
+            if candidate.is_file() and candidate.suffix.lower() == ".pdf"
+        )
     raise typer.BadParameter(f"{path} does not exist")
+
+
+def collect_pdf_paths(paths: Iterable[Path]) -> list[Path]:
+    pdfs: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        for pdf_path in iter_pdf_paths(path):
+            resolved = pdf_path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            pdfs.append(pdf_path)
+    return pdfs
 
 
 def file_sha256(path: Path, progress_callback=None) -> str:
@@ -111,6 +131,42 @@ def get_existing_pdf_by_doi(doi: str) -> dict | None:
         timeout=30,
     )
     return existing_pdf_from_response(response)
+
+
+def collect_dois(raw_dois: Iterable[str], doi_files: Iterable[Path]) -> list[str]:
+    dois: list[str] = []
+
+    def add(value: str) -> None:
+        try:
+            doi = normalize_doi(value)
+        except ValueError:
+            return
+        if doi not in dois:
+            dois.append(doi)
+
+    for raw_doi in raw_dois:
+        add(raw_doi)
+    for doi_file in doi_files:
+        for doi in find_dois_in_text(doi_file.read_text(encoding="utf-8", errors="ignore")):
+            add(doi)
+    return dois
+
+
+def unique_destination(directory: Path, filename: str, used_destinations: set[Path]) -> Path:
+    safe_name = Path(filename).name
+    destination = directory / safe_name
+    if destination not in used_destinations and not destination.exists():
+        used_destinations.add(destination)
+        return destination
+    stem = destination.stem
+    suffix = destination.suffix
+    counter = 2
+    while True:
+        candidate = directory / f"{stem}-{counter}{suffix}"
+        if candidate not in used_destinations and not candidate.exists():
+            used_destinations.add(candidate)
+            return candidate
+        counter += 1
 
 
 def extract_local_doi(path: Path, explicit_doi: str | None) -> str | None:
@@ -193,12 +249,12 @@ def logout() -> None:
 
 @app.command("upload")
 def upload_command(
-    path: Path = typer.Argument(..., exists=True, readable=True),
+    paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
 ) -> None:
     ensure_logged_in()
-    pdfs = iter_pdf_paths(path)
+    pdfs = collect_pdf_paths(paths)
     if not pdfs:
         console.print("No PDF files found.")
         return
@@ -311,25 +367,80 @@ def search(query: str = typer.Argument(...)) -> None:
 
 @app.command()
 def download(
-    doi: str = typer.Argument(..., help="DOI, for example 10.1145/3368089.3409742"),
+    dois: list[str] = typer.Argument(None, help="DOI values, for example 10.1145/3368089.3409742"),
     to: Path = typer.Option(Path("."), "--to", help="Destination directory"),
+    doi_files: list[Path] = typer.Option(
+        [],
+        "--file",
+        "-f",
+        exists=True,
+        readable=True,
+        help="Read DOI values from a text file using NetVault's DOI regex.",
+    ),
 ) -> None:
-    detail = api_get("/pdfs/by-doi", doi=doi)
+    ensure_logged_in()
+    requested_dois = collect_dois(dois or [], doi_files)
+    if not requested_dois:
+        raise typer.BadParameter("Provide at least one DOI or --file PATH")
+
+    details: list[dict] = []
+    failed: list[tuple[str, str]] = []
+    for doi in requested_dois:
+        try:
+            details.append(api_get("/pdfs/by-doi", doi=doi))
+        except RuntimeError as exc:
+            failed.append((doi, str(exc)))
+
+    if not details:
+        console.print(f"done: 0/{len(requested_dois)} downloaded; {len(failed)} failed")
+        for doi, error in failed:
+            console.print(f"failed: {doi}: {error}")
+        return
+
     to.mkdir(parents=True, exist_ok=True)
-    destination = to / detail["original_name"]
-    response = requests.get(
-        f"{server_url()}/pdfs/by-doi/download",
-        headers=auth_headers(),
-        params={"doi": doi},
-        timeout=300,
-        stream=True,
-    )
-    raise_for_api_error(response)
-    with destination.open("wb") as handle:
-        for chunk in response.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                handle.write(chunk)
-    console.print(f"Downloaded {detail['doi']} to {destination}.")
+    downloaded = 0
+    used_destinations: set[Path] = set()
+    total_bytes = sum(int(detail["size"]) for detail in details)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Downloading PDFs", total=total_bytes)
+        for detail in details:
+            doi = detail["doi"]
+            progress.update(task, description=f"Downloading {doi}")
+            try:
+                destination = unique_destination(to, detail["original_name"], used_destinations)
+                response = requests.get(
+                    f"{server_url()}/pdfs/by-doi/download",
+                    headers=auth_headers(),
+                    params={"doi": doi},
+                    timeout=300,
+                    stream=True,
+                )
+                raise_for_api_error(response)
+                with destination.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            handle.write(chunk)
+                            progress.advance(task, len(chunk))
+                downloaded += 1
+            except RuntimeError as exc:
+                failed.append((doi, str(exc)))
+
+    parts = [f"done: {downloaded}/{len(requested_dois)} downloaded"]
+    if failed:
+        parts.append(f"{len(failed)} failed")
+    parts.append(f"to: {to}")
+    console.print("; ".join(parts))
+    for doi, error in failed:
+        console.print(f"failed: {doi}: {error}")
 
 
 @app.command()

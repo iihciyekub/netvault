@@ -68,6 +68,12 @@ Upload a directory recursively:
 nv upload ~/Downloads/papers
 ```
 
+Upload multiple files and directories in one command:
+
+```bash
+nv upload ~/Downloads/a.pdf ~/Downloads/b.pdf ~/Downloads/papers
+```
+
 NetVault only accepts PDF files. On upload it:
 
 1. Checks the file is a PDF.
@@ -125,6 +131,18 @@ Download by DOI:
 
 ```bash
 nv download 10.1016/j.ijpe.2018.04.006 --to ~/Downloads
+```
+
+Download multiple DOI values:
+
+```bash
+nv download 10.1016/j.ijpe.2018.04.006 10.1234/example.doi --to ~/Downloads
+```
+
+Download DOI values extracted from a text file:
+
+```bash
+nv download --file ./dois.txt --to ~/Downloads
 ```
 
 The downloaded filename uses the original uploaded filename.

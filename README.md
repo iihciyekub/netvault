@@ -138,6 +138,7 @@ and stores the PDF under that DOI:
 ```bash
 nv upload ~/Documents/papers
 nv upload ./paper.pdf
+nv upload ./paper-a.pdf ./paper-b.pdf ~/Documents/papers
 ```
 
 Before uploading bytes, the CLI checks the local PDF's DOI and sha256 against
@@ -169,9 +170,15 @@ List and download by DOI:
 ```bash
 nv list
 nv download 10.1234/example.doi --to ./downloads
+nv download 10.1234/example.doi 10.5678/another.doi --to ./downloads
+nv download --file ./dois.txt --to ./downloads
 nv status
 nv logout
 ```
+
+`nv download --file` extracts DOI values from any text file using the same DOI
+regex as upload metadata parsing. Upload and download both use a single-line
+progress bar.
 
 ## Admin CLI
 
