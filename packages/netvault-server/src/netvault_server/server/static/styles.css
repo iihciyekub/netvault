@@ -205,6 +205,95 @@ h2 {
   font-weight: 600;
 }
 
+.filter-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.filter-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 520;
+}
+
+.filter-tabs a:hover,
+.filter-tabs a.active {
+  border-color: #000000;
+  color: #ffffff;
+  background: #000000;
+}
+
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.toc-metrics {
+  position: sticky;
+  top: 82px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.toc-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.toc-filter {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 18px;
+  line-height: 1.1;
+  font-weight: 620;
+}
+
+.toc-metrics dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.toc-metrics dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.toc-metrics dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.toc-metrics dd {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 620;
+}
+
+.heatmap-panel {
+  min-width: 0;
+}
+
 .panel { padding: 16px; }
 .panel-heading {
   display: flex;
@@ -749,6 +838,8 @@ ul {
   .actions { width: 100%; }
   .actions .button { flex: 1 1 auto; }
   .metrics { grid-template-columns: 1fr; }
+  .dashboard-layout { grid-template-columns: 1fr; }
+  .toc-metrics { position: static; }
   .command-grid { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
 }

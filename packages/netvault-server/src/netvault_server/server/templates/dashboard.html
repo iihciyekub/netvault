@@ -1,56 +1,73 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - NetVault{% endblock %}
 {% block content %}
-<section class="metrics">
-  <article><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></article>
-  <article><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></article>
-  <article><span>Users</span><strong>{{ summary.uploaders }}</strong></article>
-  <article><span>Years</span><strong>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</strong></article>
-</section>
+<div class="filter-tabs" aria-label="Journal filters">
+  {% for option in journal_filters %}
+    <a
+      class="{% if option.key == journal_filter %}active{% endif %}"
+      href="{{ path_for('/web') }}?filter={{ option.key }}"
+    >{{ option.label }}</a>
+  {% endfor %}
+</div>
 
-<section class="panel">
-  <div class="panel-heading">
-    <div>
-      <h2>Journal by Year</h2>
-      <p class="panel-subtitle">Publication density across top journals.</p>
+<div class="dashboard-layout">
+  <aside class="toc-metrics" aria-label="Current filter summary">
+    <div class="toc-label">Current View</div>
+    <div class="toc-filter">
+      {% for option in journal_filters %}{% if option.key == journal_filter %}{{ option.label }}{% endif %}{% endfor %}
     </div>
-    <div class="heatmap-legend" aria-label="Heatmap legend">
-      <span>Less</span>
-      <span class="heat-cell level-0"></span>
-      <span class="heat-cell level-1"></span>
-      <span class="heat-cell level-2"></span>
-      <span class="heat-cell level-3"></span>
-      <span class="heat-cell level-4"></span>
-      <span>More</span>
+    <dl>
+      <div><dt>PDFs</dt><dd>{{ summary.active_pdfs }}</dd></div>
+      <div><dt>Size</dt><dd>{{ summary.total_size|bytes }}</dd></div>
+      <div><dt>Users</dt><dd>{{ summary.uploaders }}</dd></div>
+      <div><dt>Years</dt><dd>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</dd></div>
+    </dl>
+  </aside>
+
+  <section class="panel heatmap-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Journal by Year</h2>
+        <p class="panel-subtitle">Publication density across matching journals.</p>
+      </div>
+      <div class="heatmap-legend" aria-label="Heatmap legend">
+        <span>Less</span>
+        <span class="heat-cell level-0"></span>
+        <span class="heat-cell level-1"></span>
+        <span class="heat-cell level-2"></span>
+        <span class="heat-cell level-3"></span>
+        <span class="heat-cell level-4"></span>
+        <span>More</span>
+      </div>
     </div>
-  </div>
-  {% if journal_year.rows %}
-  <div class="heatmap-scroll">
-    <div class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
-      <div class="heat-corner"></div>
-      {% for year in journal_year.years %}
-        <div class="heat-year"><span>{{ year }}</span></div>
-      {% endfor %}
-      <div class="heat-total-head">Total</div>
-      {% for row in journal_year.rows %}
-        <div class="heat-journal" data-tip="{{ row.journal }}">{{ row.journal }}</div>
-        {% for cell in row.cells %}
-          {% if cell.count > 0 %}
-          <span
-            class="heat-cell level-{{ cell.level }}"
-            data-tip="{{ row.journal }} · {{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
-            aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count }} PDFs"
-          ></span>
-          {% else %}
-          <span class="heat-cell level-0" aria-hidden="true"></span>
-          {% endif %}
+    {% if journal_year.rows %}
+    <div class="heatmap-scroll">
+      <div class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
+        <div class="heat-corner"></div>
+        {% for year in journal_year.years %}
+          <div class="heat-year"><span>{{ year }}</span></div>
         {% endfor %}
-        <div class="heat-total">{{ row.total }}</div>
-      {% endfor %}
+        <div class="heat-total-head">Total</div>
+        {% for row in journal_year.rows %}
+          <div class="heat-journal" data-tip="{{ row.journal }}">{{ row.journal }}</div>
+          {% for cell in row.cells %}
+            {% if cell.count > 0 %}
+            <span
+              class="heat-cell level-{{ cell.level }}"
+              data-tip="{{ row.journal }} · {{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
+              aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count }} PDFs"
+            ></span>
+            {% else %}
+            <span class="heat-cell level-0" aria-hidden="true"></span>
+            {% endif %}
+          {% endfor %}
+          <div class="heat-total">{{ row.total }}</div>
+        {% endfor %}
+      </div>
     </div>
-  </div>
-  {% else %}
-  <div class="empty-state">No journal-year data.</div>
-  {% endif %}
-</section>
+    {% else %}
+    <div class="empty-state">No journal-year data.</div>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

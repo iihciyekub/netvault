@@ -8,11 +8,16 @@ from sqlalchemy.orm import Session
 
 from netvault_server.server.database import get_db
 from netvault_server.server.deps import get_current_user
+from netvault_server.server.journal_filters import (
+    FILTER_OPTIONS,
+    journal_matches_filter,
+    normalize_filter_key,
+)
 from netvault_server.server.models import DownloadRecord, Pdf, UploadRecord, User
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 STATS_CACHE_TTL_SECONDS = 30.0
-_dashboard_cache: dict[str, Any] | None = None
+_dashboard_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _dashboard_cache_expires_at = 0.0
 
 
@@ -38,24 +43,45 @@ def clean_label(value: str | None) -> str | None:
 
 def invalidate_stats_cache() -> None:
     global _dashboard_cache, _dashboard_cache_expires_at
-    _dashboard_cache = None
+    _dashboard_cache = {}
     _dashboard_cache_expires_at = 0.0
 
 
-def get_dashboard_stats(db: Session) -> dict[str, Any]:
+def get_dashboard_stats(db: Session, journal_filter: str = "all") -> dict[str, Any]:
     global _dashboard_cache, _dashboard_cache_expires_at
+    filter_key = normalize_filter_key(journal_filter)
     now = monotonic()
-    if _dashboard_cache is not None and now < _dashboard_cache_expires_at:
-        return _dashboard_cache
-    _dashboard_cache = {
-        "summary": get_summary(db),
-        "journal_year": get_by_journal_year(db),
+    cached = _dashboard_cache.get(filter_key)
+    if cached is not None and now < cached[0]:
+        return cached[1]
+    stats = {
+        "summary": get_summary(db, filter_key),
+        "journal_year": get_by_journal_year(db, filter_key),
+        "journal_filter": filter_key,
+        "journal_filters": FILTER_OPTIONS,
     }
+    _dashboard_cache[filter_key] = (now + STATS_CACHE_TTL_SECONDS, stats)
     _dashboard_cache_expires_at = now + STATS_CACHE_TTL_SECONDS
-    return _dashboard_cache
+    return stats
 
 
-def get_summary(db: Session) -> dict[str, Any]:
+def get_summary(db: Session, journal_filter: str = "all") -> dict[str, Any]:
+    filter_key = normalize_filter_key(journal_filter)
+    if filter_key != "all":
+        rows = db.execute(
+            select(Pdf.container_title, Pdf.size, Pdf.uploaded_by_id, Pdf.published_year).where(
+                *active_pdfs(), *known_journal()
+            )
+        ).all()
+        matched = [row for row in rows if journal_matches_filter(row.container_title, filter_key)]
+        years = [row.published_year for row in matched if row.published_year is not None]
+        return {
+            "active_pdfs": len(matched),
+            "total_size": sum(int(row.size or 0) for row in matched),
+            "uploaders": len({row.uploaded_by_id for row in matched if row.uploaded_by_id is not None}),
+            "min_year": min(years) if years else None,
+            "max_year": max(years) if years else None,
+        }
     row = db.execute(
         select(
             func.count(Pdf.id),
@@ -96,24 +122,26 @@ def get_by_journal(db: Session, limit: int = 20) -> list[dict[str, Any]]:
     return [{"journal": clean_label(row.journal), "count": row.count} for row in rows]
 
 
-def get_by_journal_year(db: Session, limit: int = 20) -> dict[str, Any]:
+def get_by_journal_year(db: Session, journal_filter: str = "all", limit: int = 20) -> dict[str, Any]:
+    filter_key = normalize_filter_key(journal_filter)
     journal = func.trim(Pdf.container_title)
-    top_rows = db.execute(
-        select(journal.label("journal"), func.count(Pdf.id).label("count"))
-        .where(*active_pdfs(), *known_journal())
-        .group_by(journal)
-        .order_by(func.count(Pdf.id).desc(), journal.asc())
-        .limit(limit)
-    ).all()
-    top_journals = [row.journal for row in top_rows]
-    if not top_journals:
-        return {"years": [], "max_count": 0, "rows": []}
-    rows = db.execute(
+    all_rows = db.execute(
         select(journal.label("journal"), Pdf.published_year, func.count(Pdf.id).label("count"))
-        .where(*active_pdfs(), *known_journal(), journal.in_(top_journals), Pdf.published_year.is_not(None))
+        .where(*active_pdfs(), *known_journal(), Pdf.published_year.is_not(None))
         .group_by(journal, Pdf.published_year)
         .order_by(journal.asc(), Pdf.published_year.asc())
     ).all()
+    filtered_rows = [row for row in all_rows if journal_matches_filter(row.journal, filter_key)]
+    totals: dict[str, int] = {}
+    for row in filtered_rows:
+        totals[row.journal] = totals.get(row.journal, 0) + int(row.count)
+    top_journals = [
+        journal_name
+        for journal_name, _ in sorted(totals.items(), key=lambda item: (-item[1], clean_label(item[0]) or item[0]))[:limit]
+    ]
+    if not top_journals:
+        return {"years": [], "max_count": 0, "rows": []}
+    rows = [row for row in filtered_rows if row.journal in top_journals]
     years = sorted({row.published_year for row in rows})
     display_names = {raw: clean_label(raw) or raw for raw in top_journals}
     by_journal = {name: {year: 0 for year in years} for name in top_journals}
@@ -198,8 +226,9 @@ def get_recent_downloads(db: Session, limit: int = 10) -> list[dict[str, Any]]:
 def summary(
     _: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    filter: str = "all",
 ) -> dict[str, Any]:
-    return get_summary(db)
+    return get_summary(db, filter)
 
 
 @router.get("/by-year")
@@ -222,5 +251,6 @@ def by_journal(
 def by_journal_year(
     _: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    filter: str = "all",
 ) -> dict[str, Any]:
-    return get_by_journal_year(db)
+    return get_by_journal_year(db, filter)

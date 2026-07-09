@@ -112,6 +112,57 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
                 uploaded_by_id=admin.id,
             )
         )
+        db.add(
+            models.Pdf(
+                doi="10.1234/utd.test",
+                doi_source="manual",
+                sha256="2" * 64,
+                original_name="utd.pdf",
+                title="UTD venue",
+                authors="[]",
+                container_title="The Journal of Finance",
+                publisher=None,
+                published_year=2024,
+                crossref_status="ok",
+                size=100,
+                storage_path="objects/22/utd.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.add(
+            models.Pdf(
+                doi="10.1234/abs1.test",
+                doi_source="manual",
+                sha256="3" * 64,
+                original_name="abs1.pdf",
+                title="ABS one venue",
+                authors="[]",
+                container_title="International Journal of Intercultural Relations",
+                publisher=None,
+                published_year=2025,
+                crossref_status="ok",
+                size=200,
+                storage_path="objects/33/abs1.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.add(
+            models.Pdf(
+                doi="10.1234/nonmatch.test",
+                doi_source="manual",
+                sha256="4" * 64,
+                original_name="nonmatch.pdf",
+                title="Non matching venue",
+                authors="[]",
+                container_title="Neighborhood PDF Review",
+                publisher=None,
+                published_year=2024,
+                crossref_status="ok",
+                size=300,
+                storage_path="objects/44/nonmatch.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
         db.commit()
     by_journal = client.get("/stats/by-journal", headers=headers)
     assert {"journal": "Web Journal", "count": 1} in by_journal.json()
@@ -120,7 +171,23 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert journal_year.status_code == 200
     assert journal_year.json()["max_count"] == 1
     assert "Fish & Chips Journal" in {row["journal"] for row in journal_year.json()["rows"]}
-    assert journal_year.json()["rows"][0]["cells"][0] == {"year": 2026, "count": 1, "level": 4}
+    fish_row = next(row for row in journal_year.json()["rows"] if row["journal"] == "Fish & Chips Journal")
+    assert next(cell for cell in fish_row["cells"] if cell["year"] == 2026) == {"year": 2026, "count": 1, "level": 4}
+
+    utd_summary = client.get("/stats/summary", params={"filter": "utd24"}, headers=headers)
+    assert utd_summary.status_code == 200
+    assert utd_summary.json()["active_pdfs"] == 1
+    assert utd_summary.json()["total_size"] == 100
+    utd_heatmap = client.get("/stats/by-journal-year", params={"filter": "utd24"}, headers=headers)
+    assert [row["journal"] for row in utd_heatmap.json()["rows"]] == ["The Journal of Finance"]
+
+    abs4star_summary = client.get("/stats/summary", params={"filter": "4*"}, headers=headers)
+    assert abs4star_summary.status_code == 200
+    assert abs4star_summary.json()["active_pdfs"] == 1
+    abs1_summary = client.get("/stats/summary", params={"filter": "abs1"}, headers=headers)
+    assert abs1_summary.status_code == 200
+    assert abs1_summary.json()["active_pdfs"] == 1
+    assert abs1_summary.json()["total_size"] == 200
 
 
 def test_dashboard_stats_cache_can_be_invalidated(client: TestClient) -> None:
@@ -185,6 +252,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert dashboard.status_code == 200
     assert "<h1" not in dashboard.text
     assert "No journal-year data." in dashboard.text
+    assert "Current View" in dashboard.text
+    assert "UTD24" in dashboard.text
+    assert "ABS 4*" in dashboard.text
     assert "By Year" not in dashboard.text
     assert "Top Journals" not in dashboard.text
     assert "Upload PDFs" not in dashboard.text

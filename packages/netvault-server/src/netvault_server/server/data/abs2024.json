@@ -1,0 +1,7297 @@
+{
+  "source": "ABS Academic Journal Guide 2024",
+  "journals": [
+    {
+      "journal": "Accounting Review",
+      "rating": "4*"
+    },
+    {
+      "journal": "Accounting, Organizations and Society",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Accounting and Economics",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Accounting Research",
+      "rating": "4*"
+    },
+    {
+      "journal": "American Economic Review",
+      "rating": "4*"
+    },
+    {
+      "journal": "Annals of Statistics",
+      "rating": "4*"
+    },
+    {
+      "journal": "Econometrica",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Political Economy",
+      "rating": "4*"
+    },
+    {
+      "journal": "Quarterly Journal of Economics",
+      "rating": "4*"
+    },
+    {
+      "journal": "Review of Economic Studies",
+      "rating": "4*"
+    },
+    {
+      "journal": "Entrepreneurship Theory and Practice",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Business Venturing",
+      "rating": "4*"
+    },
+    {
+      "journal": "Academy of Management Annals",
+      "rating": "4*"
+    },
+    {
+      "journal": "Academy of Management Journal",
+      "rating": "4*"
+    },
+    {
+      "journal": "Academy of Management Review",
+      "rating": "4*"
+    },
+    {
+      "journal": "Administrative Science Quarterly",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Management",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Finance",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Financial Economics",
+      "rating": "4*"
+    },
+    {
+      "journal": "Review of Financial Studies",
+      "rating": "4*"
+    },
+    {
+      "journal": "Human Resource Management Journal (UK)",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of International Business Studies",
+      "rating": "4*"
+    },
+    {
+      "journal": "Information Systems Research",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of the Association for Information Systems",
+      "rating": "4*"
+    },
+    {
+      "journal": "MIS Quarterly: Management Information Systems",
+      "rating": "4*"
+    },
+    {
+      "journal": "Research Policy",
+      "rating": "4*"
+    },
+    {
+      "journal": "Academy of Management Learning and Education",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Consumer Psychology",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Consumer Research",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Marketing",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Marketing Research",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of the Academy of Marketing Science",
+      "rating": "4*"
+    },
+    {
+      "journal": "Marketing Science",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Operations Management",
+      "rating": "4*"
+    },
+    {
+      "journal": "Management Science",
+      "rating": "4*"
+    },
+    {
+      "journal": "Operations Research",
+      "rating": "4*"
+    },
+    {
+      "journal": "Organization Science",
+      "rating": "4*"
+    },
+    {
+      "journal": "Psychological Science",
+      "rating": "4*"
+    },
+    {
+      "journal": "Journal of Applied Psychology",
+      "rating": "4*"
+    },
+    {
+      "journal": "Personnel Psychology",
+      "rating": "4*"
+    },
+    {
+      "journal": "Public Administration Review",
+      "rating": "4*"
+    },
+    {
+      "journal": "American Journal of Political Science",
+      "rating": "4*"
+    },
+    {
+      "journal": "American Journal of Sociology",
+      "rating": "4*"
+    },
+    {
+      "journal": "American Political Science Review",
+      "rating": "4*"
+    },
+    {
+      "journal": "American Sociological Review",
+      "rating": "4*"
+    },
+    {
+      "journal": "Annual Review of Sociology",
+      "rating": "4*"
+    },
+    {
+      "journal": "Strategic Management Journal",
+      "rating": "4*"
+    },
+    {
+      "journal": "Contemporary Accounting Research",
+      "rating": "4"
+    },
+    {
+      "journal": "Review of Accounting Studies",
+      "rating": "4"
+    },
+    {
+      "journal": "Business History",
+      "rating": "4"
+    },
+    {
+      "journal": "Business History Review",
+      "rating": "4"
+    },
+    {
+      "journal": "Economic History Review",
+      "rating": "4"
+    },
+    {
+      "journal": "American Economic Journal: Applied Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "American Economic Journal: Macroeconomics",
+      "rating": "4"
+    },
+    {
+      "journal": "Biometrika",
+      "rating": "4"
+    },
+    {
+      "journal": "Econometric Theory",
+      "rating": "4"
+    },
+    {
+      "journal": "Economic Journal",
+      "rating": "4"
+    },
+    {
+      "journal": "International Economic Review",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Business and Economic Statistics",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Econometrics",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Economic Literature",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Economic Perspectives",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Economic Theory",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of International Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Labor Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Monetary Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of the American Statistical Association",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of the European Economic Association",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of the Royal Statistical Society. Series B: Statistical Methodology",
+      "rating": "4"
+    },
+    {
+      "journal": "Quantitative Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "RAND Journal of Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "Review of Economics and Statistics",
+      "rating": "4"
+    },
+    {
+      "journal": "Theoretical Economics",
+      "rating": "4"
+    },
+    {
+      "journal": "Strategic Entrepreneurship Journal",
+      "rating": "4"
+    },
+    {
+      "journal": "Academy of Management Perspectives",
+      "rating": "4"
+    },
+    {
+      "journal": "British Journal of Management",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Management Studies",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Corporate Finance",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Financial and Quantitative Analysis",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Financial Intermediation",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Money, Credit and Banking",
+      "rating": "4"
+    },
+    {
+      "journal": "Review of Finance",
+      "rating": "4"
+    },
+    {
+      "journal": "British Journal of Industrial Relations",
+      "rating": "4"
+    },
+    {
+      "journal": "Human Resource Management (USA)",
+      "rating": "4"
+    },
+    {
+      "journal": "Industrial Relations",
+      "rating": "4"
+    },
+    {
+      "journal": "Work, Employment and Society",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of World Business",
+      "rating": "4"
+    },
+    {
+      "journal": "European Journal of Information Systems",
+      "rating": "4"
+    },
+    {
+      "journal": "Information Systems Journal",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Information Technology",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Management Information Systems",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Strategic Information Systems",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Product Innovation Management",
+      "rating": "4"
+    },
+    {
+      "journal": "International Journal of Research in Marketing",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Retailing",
+      "rating": "4"
+    },
+    {
+      "journal": "International Journal of Operations and Production Management",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Supply Chain Management",
+      "rating": "4"
+    },
+    {
+      "journal": "Production and Operations Management",
+      "rating": "4"
+    },
+    {
+      "journal": "European Journal of Operational Research",
+      "rating": "4"
+    },
+    {
+      "journal": "IEEE Transactions on Evolutionary Computation",
+      "rating": "4"
+    },
+    {
+      "journal": "Mathematical Programming",
+      "rating": "4"
+    },
+    {
+      "journal": "Human Relations",
+      "rating": "4"
+    },
+    {
+      "journal": "Leadership Quarterly",
+      "rating": "4"
+    },
+    {
+      "journal": "Organization Studies",
+      "rating": "4"
+    },
+    {
+      "journal": "Organizational Research Methods",
+      "rating": "4"
+    },
+    {
+      "journal": "Annual Review of Psychology",
+      "rating": "4"
+    },
+    {
+      "journal": "Behavioral and Brain Sciences",
+      "rating": "4"
+    },
+    {
+      "journal": "Cognition",
+      "rating": "4"
+    },
+    {
+      "journal": "Current Directions in Psychological Science",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Experimental Psychology: Applied",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Experimental Psychology: General",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Experimental Social Psychology",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Personality and Social Psychology",
+      "rating": "4"
+    },
+    {
+      "journal": "Nature Human Behaviour",
+      "rating": "4"
+    },
+    {
+      "journal": "Personality and Social Psychology Bulletin",
+      "rating": "4"
+    },
+    {
+      "journal": "Psychological Bulletin",
+      "rating": "4"
+    },
+    {
+      "journal": "Psychological Review",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Occupational and Organizational Psychology",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Occupational Health Psychology",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Organizational Behavior",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Vocational Behavior",
+      "rating": "4"
+    },
+    {
+      "journal": "Organizational Behavior and Human Decision Processes",
+      "rating": "4"
+    },
+    {
+      "journal": "Work and Stress",
+      "rating": "4"
+    },
+    {
+      "journal": "Governance",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Public Administration Research and Theory",
+      "rating": "4"
+    },
+    {
+      "journal": "Public Administration",
+      "rating": "4"
+    },
+    {
+      "journal": "Public Management Review",
+      "rating": "4"
+    },
+    {
+      "journal": "Economic Geography",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Economic Geography",
+      "rating": "4"
+    },
+    {
+      "journal": "Regional Studies",
+      "rating": "4"
+    },
+    {
+      "journal": "Annals of Tourism Research",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Service Research",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Travel Research",
+      "rating": "4"
+    },
+    {
+      "journal": "Tourism Management",
+      "rating": "4"
+    },
+    {
+      "journal": "Transportation Research, Series B: Methodological",
+      "rating": "4"
+    },
+    {
+      "journal": "Environment and Planning D: Society and Space",
+      "rating": "4"
+    },
+    {
+      "journal": "International Organization",
+      "rating": "4"
+    },
+    {
+      "journal": "International Studies Quarterly",
+      "rating": "4"
+    },
+    {
+      "journal": "Journal of Politics",
+      "rating": "4"
+    },
+    {
+      "journal": "Risk Analysis",
+      "rating": "4"
+    },
+    {
+      "journal": "Social Science and Medicine",
+      "rating": "4"
+    },
+    {
+      "journal": "Socio-Economic Review",
+      "rating": "4"
+    },
+    {
+      "journal": "Sociology",
+      "rating": "4"
+    },
+    {
+      "journal": "Global Strategy Journal",
+      "rating": "4"
+    },
+    {
+      "journal": "Long Range Planning",
+      "rating": "4"
+    },
+    {
+      "journal": "Abacus",
+      "rating": "3"
+    },
+    {
+      "journal": "Accounting and Business Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Accounting Forum",
+      "rating": "3"
+    },
+    {
+      "journal": "Accounting Horizons",
+      "rating": "3"
+    },
+    {
+      "journal": "Accounting, Auditing and Accountability Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "Auditing",
+      "rating": "3"
+    },
+    {
+      "journal": "Behavioral Research in Accounting",
+      "rating": "3"
+    },
+    {
+      "journal": "British Accounting Review",
+      "rating": "3"
+    },
+    {
+      "journal": "British Tax Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Critical Perspectives on Accounting",
+      "rating": "3"
+    },
+    {
+      "journal": "European Accounting Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Financial Accountability and Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Foundations and Trends in Accounting",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Accounting",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Accounting and Public Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Accounting Literature",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Accounting, Auditing and Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Business Finance and Accounting",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Financial Reporting",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of International Accounting, Auditing and Taxation",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of the American Taxation Association",
+      "rating": "3"
+    },
+    {
+      "journal": "Management Accounting Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Enterprise and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "European Review of Economic History",
+      "rating": "3"
+    },
+    {
+      "journal": "Explorations in Economic History",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Economic History",
+      "rating": "3"
+    },
+    {
+      "journal": "American Economic Journal: Economic Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "American Economic Journal: Microeconomics",
+      "rating": "3"
+    },
+    {
+      "journal": "American Economic Review: Insights",
+      "rating": "3"
+    },
+    {
+      "journal": "American Journal of Agricultural Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Annual Review of Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Brookings Papers on Economic Activity",
+      "rating": "3"
+    },
+    {
+      "journal": "Cambridge Journal of Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Canadian Journal of Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Computational Statistics and Data Analysis",
+      "rating": "3"
+    },
+    {
+      "journal": "Ecological Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Econometric Reviews",
+      "rating": "3"
+    },
+    {
+      "journal": "Econometrics Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "Economic Development and Cultural Change",
+      "rating": "3"
+    },
+    {
+      "journal": "Economic Inquiry",
+      "rating": "3"
+    },
+    {
+      "journal": "Economic Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "Economic Theory",
+      "rating": "3"
+    },
+    {
+      "journal": "Economica",
+      "rating": "3"
+    },
+    {
+      "journal": "Economics Letters",
+      "rating": "3"
+    },
+    {
+      "journal": "Energy Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Environmental and Resource Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "European Economic Review",
+      "rating": "3"
+    },
+    {
+      "journal": "European Review of Agricultural Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Experimental Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Games and Economic Behavior",
+      "rating": "3"
+    },
+    {
+      "journal": "Health Economics (United Kingdom)",
+      "rating": "3"
+    },
+    {
+      "journal": "IMF Economic Review",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Industrial Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "International Statistical Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Agricultural Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Applied Econometrics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Comparative Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Computational and Graphical Statistics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Development Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Economic Behavior and Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Economic Dynamics and Control",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Economic Growth",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Environmental Economics and Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Health Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Human Capital",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Human Resources",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Industrial Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Institutional Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Law and Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Law, Economics, and Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Legal Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Mathematical Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Multivariate Analysis",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Population Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Public Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Risk and Uncertainty",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of the Association of Environmental and Resource Economists",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of the Royal Statistical Society. Series A: Statistics in Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of the Royal Statistical Society. Series C: Applied Statistics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Time Series Analysis",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Urban Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Labour Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Land Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Oxford Bulletin of Economics and Statistics",
+      "rating": "3"
+    },
+    {
+      "journal": "Oxford Economic Papers",
+      "rating": "3"
+    },
+    {
+      "journal": "Public Choice",
+      "rating": "3"
+    },
+    {
+      "journal": "Real Estate Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Review of Economic Dynamics",
+      "rating": "3"
+    },
+    {
+      "journal": "Review of Income and Wealth",
+      "rating": "3"
+    },
+    {
+      "journal": "Scandinavian Journal of Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Scandinavian Journal of Statistics",
+      "rating": "3"
+    },
+    {
+      "journal": "Social Choice and Welfare",
+      "rating": "3"
+    },
+    {
+      "journal": "World Bank Economic Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Entrepreneurship and Regional Development",
+      "rating": "3"
+    },
+    {
+      "journal": "Family Business Review",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Entrepreneurial Behaviour and Research",
+      "rating": "3"
+    },
+    {
+      "journal": "International Small Business Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Small Business Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Small Business Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Academy of Management Discoveries",
+      "rating": "3"
+    },
+    {
+      "journal": "Business and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Business Ethics Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "California Management Review",
+      "rating": "3"
+    },
+    {
+      "journal": "European Management Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Gender and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Gender, Work and Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "Harvard Business Review",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Management Reviews",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Business Ethics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Business Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Management Inquiry",
+      "rating": "3"
+    },
+    {
+      "journal": "MIT Sloan Management Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Annual Review of Financial Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Corporate Governance: An International Review",
+      "rating": "3"
+    },
+    {
+      "journal": "European Financial Management",
+      "rating": "3"
+    },
+    {
+      "journal": "European Journal of Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Finance and Stochastics",
+      "rating": "3"
+    },
+    {
+      "journal": "Financial Analysts Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "Financial Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Financial Markets, Institutions and Instruments",
+      "rating": "3"
+    },
+    {
+      "journal": "Financial Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Insurance: Mathematics and Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Central Banking",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Finance and Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "International Review of Financial Analysis",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Banking and Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Commodity Markets",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Empirical Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Financial Econometrics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Financial Markets",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Financial Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Financial Services Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Financial Stability",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Futures Markets",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of International Financial Markets, Institutions and Money",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of International Money and Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Portfolio Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Real Estate Finance and Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Risk and Insurance",
+      "rating": "3"
+    },
+    {
+      "journal": "Mathematical Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Quantitative Finance",
+      "rating": "3"
+    },
+    {
+      "journal": "Review of Asset Pricing Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Review of Corporate Finance Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Review of Quantitative Finance and Accounting",
+      "rating": "3"
+    },
+    {
+      "journal": "Economic and Industrial Democracy",
+      "rating": "3"
+    },
+    {
+      "journal": "European Journal of Industrial Relations",
+      "rating": "3"
+    },
+    {
+      "journal": "Human Resource Management Review",
+      "rating": "3"
+    },
+    {
+      "journal": "ILR Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Industrial Law Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "Industrial Relations Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Human Resource Management",
+      "rating": "3"
+    },
+    {
+      "journal": "New Technology, Work and Employment",
+      "rating": "3"
+    },
+    {
+      "journal": "Work and Occupations",
+      "rating": "3"
+    },
+    {
+      "journal": "African Affairs",
+      "rating": "3"
+    },
+    {
+      "journal": "Asia Pacific Journal of Management",
+      "rating": "3"
+    },
+    {
+      "journal": "International Business Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Common Market Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of International Business Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of International Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Management and Organization Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Management International Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Multinational Business Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Decision Support Systems",
+      "rating": "3"
+    },
+    {
+      "journal": "Government Information Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "Information and Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Information and Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "Information Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Information Systems Frontiers",
+      "rating": "3"
+    },
+    {
+      "journal": "Information Technology and People",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Electronic Commerce",
+      "rating": "3"
+    },
+    {
+      "journal": "Internet Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Computer-Mediated Communication",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of the Association for Information Science and Technology (JASIST)",
+      "rating": "3"
+    },
+    {
+      "journal": "Industry and Innovation",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Technology Transfer",
+      "rating": "3"
+    },
+    {
+      "journal": "R and D Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Technological Forecasting and Social Change",
+      "rating": "3"
+    },
+    {
+      "journal": "Technovation",
+      "rating": "3"
+    },
+    {
+      "journal": "Management Learning",
+      "rating": "3"
+    },
+    {
+      "journal": "Studies in Higher Education",
+      "rating": "3"
+    },
+    {
+      "journal": "European Journal of Marketing",
+      "rating": "3"
+    },
+    {
+      "journal": "Industrial Marketing Management",
+      "rating": "3"
+    },
+    {
+      "journal": "International Marketing Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Advertising",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Advertising Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Interactive Marketing",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of International Marketing",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Public Policy and Marketing",
+      "rating": "3"
+    },
+    {
+      "journal": "Marketing Letters",
+      "rating": "3"
+    },
+    {
+      "journal": "Marketing Theory",
+      "rating": "3"
+    },
+    {
+      "journal": "Psychology and Marketing",
+      "rating": "3"
+    },
+    {
+      "journal": "Quantitative Marketing and Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Computers in Industry",
+      "rating": "3"
+    },
+    {
+      "journal": "IEEE Transactions on Engineering Management",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Production Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Production Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Business Logistics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Purchasing and Supply Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Manufacturing and Service Operations Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Production Planning and Control",
+      "rating": "3"
+    },
+    {
+      "journal": "Supply Chain Management",
+      "rating": "3"
+    },
+    {
+      "journal": "ACM Transactions on Modeling and Computer Simulation",
+      "rating": "3"
+    },
+    {
+      "journal": "Annals of Operations Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Computational Optimization and Applications",
+      "rating": "3"
+    },
+    {
+      "journal": "Computers and Operations Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Decision Sciences",
+      "rating": "3"
+    },
+    {
+      "journal": "Evolutionary Computation",
+      "rating": "3"
+    },
+    {
+      "journal": "Fuzzy Optimization and Decision Making",
+      "rating": "3"
+    },
+    {
+      "journal": "IEEE Transactions on Cybernetics",
+      "rating": "3"
+    },
+    {
+      "journal": "IEEE Transactions on Systems, Man, and Cybernetics: Systems",
+      "rating": "3"
+    },
+    {
+      "journal": "IISE Transactions",
+      "rating": "3"
+    },
+    {
+      "journal": "INFORMS Journal on Computing",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Forecasting",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Heuristics",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Optimization Theory and Applications",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of the Operational Research Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Mathematics of Operations Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Naval Research Logistics",
+      "rating": "3"
+    },
+    {
+      "journal": "Omega",
+      "rating": "3"
+    },
+    {
+      "journal": "OR Spectrum",
+      "rating": "3"
+    },
+    {
+      "journal": "Reliability Engineering and System Safety",
+      "rating": "3"
+    },
+    {
+      "journal": "SIAM Journal on Optimization",
+      "rating": "3"
+    },
+    {
+      "journal": "Transportation Science",
+      "rating": "3"
+    },
+    {
+      "journal": "Group and Organization Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "Organization and Environment",
+      "rating": "3"
+    },
+    {
+      "journal": "Organizational Dynamics",
+      "rating": "3"
+    },
+    {
+      "journal": "Research in Organizational Behavior",
+      "rating": "3"
+    },
+    {
+      "journal": "Research in the Sociology of Organizations",
+      "rating": "3"
+    },
+    {
+      "journal": "British Journal of Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "British Journal of Social Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Cognitive Science",
+      "rating": "3"
+    },
+    {
+      "journal": "European Journal of Social Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Behavioral Decision Making",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Conflict Resolution",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Cross-Cultural Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Environmental Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Experimental Psychology: Learning Memory and Cognition",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Mathematical Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Personality",
+      "rating": "3"
+    },
+    {
+      "journal": "Judgment and Decision Making",
+      "rating": "3"
+    },
+    {
+      "journal": "Personality and Individual Differences",
+      "rating": "3"
+    },
+    {
+      "journal": "Psychological Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Psychology of Women Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "Psychometrika",
+      "rating": "3"
+    },
+    {
+      "journal": "Quarterly Journal of Experimental Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Social Psychological and Personality Science",
+      "rating": "3"
+    },
+    {
+      "journal": "Stress and Health",
+      "rating": "3"
+    },
+    {
+      "journal": "Accident Analysis and Prevention",
+      "rating": "3"
+    },
+    {
+      "journal": "Applied Ergonomics",
+      "rating": "3"
+    },
+    {
+      "journal": "Applied Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Ergonomics",
+      "rating": "3"
+    },
+    {
+      "journal": "European Journal of Work and Organizational Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Human Factors",
+      "rating": "3"
+    },
+    {
+      "journal": "Human Performance",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Rehabilitation Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Business and Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Managerial Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of School Psychology",
+      "rating": "3"
+    },
+    {
+      "journal": "Occupational and Environmental Medicine",
+      "rating": "3"
+    },
+    {
+      "journal": "Scandinavian Journal of Work, Environment and Health",
+      "rating": "3"
+    },
+    {
+      "journal": "American Review of Public Administration",
+      "rating": "3"
+    },
+    {
+      "journal": "Environment and Planning C: Politics and Space",
+      "rating": "3"
+    },
+    {
+      "journal": "Health Services Research",
+      "rating": "3"
+    },
+    {
+      "journal": "International Public Management Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "International Review of Administrative Sciences",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of European Public Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Policy Analysis and Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Milbank Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "Policy and Politics",
+      "rating": "3"
+    },
+    {
+      "journal": "Policy Studies Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "Regulation and Governance",
+      "rating": "3"
+    },
+    {
+      "journal": "Cambridge Journal of Regions, Economy and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Environment and Planning A",
+      "rating": "3"
+    },
+    {
+      "journal": "European Urban and Regional Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Global Environmental Change",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Regional Science",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Rural Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Papers in Regional Science",
+      "rating": "3"
+    },
+    {
+      "journal": "Regional Science and Urban Economics",
+      "rating": "3"
+    },
+    {
+      "journal": "Urban Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Energy Journal",
+      "rating": "3"
+    },
+    {
+      "journal": "European Sport Management Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "Food Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Contemporary Hospitality Management",
+      "rating": "3"
+    },
+    {
+      "journal": "International Journal of Hospitality Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Sustainable Tourism",
+      "rating": "3"
+    },
+    {
+      "journal": "Nonprofit and Voluntary Sector Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "Transportation Research, Part A: Policy and Practice",
+      "rating": "3"
+    },
+    {
+      "journal": "Transportation Research, Part D: Transport and Environment",
+      "rating": "3"
+    },
+    {
+      "journal": "Transportation Research, Part E: Logistics and Transportation Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Antipode",
+      "rating": "3"
+    },
+    {
+      "journal": "British Journal of Sociology",
+      "rating": "3"
+    },
+    {
+      "journal": "Business Strategy and the Environment",
+      "rating": "3"
+    },
+    {
+      "journal": "Development and Change",
+      "rating": "3"
+    },
+    {
+      "journal": "Economy and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Electoral Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Environmental Science & Technology",
+      "rating": "3"
+    },
+    {
+      "journal": "Environmental Science and Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "European Sociological Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Global Networks",
+      "rating": "3"
+    },
+    {
+      "journal": "Industrial and Corporate Change",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Cultural Economy",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Development Studies",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Environmental Management",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of European Social Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "Journal of Social Policy",
+      "rating": "3"
+    },
+    {
+      "journal": "New Political Economy",
+      "rating": "3"
+    },
+    {
+      "journal": "Politics and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "Progress in Human Geography",
+      "rating": "3"
+    },
+    {
+      "journal": "Public Opinion Quarterly",
+      "rating": "3"
+    },
+    {
+      "journal": "Quarterly Journal of Political Science",
+      "rating": "3"
+    },
+    {
+      "journal": "Research in Social Stratification and Mobility",
+      "rating": "3"
+    },
+    {
+      "journal": "Review of International Political Economy",
+      "rating": "3"
+    },
+    {
+      "journal": "Social Forces",
+      "rating": "3"
+    },
+    {
+      "journal": "Social Science Research",
+      "rating": "3"
+    },
+    {
+      "journal": "Sociological Methodology",
+      "rating": "3"
+    },
+    {
+      "journal": "Sociological Review",
+      "rating": "3"
+    },
+    {
+      "journal": "Sociology of Health and Illness",
+      "rating": "3"
+    },
+    {
+      "journal": "Theory, Culture and Society",
+      "rating": "3"
+    },
+    {
+      "journal": "West European Politics",
+      "rating": "3"
+    },
+    {
+      "journal": "World Development",
+      "rating": "3"
+    },
+    {
+      "journal": "Strategic Organization",
+      "rating": "3"
+    },
+    {
+      "journal": "Strategy Science",
+      "rating": "3"
+    },
+    {
+      "journal": "Accounting and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting and the Public Interest",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting in Europe",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting Research Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting, Economics and Law: A Convivium",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Accounting",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Accounting Behavioral Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Management Accounting",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Taxation",
+      "rating": "2"
+    },
+    {
+      "journal": "Asia-Pacific Journal of Accounting and Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Asian Review of Accounting",
+      "rating": "2"
+    },
+    {
+      "journal": "Australian Accounting Review",
+      "rating": "2"
+    },
+    {
+      "journal": "China Journal of Accounting Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Current Issues in Auditing",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Accounting and Information Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Accounting Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Accounting, Auditing and Performance Evaluation",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Auditing",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Disclosure and Governance",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Managerial and Financial Accounting",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Accounting and Organizational Change",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Accounting in Emerging Economies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Applied Accounting Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Contemporary Accounting and Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Forensic Accounting Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of International Accounting Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of International Financial Management and Accounting",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Management Accounting Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Management Control",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Public Budgeting, Accounting and Financial Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Tax Administration",
+      "rating": "2"
+    },
+    {
+      "journal": "Managerial Auditing Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Qualitative Research in Accounting and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Sustainability Accounting, Management and Policy Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting Historians Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting History",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting History Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Australian Economic History Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Cliometrica",
+      "rating": "2"
+    },
+    {
+      "journal": "Economic History of Developing Regions",
+      "rating": "2"
+    },
+    {
+      "journal": "Entreprises et Histoire",
+      "rating": "2"
+    },
+    {
+      "journal": "Essays in Economic and Business History",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of the History of Economic Thought",
+      "rating": "2"
+    },
+    {
+      "journal": "Financial History Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of the History of Economic Thought",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Transport History",
+      "rating": "2"
+    },
+    {
+      "journal": "Labor History",
+      "rating": "2"
+    },
+    {
+      "journal": "Management and Organizational History",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Econometrics",
+      "rating": "2"
+    },
+    {
+      "journal": "Agricultural Economics (United Kingdom)",
+      "rating": "2"
+    },
+    {
+      "journal": "American Journal of Health Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "American Law and Economics Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Applied Statistics",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Economics and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Public and Cooperative Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Annual Review of Resource Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Applied Economic Perspectives and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Applied Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Australian Journal of Agricultural and Resource Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "B.E. Journal of Economic Analysis and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "B.E. Journal of Macroeconomics",
+      "rating": "2"
+    },
+    {
+      "journal": "B.E. Journal of Theoretical Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Bulletin of Economic Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Canadian Journal of Agricultural Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "CESifo Economic Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "China Economic Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Computational Statistics",
+      "rating": "2"
+    },
+    {
+      "journal": "Contemporary Economic Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Contributions to Political Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Defence and Peace Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Econ Journal Watch",
+      "rating": "2"
+    },
+    {
+      "journal": "Economic Modelling",
+      "rating": "2"
+    },
+    {
+      "journal": "Economic Record",
+      "rating": "2"
+    },
+    {
+      "journal": "Economic Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Economic Systems Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Economic Theory Bulletin",
+      "rating": "2"
+    },
+    {
+      "journal": "Economics and Human Biology",
+      "rating": "2"
+    },
+    {
+      "journal": "Economics and Philosophy",
+      "rating": "2"
+    },
+    {
+      "journal": "Economics and Politics",
+      "rating": "2"
+    },
+    {
+      "journal": "Economics of Education Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Economics of Innovation and New Technology",
+      "rating": "2"
+    },
+    {
+      "journal": "Economics of Transition and Institutional Change",
+      "rating": "2"
+    },
+    {
+      "journal": "Empirical Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Environment and Development Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Health Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Political Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Fiscal Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "GENEVA Risk and Insurance Review",
+      "rating": "2"
+    },
+    {
+      "journal": "German Economic Review",
+      "rating": "2"
+    },
+    {
+      "journal": "History of Political Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Information Economics and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Economic Theory",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Game Theory",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Health Economics and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of the Economics of Business",
+      "rating": "2"
+    },
+    {
+      "journal": "International Review of Economics and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "International Review of Environmental and Resource Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "International Review of Law and Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of African Economies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Agrarian Change",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Agricultural and Resource Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Applied Probability",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Applied Statistics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Behavioral and Experimental Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Business Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Cultural Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economic Inequality",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economic Issues",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economic Methodology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economic Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economic Surveys",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economics/ Zeitschrift fur Nationalokonomie",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Evolutionary Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Family and Economic Issues",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Forest Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Housing Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Industry, Competition and Trade",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Institutional and Theoretical Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of International Development",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Macroeconomics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Nonparametric Statistics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Policy Modeling",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Post Keynesian Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Productivity Analysis",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Public Economic Theory",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Regulatory Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Statistical Planning and Inference",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of the Economics of Ageing",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of the Japanese and International Economies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Time Series Econometrics",
+      "rating": "2"
+    },
+    {
+      "journal": "Macroeconomic Dynamics",
+      "rating": "2"
+    },
+    {
+      "journal": "Managerial and Decision Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Manchester School",
+      "rating": "2"
+    },
+    {
+      "journal": "Mathematical Social Sciences",
+      "rating": "2"
+    },
+    {
+      "journal": "National Tax Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Networks and Spatial Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "North American Journal of Economics and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Open Economies Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Oxford Development Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Oxford Review of Economic Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Pacific Economic Review",
+      "rating": "2"
+    },
+    {
+      "journal": "PharmacoEconomics",
+      "rating": "2"
+    },
+    {
+      "journal": "Quarterly Review of Economics and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Rationality and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Resource and Energy Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Resources Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Behavioral Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Development Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Economic Design",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Economics of the Household",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Environmental Economics and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Industrial Organization",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of International Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Law and Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Network Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Political Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of World Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Scottish Journal of Political Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Southern Economic Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Spatial Economic Analysis",
+      "rating": "2"
+    },
+    {
+      "journal": "Stata Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Statistics and Probability Letters",
+      "rating": "2"
+    },
+    {
+      "journal": "Studies in Nonlinear Dynamics and Econometrics",
+      "rating": "2"
+    },
+    {
+      "journal": "World Bank Research Observer",
+      "rating": "2"
+    },
+    {
+      "journal": "World Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Entrepreneurship Research Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Entrepreneurship and Innovation",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Entrepreneurship and Small Business",
+      "rating": "2"
+    },
+    {
+      "journal": "International Review of Entrepreneurship",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Business Venturing Insights",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Family Business Strategy",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Research in Marketing and Entrepreneurship",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Small Business and Enterprise Development",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Social Entrepreneurship",
+      "rating": "2"
+    },
+    {
+      "journal": "Venture Capital",
+      "rating": "2"
+    },
+    {
+      "journal": "Africa Journal of Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Australian Journal of Management",
+      "rating": "2"
+    },
+    {
+      "journal": "BRQ Business Research Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Business and Politics",
+      "rating": "2"
+    },
+    {
+      "journal": "Business Ethics, the Environment and Responsibility",
+      "rating": "2"
+    },
+    {
+      "journal": "Business Horizons",
+      "rating": "2"
+    },
+    {
+      "journal": "Canadian Journal of Administrative Sciences",
+      "rating": "2"
+    },
+    {
+      "journal": "Competition and Change",
+      "rating": "2"
+    },
+    {
+      "journal": "Equality, Diversity and Inclusion: an International Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Eurasian Business Review",
+      "rating": "2"
+    },
+    {
+      "journal": "European Business Review",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Women's Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "European Management Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Feminist Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Feminist Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Global Journal of Flexible Systems Management",
+      "rating": "2"
+    },
+    {
+      "journal": "IIM Kozhikode Society & Management Review",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Business Governance and Ethics",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Conflict Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Gender and Entrepreneurship",
+      "rating": "2"
+    },
+    {
+      "journal": "International Studies of Management and Organization",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Intellectual Capital",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Management and Organization",
+      "rating": "2"
+    },
+    {
+      "journal": "Management Decision",
+      "rating": "2"
+    },
+    {
+      "journal": "Management Revue",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Managerial Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Scandinavian Journal of Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Schmalenbach Journal of Business Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Sex Roles",
+      "rating": "2"
+    },
+    {
+      "journal": "Signs",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Corporate Governance",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Applied Mathematical Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Asia-Pacific Financial Markets",
+      "rating": "2"
+    },
+    {
+      "journal": "ASTIN Bulletin",
+      "rating": "2"
+    },
+    {
+      "journal": "Corporate Governance (Bingley)",
+      "rating": "2"
+    },
+    {
+      "journal": "Emerging Markets Finance and Trade",
+      "rating": "2"
+    },
+    {
+      "journal": "Emerging Markets Review",
+      "rating": "2"
+    },
+    {
+      "journal": "European Actuarial Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Finance Research Letters",
+      "rating": "2"
+    },
+    {
+      "journal": "Financial Innovation",
+      "rating": "2"
+    },
+    {
+      "journal": "Financial Markets and Portfolio Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Foundations and Trends in Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Geneva Papers on Risk and Insurance: Issues and Practice",
+      "rating": "2"
+    },
+    {
+      "journal": "Global Finance Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Banking, Accounting and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Managerial Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Theoretical and Applied Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "International Tax and Public Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Alternative Investments",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Asset Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Banking Regulation",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Behavioral Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Derivatives",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economics and Business",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Emerging Market Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Fixed Income",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Law, Finance, and Accounting",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Multinational Financial Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Operational Risk",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Pension Economics and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Risk",
+      "rating": "2"
+    },
+    {
+      "journal": "North American Actuarial Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Pacific Basin Finance Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Research in International Business and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Accounting and Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Derivatives Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Development Finance",
+      "rating": "2"
+    },
+    {
+      "journal": "SIAM Journal on Financial Mathematics",
+      "rating": "2"
+    },
+    {
+      "journal": "Asia Pacific Journal of Human Resources",
+      "rating": "2"
+    },
+    {
+      "journal": "Career Development International",
+      "rating": "2"
+    },
+    {
+      "journal": "Career Development Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Employee Relations",
+      "rating": "2"
+    },
+    {
+      "journal": "Employee Responsibilities and Rights Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Human Resource Development International",
+      "rating": "2"
+    },
+    {
+      "journal": "Human Resource Development Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Human Resource Development Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Industrielle Beziehungen",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Manpower",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Training and Development",
+      "rating": "2"
+    },
+    {
+      "journal": "International Labour Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Global Mobility",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Industrial Relations",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Labor Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Organizational Effectiveness",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Participation and Employee Ownership",
+      "rating": "2"
+    },
+    {
+      "journal": "Labor Studies Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Labour and Industry: a journal of social and economic relations of work",
+      "rating": "2"
+    },
+    {
+      "journal": "Personnel Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Relations Industrielles/Industrial Relations",
+      "rating": "2"
+    },
+    {
+      "journal": "Sociologie du Travail",
+      "rating": "2"
+    },
+    {
+      "journal": "Transfer",
+      "rating": "2"
+    },
+    {
+      "journal": "Work in the Global Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Work, Aging and Retirement",
+      "rating": "2"
+    },
+    {
+      "journal": "Zeitschrift f眉r Personalforschung (German Journal of Research in Human Resource Management)",
+      "rating": "2"
+    },
+    {
+      "journal": "Asia Pacific Business Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Asian Business and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "China Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Critical Perspectives on International Business",
+      "rating": "2"
+    },
+    {
+      "journal": "Cross Cultural and Strategic Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Eurasian Geography and Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "EuroMed Journal of Business",
+      "rating": "2"
+    },
+    {
+      "journal": "Europe-Asia Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of International Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Business Economics and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Latin American Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Modern African Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of World Trade",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of African Political Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Third World Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Thunderbird International Business Review",
+      "rating": "2"
+    },
+    {
+      "journal": "AIS Transactions on Human-Computer Interaction",
+      "rating": "2"
+    },
+    {
+      "journal": "Annual Review of Information Science and Technology",
+      "rating": "2"
+    },
+    {
+      "journal": "Behaviour and Information Technology",
+      "rating": "2"
+    },
+    {
+      "journal": "British Journal of Educational Technology",
+      "rating": "2"
+    },
+    {
+      "journal": "Business & Information Systems Engineering",
+      "rating": "2"
+    },
+    {
+      "journal": "Communications of the ACM",
+      "rating": "2"
+    },
+    {
+      "journal": "Communications of the Association for Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Computer Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Computer Supported Cooperative Work",
+      "rating": "2"
+    },
+    {
+      "journal": "Computers in Human Behavior",
+      "rating": "2"
+    },
+    {
+      "journal": "Electronic Commerce Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Electronic Commerce Research and Applications",
+      "rating": "2"
+    },
+    {
+      "journal": "Enterprise Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Expert Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Health Information and Libraries Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Health Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Industrial Management and Data Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Information Processing and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Information Systems and e-Business Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Information Systems Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Information Technology for Development",
+      "rating": "2"
+    },
+    {
+      "journal": "Interacting with Computers",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Human Computer Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Information Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Computer Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Documentation",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Enterprise Information Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Global Information Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Global Information Technology Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Information Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Systems and Software",
+      "rating": "2"
+    },
+    {
+      "journal": "MIS Quarterly Executive",
+      "rating": "2"
+    },
+    {
+      "journal": "Pacific Asia Journal of the Association for Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Requirements Engineering",
+      "rating": "2"
+    },
+    {
+      "journal": "Scandinavian Journal of Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "The Data Base for Advances in Information Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Creativity and Innovation Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Innovation: Organization & Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Innovation Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Engineering and Technology Management - JET-M",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of High Technology Management Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Responsible Innovation",
+      "rating": "2"
+    },
+    {
+      "journal": "Prometheus",
+      "rating": "2"
+    },
+    {
+      "journal": "Research Technology Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Science and Technology Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Science Technology and Human Values",
+      "rating": "2"
+    },
+    {
+      "journal": "Scientometrics",
+      "rating": "2"
+    },
+    {
+      "journal": "Social Studies of Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Structural Change and Economic Dynamics",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Developing Human Resources",
+      "rating": "2"
+    },
+    {
+      "journal": "Assessment and Evaluation in Higher Education",
+      "rating": "2"
+    },
+    {
+      "journal": "British Educational Research Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "British Journal of Guidance and Counselling",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Higher Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Higher Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Higher Education Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Higher Education Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "INFORMS Transactions on Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Innovations in Education and Teaching International",
+      "rating": "2"
+    },
+    {
+      "journal": "Issues in Accounting Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Accounting Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Education and Work",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Education Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Higher Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of International Business Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Management Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Marketing Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Management Teaching Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Teaching in Higher Education",
+      "rating": "2"
+    },
+    {
+      "journal": "Academy of Marketing Science Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Consumer Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Consumption Markets and Culture",
+      "rating": "2"
+    },
+    {
+      "journal": "Electronic Markets",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Advertising",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Consumer Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Market Research",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Retail and Distribution Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Brand Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Business and Industrial Marketing",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Consumer Behaviour",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Macromarketing",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Marketing Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Personal Selling and Sales Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Retailing and Consumer Services",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Services Marketing",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Strategic Marketing",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of the Association for Consumer Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Qualitative Market Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Business Process Management Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Computers and Industrial Engineering",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Computer Integrated Manufacturing",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Physical Distribution and Logistics Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Project Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Quality and Reliability Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Technology Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Construction Engineering and Management - ASCE",
+      "rating": "2"
+    },
+    {
+      "journal": "Total Quality Management and Business Excellence",
+      "rating": "2"
+    },
+    {
+      "journal": "4OR",
+      "rating": "2"
+    },
+    {
+      "journal": "Discrete Applied Mathematics",
+      "rating": "2"
+    },
+    {
+      "journal": "Discrete Optimization",
+      "rating": "2"
+    },
+    {
+      "journal": "Engineering Optimization",
+      "rating": "2"
+    },
+    {
+      "journal": "EURO Journal on Computational Optimization",
+      "rating": "2"
+    },
+    {
+      "journal": "EURO Journal on Transportation and Logistics",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Industrial Engineering",
+      "rating": "2"
+    },
+    {
+      "journal": "Group Decision and Negotiation",
+      "rating": "2"
+    },
+    {
+      "journal": "IMA Journal of Management Mathematics",
+      "rating": "2"
+    },
+    {
+      "journal": "INFORMS Journal on Applied Analytics",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Systems Science: Operations & Logistics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Combinatorial Optimization",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Forecasting",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Global Optimization",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Management Analytics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Simulation",
+      "rating": "2"
+    },
+    {
+      "journal": "Operations Research Letters",
+      "rating": "2"
+    },
+    {
+      "journal": "Queueing Systems",
+      "rating": "2"
+    },
+    {
+      "journal": "Simulation Modelling Practice and Theory",
+      "rating": "2"
+    },
+    {
+      "journal": "Socio-Economic Planning Sciences",
+      "rating": "2"
+    },
+    {
+      "journal": "System Dynamics Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Systems Research and Behavioral Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Theory and Decision",
+      "rating": "2"
+    },
+    {
+      "journal": "Culture and Organization",
+      "rating": "2"
+    },
+    {
+      "journal": "Group Processes and Intergroup Relations",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Co-operative Organization and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Knowledge Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Organizational Behavior Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Organizational Change Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Professions and Organization",
+      "rating": "2"
+    },
+    {
+      "journal": "Leadership",
+      "rating": "2"
+    },
+    {
+      "journal": "Management Communication Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Negotiation Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Symbolic Interaction",
+      "rating": "2"
+    },
+    {
+      "journal": "Systemic Practice and Action Research",
+      "rating": "2"
+    },
+    {
+      "journal": "The Journal of Applied Behavioral Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Methods and Practices in Psychological Science (AMPPS)",
+      "rating": "2"
+    },
+    {
+      "journal": "Applied Cognitive Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Cognitive Research: Principles and Implications",
+      "rating": "2"
+    },
+    {
+      "journal": "Collabra: Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Creativity Research Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Decision",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Psychological Assessment",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Cognitive Engineering and Decision Making",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Community Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economic Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Language and Social Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Nonverbal Behavior",
+      "rating": "2"
+    },
+    {
+      "journal": "Scandinavian Journal of Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Zeitschrift fur Psychologie / Journal of Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Applied Psychological Measurement",
+      "rating": "2"
+    },
+    {
+      "journal": "Applied Psychology: Health and Well-Being",
+      "rating": "2"
+    },
+    {
+      "journal": "Cognition, Technology and Work",
+      "rating": "2"
+    },
+    {
+      "journal": "Group Dynamics",
+      "rating": "2"
+    },
+    {
+      "journal": "International Archives of Occupational and Environmental Health",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Industrial Ergonomics",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Selection and Assessment",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Stress Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Applied Social Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Career Assessment",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Occupational and Environmental Medicine",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Occupational Rehabilitation",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Personnel Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Safety Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Organizational Psychology Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Rehabilitation Psychology",
+      "rating": "2"
+    },
+    {
+      "journal": "Small Group Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Administration and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Australian Journal of Public Administration",
+      "rating": "2"
+    },
+    {
+      "journal": "Educational Management Administration and Leadership",
+      "rating": "2"
+    },
+    {
+      "journal": "Evidence and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Health Care Management Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Health Care Management Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Health Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Emergency Services",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Public Administration",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Health Services Research and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Public Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Local Government Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Perspectives on Public Management & Governance",
+      "rating": "2"
+    },
+    {
+      "journal": "Policing",
+      "rating": "2"
+    },
+    {
+      "journal": "Policy Design and Practice",
+      "rating": "2"
+    },
+    {
+      "journal": "Policy Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Administration and Development",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Integrity",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Money and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Organization Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Performance & Management Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Personnel Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Public Policy and Administration",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Policy Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Public Personnel Administration",
+      "rating": "2"
+    },
+    {
+      "journal": "Social Policy and Administration",
+      "rating": "2"
+    },
+    {
+      "journal": "State Politics and Policy Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Transforming Government: People, Process and Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Regional Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Cities",
+      "rating": "2"
+    },
+    {
+      "journal": "Construction Management and Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "European Planning Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Growth and Change",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Urban and Regional Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Place Management and Development",
+      "rating": "2"
+    },
+    {
+      "journal": "Local Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Town Planning Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Annals of Leisure Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Building Research and Information",
+      "rating": "2"
+    },
+    {
+      "journal": "Cornell Hospitality Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Current Issues in Tourism",
+      "rating": "2"
+    },
+    {
+      "journal": "Energy Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Environmental Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Event Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Hospitality and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Strategic Property Management",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Tourism Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Hospitality and Tourism Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Hospitality and Tourism Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Management in Engineering - ASCE",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Service Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Sport Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Sports Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Transport Geography",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Travel and Tourism Marketing",
+      "rating": "2"
+    },
+    {
+      "journal": "Leisure Sciences",
+      "rating": "2"
+    },
+    {
+      "journal": "Leisure Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Marine Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Maritime Policy and Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Museum Management and Curatorship",
+      "rating": "2"
+    },
+    {
+      "journal": "Scandinavian Journal of Hospitality and Tourism",
+      "rating": "2"
+    },
+    {
+      "journal": "Service Industries Journal",
+      "rating": "2"
+    },
+    {
+      "journal": "Sport Management Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Tourism Analysis",
+      "rating": "2"
+    },
+    {
+      "journal": "Tourism Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Tourism Geographies",
+      "rating": "2"
+    },
+    {
+      "journal": "Tourism Management Perspectives",
+      "rating": "2"
+    },
+    {
+      "journal": "Tourism Planning and Development",
+      "rating": "2"
+    },
+    {
+      "journal": "Tourism Recreation Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Transport Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Transport Reviews",
+      "rating": "2"
+    },
+    {
+      "journal": "Transportation",
+      "rating": "2"
+    },
+    {
+      "journal": "Voluntas",
+      "rating": "2"
+    },
+    {
+      "journal": "American Journal of Economics and Sociology",
+      "rating": "2"
+    },
+    {
+      "journal": "Capital and Class",
+      "rating": "2"
+    },
+    {
+      "journal": "Critical Social Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Current Sociology",
+      "rating": "2"
+    },
+    {
+      "journal": "Evaluation",
+      "rating": "2"
+    },
+    {
+      "journal": "Futures",
+      "rating": "2"
+    },
+    {
+      "journal": "Geoforum",
+      "rating": "2"
+    },
+    {
+      "journal": "Habitat International",
+      "rating": "2"
+    },
+    {
+      "journal": "Human Organization",
+      "rating": "2"
+    },
+    {
+      "journal": "Information Communication and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Development Issues",
+      "rating": "2"
+    },
+    {
+      "journal": "International Journal of Green Energy",
+      "rating": "2"
+    },
+    {
+      "journal": "International Sociology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Business Law",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Consumer Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Ethnic and Migration Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Industrial Ecology",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Law and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Risk Research",
+      "rating": "2"
+    },
+    {
+      "journal": "Kyklos",
+      "rating": "2"
+    },
+    {
+      "journal": "Land Use Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Parliamentary Affairs",
+      "rating": "2"
+    },
+    {
+      "journal": "Political Quarterly",
+      "rating": "2"
+    },
+    {
+      "journal": "Political Studies",
+      "rating": "2"
+    },
+    {
+      "journal": "Research Evaluation",
+      "rating": "2"
+    },
+    {
+      "journal": "Review of Social Economy",
+      "rating": "2"
+    },
+    {
+      "journal": "Safety Science",
+      "rating": "2"
+    },
+    {
+      "journal": "Science and Public Policy",
+      "rating": "2"
+    },
+    {
+      "journal": "Science and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Science, Technology and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Social Networks",
+      "rating": "2"
+    },
+    {
+      "journal": "Society and Business Review",
+      "rating": "2"
+    },
+    {
+      "journal": "Technology in Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Time and Society",
+      "rating": "2"
+    },
+    {
+      "journal": "Advances in Strategic Management",
+      "rating": "2"
+    },
+    {
+      "journal": "European Journal of Management and Business Economics",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Competitiveness",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Economics and Management Strategy",
+      "rating": "2"
+    },
+    {
+      "journal": "Journal of Organization Design",
+      "rating": "2"
+    },
+    {
+      "journal": "Strategic Change",
+      "rating": "2"
+    },
+    {
+      "journal": "Technology Analysis and Strategic Management",
+      "rating": "2"
+    },
+    {
+      "journal": "Accounting, Finance & Governance Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Environmental Accounting and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Public Interest Accounting",
+      "rating": "1"
+    },
+    {
+      "journal": "African Journal of Accounting, Auditing and Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Asian Journal of Accounting Research",
+      "rating": "1"
+    },
+    {
+      "journal": "ATA Journal of Legal Tax Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Australasian Accounting, Business and Finance Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "China Journal of Accounting Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Comptabilite Controle Audit",
+      "rating": "1"
+    },
+    {
+      "journal": "EDPACS",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Critical Accounting",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Accounting and Management Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Accounting and Taxation",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Forensic and Investigative Accounting (previously Journal of Forensic Accounting)",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Governmental & Non-Profit Accounting",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Islamic Accounting and Business Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Management Accounting Frontiers",
+      "rating": "1"
+    },
+    {
+      "journal": "Meditari Accountancy Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Pacific Accounting Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Research on Professional Responsibility and Ethics in Accounting",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista Contabilidade & Finan莽as",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista de Contabilidad-Spanish Accounting Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista Espanola de Financiacion y Contabilidad",
+      "rating": "1"
+    },
+    {
+      "journal": "Social and Environmental Accountability Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Accounting Research",
+      "rating": "1"
+    },
+    {
+      "journal": "World Tax Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Historical Studies in Industrial Relations",
+      "rating": "1"
+    },
+    {
+      "journal": "Irish Economic and Social History",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of European Economic History",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Historical Research in Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Management History",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista de Historia Economica - Journal of Iberian and Latin American Economic History",
+      "rating": "1"
+    },
+    {
+      "journal": "Scandinavian Economic History Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Zeitschrift f眉r Unternehmensgeschichte",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Austrian Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Decision Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Agrekon",
+      "rating": "1"
+    },
+    {
+      "journal": "Agricultural and Resource Economics Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Annals of Economics and Statistics",
+      "rating": "1"
+    },
+    {
+      "journal": "Applied Economic Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "Applied Economics Letters",
+      "rating": "1"
+    },
+    {
+      "journal": "Applied Health Economics and Heath Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Aquaculture, Economics and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Asian Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Asian Economic Papers",
+      "rating": "1"
+    },
+    {
+      "journal": "Atlantic Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Australian Economic Papers",
+      "rating": "1"
+    },
+    {
+      "journal": "Australian Economic Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Baltic Journal of Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Behavioural Public Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Bulletin of Indonesian Economic Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Business Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "China Agricultural Economic Review",
+      "rating": "1"
+    },
+    {
+      "journal": "China and World Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "China Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Cogent Economics and Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Comparative Economic Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Computational Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Constitutional Political Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "Contemporary Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Credit and Capital Markets",
+      "rating": "1"
+    },
+    {
+      "journal": "De Economist",
+      "rating": "1"
+    },
+    {
+      "journal": "Decisions in Economics and Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Dynamic Games and Applications",
+      "rating": "1"
+    },
+    {
+      "journal": "Eastern Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Eastern European Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Econometrics",
+      "rating": "1"
+    },
+    {
+      "journal": "EconomiA",
+      "rating": "1"
+    },
+    {
+      "journal": "Economia Agraria y Recursos Naturales 鈥� Agricultural and Resource Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic Analysis and Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic and Social Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic Change and Restructuring",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic Issues",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic Notes",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic Research-Ekonomska Istra啪ivanja",
+      "rating": "1"
+    },
+    {
+      "journal": "Economics and Business Letters",
+      "rating": "1"
+    },
+    {
+      "journal": "Economics and Sociology",
+      "rating": "1"
+    },
+    {
+      "journal": "Economics of Energy and Environmental Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Economics of Governance",
+      "rating": "1"
+    },
+    {
+      "journal": "Economics of Transportation",
+      "rating": "1"
+    },
+    {
+      "journal": "Economies",
+      "rating": "1"
+    },
+    {
+      "journal": "Economists' Voice",
+      "rating": "1"
+    },
+    {
+      "journal": "Education Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Ekonomicheskaya Politika / Economic Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Ekonomista",
+      "rating": "1"
+    },
+    {
+      "journal": "Empirica",
+      "rating": "1"
+    },
+    {
+      "journal": "Environmental Economics and Policy Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Eurasian Economic Review",
+      "rating": "1"
+    },
+    {
+      "journal": "European Journal of Economics and Economic Policies: Intervention",
+      "rating": "1"
+    },
+    {
+      "journal": "European Journal of Law and Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "FinanzArchiv",
+      "rating": "1"
+    },
+    {
+      "journal": "Forum for Health Economics and Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Foundations and Trends in Econometrics",
+      "rating": "1"
+    },
+    {
+      "journal": "Games",
+      "rating": "1"
+    },
+    {
+      "journal": "Global Economic Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Global Economy Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Global Journal of Emerging Market Economies",
+      "rating": "1"
+    },
+    {
+      "journal": "Hacienda P煤blica Espa帽ola / Review of Public Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Interdisciplinary Journal of Economics and Business Law",
+      "rating": "1"
+    },
+    {
+      "journal": "Intereconomics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Advances in Economic Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "International Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Game Theory Review",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Computational Economics and Econometrics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Ecological Economics and Statistics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Happiness and Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Political Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Social Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Review of Applied Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Jahrbucher fur Nationalokonomie und Statistik",
+      "rating": "1"
+    },
+    {
+      "journal": "Japan and the World Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "Japanese Economic Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Japanese Political Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal for Labour Market Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Agricultural & Applied Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Agricultural and Food Industrial Organization",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Air Transport Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Applied Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Asian Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Bioeconomics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Choice Modelling",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Competition Law & Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Developing Areas",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Econometric Methods",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic and Administrative Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic and Financial Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic Asymmetries",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic Cooperation and Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic Integration",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic Interaction and Coordination",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economic Policy Reform",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Gambling Business and Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Income Distribution",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Industrial and Business Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Interdisciplinary Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of International Trade and Economic Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Mechanism and Institution Design",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Media Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of the Asia Pacific Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of the Economic Science Association",
+      "rating": "1"
+    },
+    {
+      "journal": "Man and the Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "Metroeconomica",
+      "rating": "1"
+    },
+    {
+      "journal": "Mineral Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Montenegrin Journal of Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "National Institute Economic Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Natural Resources Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "NETNOMICS: Economic Research and Electronic Networking",
+      "rating": "1"
+    },
+    {
+      "journal": "New Zealand Economic Papers",
+      "rating": "1"
+    },
+    {
+      "journal": "Peace Economics, Peace Science and Public Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Portuguese Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Post-Communist Economies",
+      "rating": "1"
+    },
+    {
+      "journal": "PSL Quarterly Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Quantitative and Qualitative Analysis in Social Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Quantitative Finance and Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Quarterly Journal of Austrian Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Research in Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Research in Transportation Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Austrian Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Economic Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Economics and Political Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Financial Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Radical Political Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Russian Journal of Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "SERIEs",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Economic and Management Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "South Asia Economic Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Statistical Analysis and Data Mining",
+      "rating": "1"
+    },
+    {
+      "journal": "Strategic Behavior and the Environment",
+      "rating": "1"
+    },
+    {
+      "journal": "Studies in Agricultural Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Studies in Economics and Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Studies in Microeconomics",
+      "rating": "1"
+    },
+    {
+      "journal": "Swiss Journal of Economics and Statistics",
+      "rating": "1"
+    },
+    {
+      "journal": "The Forum for Social Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Retirement",
+      "rating": "1"
+    },
+    {
+      "journal": "Tijdschrift Voor Economische en Sociale Geografie",
+      "rating": "1"
+    },
+    {
+      "journal": "International Entrepreneurship and Management Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Entrepreneurial Venturing",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management and Enterprise Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Small and Medium Enterprises",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Enterprising Communities",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Enterprising Culture",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Entrepreneurship",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Entrepreneurship and Innovation in Emerging Economies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Entrepreneurship and Public Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Entrepreneurship in Emerging Economies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Entrepreneurship, Management and Innovation",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of International Entrepreneurship",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Small Business and Entrepreneurship",
+      "rating": "1"
+    },
+    {
+      "journal": "Small Business International Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Small Enterprise Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Social Enterprise Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "World Review of Entrepreneurship, Management and Sustainable Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Acta Commercii",
+      "rating": "1"
+    },
+    {
+      "journal": "American Journal of Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Annals of Work Exposures and Health",
+      "rating": "1"
+    },
+    {
+      "journal": "Asian Journal of Management Cases",
+      "rating": "1"
+    },
+    {
+      "journal": "Baltic Journal of Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Business & Professional Ethics Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Business and Human Rights Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Business Perspectives and Research",
+      "rating": "1"
+    },
+    {
+      "journal": "CASE Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Cogent Business and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic and Business Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Emerald Emerging Markets Case Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "FIIB Business Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Gender in Management: An International Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Global Business Review",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Arts Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Competition and Growth",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Environment",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Excellence",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Contemporary Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Globalisation and Small Business",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Knowledge-Based Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management and Decision Making",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management Concepts and Philosophy",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management Practice",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management, Economics and Social Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Managing Projects in Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Iranian Journal of Management Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Irish Journal of Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal for Global Business Advancement",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Contemporary Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Creating Value",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Family Business Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of General Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Global Responsibility",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Human Values",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Indian Business Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Islamic Business & Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Management and Governance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Management Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Management, Spirituality and Religion",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Revenue and Pricing Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Management Research Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Measuring Business Excellence",
+      "rating": "1"
+    },
+    {
+      "journal": "Metamorphosis- A Journal of Management Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Organization Management Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Policy and Practice in Health and Safety",
+      "rating": "1"
+    },
+    {
+      "journal": "Problems and Perspectives in Management",
+      "rating": "1"
+    },
+    {
+      "journal": "PSU Research Review: An International Interdisciplinary Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "RAE Revista de Administracao de Empresas",
+      "rating": "1"
+    },
+    {
+      "journal": "RAUSP Management Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Safety and Reliability",
+      "rating": "1"
+    },
+    {
+      "journal": "Social Responsibility Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "South Asian Journal of Business and Management Cases",
+      "rating": "1"
+    },
+    {
+      "journal": "South Asian Journal of Business Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Symphonya. Emerging Issues in Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Vezetlstudom谩ny | Budapest Management Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Vikalpa",
+      "rating": "1"
+    },
+    {
+      "journal": "Vision",
+      "rating": "1"
+    },
+    {
+      "journal": "African Finance Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Agricultural Finance Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Annals of Actuarial Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Bancaria The Journal of the Italian Banking Association",
+      "rating": "1"
+    },
+    {
+      "journal": "Banks and Bank Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "British Actuarial Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "China Finance Review International",
+      "rating": "1"
+    },
+    {
+      "journal": "Critical Finance Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Financial Services Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Insurance Markets and Companies",
+      "rating": "1"
+    },
+    {
+      "journal": "Intelligent Systems in Accounting, Finance and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Islamic and Middle Eastern Finance and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Investment Analysts Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Investment Management and Financial Innovations",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Applied Corporate Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Behavioral and Experimental Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Capital Markets Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Computational Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Credit Risk",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economics and Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Economics, Finance and Administrative Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Energy Markets",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Economic Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Management, Markets and Institutions",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Market Infrastructures",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Regulation and Compliance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Reporting and Accounting",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Investment Strategies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Prediction Markets",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Property Investment and Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Risk Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Risk Model Validation",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Sustainable Finance and Investment",
+      "rating": "1"
+    },
+    {
+      "journal": "Managerial Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Multinational Finance Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Public and Municipal Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Qualitative Research in Financial Markets",
+      "rating": "1"
+    },
+    {
+      "journal": "Quarterly Journal of Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Quarterly Journal of Finance and Accounting (QJFA)",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Behavioral Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Scandinavian Actuarial Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Beta Investment Strategies",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Financial Data Science",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Investing",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Structured Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Wealth Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Industrial and Labor Relations",
+      "rating": "1"
+    },
+    {
+      "journal": "African Journal of Employee Relations",
+      "rating": "1"
+    },
+    {
+      "journal": "Australian Journal of Labour Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Economic and Labour Relations Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Evidence-based HRM",
+      "rating": "1"
+    },
+    {
+      "journal": "Indian Journal of Labour Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Industrial and Commercial Training",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Comparative Labour Law and Industrial Relations",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Employment Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Learning and Intellectual Capital",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Work-Applied Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Labour",
+      "rating": "1"
+    },
+    {
+      "journal": "Management and Labour Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Research in Personnel and Human Resources Management",
+      "rating": "1"
+    },
+    {
+      "journal": "SA Journal of Human Resource Management",
+      "rating": "1"
+    },
+    {
+      "journal": "South Asian Journal of Human Resources Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Team Performance Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Work Organisation, Labour and Globalisation",
+      "rating": "1"
+    },
+    {
+      "journal": "Academia Revista Latinoamericana de Administracion",
+      "rating": "1"
+    },
+    {
+      "journal": "African Journal of Economic and Management Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia Pacific Management Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia-Pacific Journal of Business Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Chinese Management Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Competitiveness Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Foreign Trade Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Global Business and Economics Review",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business and Emerging Markets",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Cross Cultural Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Emerging Markets",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Export Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Indian Culture and Business Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Trade Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal for International Business and Entrepreneurship Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of African Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Asia Business Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Asia-Pacific Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Chinese Economic and Business Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of East European Management Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of East-West Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Transnational Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Latin American Business Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Management Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of International Business and Strategy",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista de Gest茫o",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Business Management",
+      "rating": "1"
+    },
+    {
+      "journal": "South Asian Journal of Macroeconomics and Public Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "Transnational Corporations Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Aslib Journal of Information Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Australasian Journal of Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "e-Service Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Ethics and Information Technology",
+      "rating": "1"
+    },
+    {
+      "journal": "Expert Systems with Applications",
+      "rating": "1"
+    },
+    {
+      "journal": "Foundations and Trends庐 in Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Human-Computer Interaction",
+      "rating": "1"
+    },
+    {
+      "journal": "Information and Computer Security",
+      "rating": "1"
+    },
+    {
+      "journal": "Information Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Information Resources Management Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Information Technology & Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Information Technology and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business and Systems Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Process Integration and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Data Analysis Techniques and Strategies",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Digital Strategy, Governance, and Business Transformation",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of e-Business Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Electronic Business",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Enterprise Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Information Systems and Change Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Information Systems in the Service Sector",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Information Technology and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Knowledge Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Services Economics and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Web Information Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Database Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Decision Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Electronic Commerce in Organizations",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Electronic Commerce Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Emerging Technologies in Accounting",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Information Systems Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Information Technology Case and Application Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Information Technology Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Information Technology Teaching Cases",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Informetrics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Internet Commerce",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Organizational and End User Computing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Organizational Computing and Electronic Commerce",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Systems and Information Technology",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Theoretical and Applied Electronic Commerce Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Knowledge Management Research and Practice",
+      "rating": "1"
+    },
+    {
+      "journal": "Library Hi Tech (LHT)",
+      "rating": "1"
+    },
+    {
+      "journal": "Online Information Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Online Journal of Applied Knowledge Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Software Impacts",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Information Management",
+      "rating": "1"
+    },
+    {
+      "journal": "The Bottom Line",
+      "rating": "1"
+    },
+    {
+      "journal": "Annals of Science and Technology Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Asian Journal of Technology Innovation",
+      "rating": "1"
+    },
+    {
+      "journal": "European Journal of Innovation Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Innovation and Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Entrepreneurship and Innovation Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Foresight and Innovation Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Innovation and Sustainable Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Innovation and Technology Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Innovation Science",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Product Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technological Learning, Innovation and Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technology and Globalisation",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technology Intelligence and Planning",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technology Management and Sustainable Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technology Transfer and Commercialisation",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technology, Policy and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of the Digital Human",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Innovation and Knowledge",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Innovation Economics & Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Innovation Management (JIM)",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Science and Technology Policy Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of the Knowledge Economy",
+      "rating": "1"
+    },
+    {
+      "journal": "Technology Innovation Management Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Action Learning: Research and Practice",
+      "rating": "1"
+    },
+    {
+      "journal": "Active Learning in Higher Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Accounting Education: Teaching and Curriculum Innovations",
+      "rating": "1"
+    },
+    {
+      "journal": "Coaching",
+      "rating": "1"
+    },
+    {
+      "journal": "Decision Sciences Journal of Innovative Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Education and Training",
+      "rating": "1"
+    },
+    {
+      "journal": "Electronic Journal of e-Learning",
+      "rating": "1"
+    },
+    {
+      "journal": "European Journal of Training and Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Higher Education, Skills and Work-based Learning",
+      "rating": "1"
+    },
+    {
+      "journal": "Industry and Higher Education",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Evidence Based Coaching and Mentoring",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Innovation and Learning",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Knowledge and Learning",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Learning and Change",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management Development",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Management Education",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Teaching and Case Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal for Advancement of Marketing Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Advertising Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Business Ethics Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Educational Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Further and Higher Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Higher Education Policy and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of International Education in Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Management Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Organizational Behavior Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Vocational Education and Training",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Workplace Learning",
+      "rating": "1"
+    },
+    {
+      "journal": "Marketing Education Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Operations Management Education Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Quality Assurance in Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Tertiary Education and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Research in Innovative Teaching & Learning",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia Pacific Journal of Marketing and Logistics",
+      "rating": "1"
+    },
+    {
+      "journal": "Australasian Marketing Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Corporate Communications",
+      "rating": "1"
+    },
+    {
+      "journal": "Corporate Reputation Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Health Marketing Quarterly",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Bank Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Internet Marketing and Advertising",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Pharmaceutical and Healthcare Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Technology Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "International Review of Retail, Distribution and Consumer Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Review on Public and Non-Profit Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Business-to-Business Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Communication Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Consumer Affairs",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Consumer Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Current Issues and Research in Advertising",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Fashion Marketing and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Services Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Global Fashion Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Global Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Interactive Advertising",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of International Consumer Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Marketing Analytics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Marketing Communications",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Marketing for Higher Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Marketing Theory and Practice",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Non-Profit and Public Sector Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Philanthropy and Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Product and Brand Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Relationship Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Research in Interactive Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Social Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Marketing Intelligence and Planning",
+      "rating": "1"
+    },
+    {
+      "journal": "Recherche et Applications en Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of Marketing Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Services Marketing Quarterly",
+      "rating": "1"
+    },
+    {
+      "journal": "Social Marketing Quarterly",
+      "rating": "1"
+    },
+    {
+      "journal": "Spanish Journal of Marketing - ESIC",
+      "rating": "1"
+    },
+    {
+      "journal": "Young Consumers",
+      "rating": "1"
+    },
+    {
+      "journal": "Benchmarking",
+      "rating": "1"
+    },
+    {
+      "journal": "Concurrent Engineering Research and Applications",
+      "rating": "1"
+    },
+    {
+      "journal": "Flexible Services and Manufacturing Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Foundations and Trends in Technology, Information and Operations Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Agile Systems and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Performance and Supply Chain Modelling",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Business Performance Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Construction Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Engineering Business Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Enterprise Network Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Industrial and Systems Engineering",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Industrial Engineering and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Information Systems and Supply Chain Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Integrated Supply Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Internet Manufacturing and Services",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Lean Six Sigma",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Logistics Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Logistics Research and Applications",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Logistics Systems and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Manufacturing Technology and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Process Management and Benchmarking",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Procurement Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Productivity and Performance Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Productivity and Quality Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Quality and Service Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Services and Operations Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Services Operations and Informatics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Shipping and Transport Logistics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Six Sigma and Competitive Advantage",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Value Chain Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Global Operations and Strategic Sourcing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Humanitarian Logistics and Supply Chain Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Intelligent Manufacturing",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Manufacturing Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Manufacturing Technology Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Public Procurement",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Quality in Maintenance Engineering",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Scheduling",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Service Theory and Practice",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Transport and Supply Chain Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Knowledge and Process Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Operations Management Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Proceedings of the Institution of Mechanical Engineers, Part B: Journal of Engineering Manufacture",
+      "rating": "1"
+    },
+    {
+      "journal": "Production & Manufacturing Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Project Management Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Quality and Reliability Engineering International",
+      "rating": "1"
+    },
+    {
+      "journal": "Quality Innovation Prosperity",
+      "rating": "1"
+    },
+    {
+      "journal": "Quality Progress",
+      "rating": "1"
+    },
+    {
+      "journal": "Service Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Supply Chain Forum",
+      "rating": "1"
+    },
+    {
+      "journal": "TQM Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "World Review of Intermodal Transportation Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia-Pacific Journal of Operational Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Central European Journal of Operations Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Computational Management Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Cybernetics and Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Decision Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "EURO Journal on Decision Processes",
+      "rating": "1"
+    },
+    {
+      "journal": "INFOR: Information Systems and Operational Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Applied Decision Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of General Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Mathematics in Operational Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Operational Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Operations and Quantitative Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Transactions in Operational Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Business Analytics",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Industrial and Management Optimization",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Modelling in Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Multi-Criteria Decision Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "Kybernetes",
+      "rating": "1"
+    },
+    {
+      "journal": "Mathematical Methods of Operations Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Operational Research",
+      "rating": "1"
+    },
+    {
+      "journal": "OPSEARCH",
+      "rating": "1"
+    },
+    {
+      "journal": "Optimization",
+      "rating": "1"
+    },
+    {
+      "journal": "Pacific Journal of Optimization",
+      "rating": "1"
+    },
+    {
+      "journal": "Pesquisa Operacional",
+      "rating": "1"
+    },
+    {
+      "journal": "RAIRO - Operations Research",
+      "rating": "1"
+    },
+    {
+      "journal": "SIMULATION: Transactions of The Society for Modeling and Simulation International",
+      "rating": "1"
+    },
+    {
+      "journal": "TOP",
+      "rating": "1"
+    },
+    {
+      "journal": "Action Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Computational and Mathematical Organization Theory",
+      "rating": "1"
+    },
+    {
+      "journal": "Ephemera: Critical Dialogues on Organization",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Knowledge Management Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Organization Theory and Behavior",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Organizational Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Project Organisation and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Organizational Ethnography",
+      "rating": "1"
+    },
+    {
+      "journal": "Leadership and Organization Development Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Learning Organization",
+      "rating": "1"
+    },
+    {
+      "journal": "Network Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Organizations and Markets in Emerging Economies",
+      "rating": "1"
+    },
+    {
+      "journal": "Qualitative Research in Organizations and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Tamara: Journal for Critical Organization Inquiry",
+      "rating": "1"
+    },
+    {
+      "journal": "American Behavioral Scientist",
+      "rating": "1"
+    },
+    {
+      "journal": "American Journal of Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Australian Journal of Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Basic and Applied Social Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Canadian Journal of Behavioural Science",
+      "rating": "1"
+    },
+    {
+      "journal": "Canadian Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Current Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "European Journal of Psychology Open",
+      "rating": "1"
+    },
+    {
+      "journal": "European Psychologist",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Intercultural Relations",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Japanese Psychological Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Constructivist Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Happiness Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Pacific Rim Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Positive Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Social Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Nordic Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Psicothema",
+      "rating": "1"
+    },
+    {
+      "journal": "Psihologija",
+      "rating": "1"
+    },
+    {
+      "journal": "Psychological Reports",
+      "rating": "1"
+    },
+    {
+      "journal": "Psychologist",
+      "rating": "1"
+    },
+    {
+      "journal": "Social Justice Research",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Spanish Journal of Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "The Journal of Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Community, Work and Family",
+      "rating": "1"
+    },
+    {
+      "journal": "Disability and Rehabilitation",
+      "rating": "1"
+    },
+    {
+      "journal": "European Work and Organizational Psychology in practice",
+      "rating": "1"
+    },
+    {
+      "journal": "Gedrag en Organisatie",
+      "rating": "1"
+    },
+    {
+      "journal": "Human Factors and Ergonomics In Manufacturing",
+      "rating": "1"
+    },
+    {
+      "journal": "IISE Transactions on Occupational Ergonomics and Human Factors",
+      "rating": "1"
+    },
+    {
+      "journal": "Industrial and Organizational Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "International Coaching Psychology Review",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal for Educational and Vocational Guidance",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Occupational Safety and Ergonomics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Workplace Health Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Negotiation",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Career Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Employment Counseling",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Rehabilitation",
+      "rating": "1"
+    },
+    {
+      "journal": "Military Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Occupational Medicine",
+      "rating": "1"
+    },
+    {
+      "journal": "Psychologie du Travail et des Organisations",
+      "rating": "1"
+    },
+    {
+      "journal": "Psychologist-Manager Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Rehabilitation Counseling Bulletin",
+      "rating": "1"
+    },
+    {
+      "journal": "Research in Occupational Stress and Well Being",
+      "rating": "1"
+    },
+    {
+      "journal": "Revue Europeenne de Psychologie Appliquee",
+      "rating": "1"
+    },
+    {
+      "journal": "Social Work in Public Health",
+      "rating": "1"
+    },
+    {
+      "journal": "South African Journal of Industrial Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Sport, Exercise, and Performance Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "The International Journal of Aerospace Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "TPM - Testing, Psychometrics, Methodology in Applied Psychology",
+      "rating": "1"
+    },
+    {
+      "journal": "Work",
+      "rating": "1"
+    },
+    {
+      "journal": "Zeitschrift fur Arbeits- und Organisationspsychologie",
+      "rating": "1"
+    },
+    {
+      "journal": "Administrative Theory and Praxis",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia and the Pacific Policy Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia Pacific Journal of Public Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Brazilian Journal of Public Administration (Revista de Administra莽茫o P煤blica - RAP)",
+      "rating": "1"
+    },
+    {
+      "journal": "British Journal of Health Care Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Canadian Public Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Canadian Public Policy/Analyse de politiques",
+      "rating": "1"
+    },
+    {
+      "journal": "Health Services Management Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Educational Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Health Care Quality Assurance",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Health Governance",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Healthcare Technology and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Public Leadership",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Public Sector Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Review of Public Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Asian Public Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Comparative Policy Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Health Organization and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Public Affairs",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Public Affairs Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Leadership in Health Services",
+      "rating": "1"
+    },
+    {
+      "journal": "Policing: A journal of policy and practice",
+      "rating": "1"
+    },
+    {
+      "journal": "Public Administration Quarterly",
+      "rating": "1"
+    },
+    {
+      "journal": "Public Works Management and Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "State and Local Government Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Teaching Public Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "Voluntary Sector Review",
+      "rating": "1"
+    },
+    {
+      "journal": "African Evaluation Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Built Environment Project and Asset Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Corporate Social Responsibility and Environmental Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Energy Sector Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Housing Markets and Analysis",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Corporate Real Estate",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of European Real Estate Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Financial Management of Property and Construction",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Geographical Systems",
+      "rating": "1"
+    },
+    {
+      "journal": "Letters in Spatial and Resource Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Regional and Federal Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Advances in Hospitality and Leisure",
+      "rating": "1"
+    },
+    {
+      "journal": "Anatolia: An International Journal of Tourism and Hospitality Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia Pacific Journal of Tourism Research",
+      "rating": "1"
+    },
+    {
+      "journal": "British Food Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Digital Policy, Regulation and Governance",
+      "rating": "1"
+    },
+    {
+      "journal": "Engineering, Construction and Architectural Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Facilities",
+      "rating": "1"
+    },
+    {
+      "journal": "International Hospitality Review",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Culture, Tourism and Hospitality Research",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Event and Festival Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Heritage Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Hospitality and Tourism Administration",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sport and Society",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sport Finance",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sport Management",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sport Management and Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sport Policy and Politics",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sports Marketing and Sponsorship",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of China Tourism Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Cleaner Production",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Convention and Event Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Destination Marketing and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Ecotourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Foodservice Business Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Heritage Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Hospitality and Tourism Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Hospitality and Tourism Technology",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Hospitality Marketing and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Hospitality, Leisure, Sport and Tourism Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Human Resources in Hospitality and Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Media Business Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Outdoor Recreation and Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Policy Research in Tourism, Leisure and Events",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Quality Assurance in Hospitality and Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Sport and Tourism",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of the Textile Institute",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Transport Economics and Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Vacation Marketing",
+      "rating": "1"
+    },
+    {
+      "journal": "Managing Leisure: An International Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Marine Resource Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Maritime Economics and Logistics",
+      "rating": "1"
+    },
+    {
+      "journal": "Non-Profit Management & Leadership",
+      "rating": "1"
+    },
+    {
+      "journal": "Nutrition and Food Science",
+      "rating": "1"
+    },
+    {
+      "journal": "PASOS Journal of Tourism and Cultural Heritage",
+      "rating": "1"
+    },
+    {
+      "journal": "Property Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Service Business",
+      "rating": "1"
+    },
+    {
+      "journal": "Sport Marketing Quarterly",
+      "rating": "1"
+    },
+    {
+      "journal": "Sport, Business and Management: An International Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Telecommunications Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Tourism Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Tourism, Culture and Communication",
+      "rating": "1"
+    },
+    {
+      "journal": "Tourism: An International Interdisciplinary Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Tourist Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Utilities Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "Visitor Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "World Leisure Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Worldwide Hospitality and Tourism Themes",
+      "rating": "1"
+    },
+    {
+      "journal": "Area",
+      "rating": "1"
+    },
+    {
+      "journal": "Arts and the Market",
+      "rating": "1"
+    },
+    {
+      "journal": "Asia Europe Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "China Report",
+      "rating": "1"
+    },
+    {
+      "journal": "Contemporary Education Dialogue",
+      "rating": "1"
+    },
+    {
+      "journal": "Environmental Economics",
+      "rating": "1"
+    },
+    {
+      "journal": "Ethnic and Racial Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Evaluation Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Geographical Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Geopolitics under Globalization",
+      "rating": "1"
+    },
+    {
+      "journal": "Gosudarstvo, Religiia, Tserkov' v Rossii i za Rubezhom / State, Religion and Church in Russia and Worldwide",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Law, Crime and Justice",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Sociology and Social Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Tourism Policy",
+      "rating": "1"
+    },
+    {
+      "journal": "International Migration Review",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Asian Security and International Affairs",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Globalization and Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Humanities and Applied Social Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of International Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Leadership Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Studies in International Education",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Trust Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Management of Environmental Quality",
+      "rating": "1"
+    },
+    {
+      "journal": "Millennial Asia",
+      "rating": "1"
+    },
+    {
+      "journal": "N茅gociations",
+      "rating": "1"
+    },
+    {
+      "journal": "Philosophy of Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Policy Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Population Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Progress in Development Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Review of European Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista Produ莽茫o e Desenvolvimento",
+      "rating": "1"
+    },
+    {
+      "journal": "She Ji: The Journal of Design, Economics, and Innovation",
+      "rating": "1"
+    },
+    {
+      "journal": "Studies in Indian Politics",
+      "rating": "1"
+    },
+    {
+      "journal": "Sustainable Futures",
+      "rating": "1"
+    },
+    {
+      "journal": "The International Journal of Community and Social Development",
+      "rating": "1"
+    },
+    {
+      "journal": "Transactions of the Institute of British Geographers",
+      "rating": "1"
+    },
+    {
+      "journal": "Valuation Studies",
+      "rating": "1"
+    },
+    {
+      "journal": "Z'GuG Zeitschrift f眉r Gemeinwirtschaft und Gemeinwohl - Journal of Social Economy and Social Welfare",
+      "rating": "1"
+    },
+    {
+      "journal": "Central European Management Journal",
+      "rating": "1"
+    },
+    {
+      "journal": "Foresight",
+      "rating": "1"
+    },
+    {
+      "journal": "International Journal of Strategic Decision Sciences",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Advances in Management Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Business Models",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Business Strategy",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Change Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Facilities Management",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Strategic Contracting and Negotiation",
+      "rating": "1"
+    },
+    {
+      "journal": "Journal of Strategy and Management",
+      "rating": "1"
+    },
+    {
+      "journal": "M@n@gement",
+      "rating": "1"
+    },
+    {
+      "journal": "Management Review Quarterly",
+      "rating": "1"
+    },
+    {
+      "journal": "Negotiation and Conflict Management Research",
+      "rating": "1"
+    },
+    {
+      "journal": "Revista Brasileira de Gest茫o de Neg贸cios",
+      "rating": "1"
+    },
+    {
+      "journal": "Strategy and Leadership",
+      "rating": "1"
+    }
+  ]
+}

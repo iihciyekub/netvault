@@ -12,6 +12,7 @@ from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
+from netvault_server.server.journal_filters import normalize_filter_key
 from netvault_server.server.main_helpers import process_upload
 from netvault_server.server.models import DownloadRecord, Pdf, User
 from netvault_server.server.security import create_access_token, decode_access_token, verify_password
@@ -147,11 +148,11 @@ def logout_submit(
 
 
 @router.get("/web", response_class=HTMLResponse, include_in_schema=False)
-def dashboard(request: Request, db: Session = Depends(get_db)) -> Any:
+def dashboard(request: Request, filter: str = "all", db: Session = Depends(get_db)) -> Any:
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    stats = get_dashboard_stats(db)
+    stats = get_dashboard_stats(db, normalize_filter_key(filter))
     return render(
         request,
         "dashboard.html",
