@@ -1,11 +1,11 @@
 # NetVault User Guide
 
-NetVault is a team PDF vault. Users upload PDFs, NetVault extracts a DOI, fetches
-Crossref metadata, and stores the PDF so anyone with access can download it by DOI.
+NetVault is a team PDF vault. Users install a lightweight CLI to upload and
+download PDFs, while the remote server handles storage, metadata, and the web UI.
 
 ## Install
 
-Recommended install from GitHub:
+Recommended lightweight CLI install from GitHub:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash
@@ -25,6 +25,9 @@ nv --help
 ```
 
 `nv` and `netvault` are equivalent. Subcommands are case-insensitive.
+
+The CLI package does not install the server, PostgreSQL, Docker deployment files,
+or `netvault-admin`.
 
 Update the CLI:
 
@@ -154,6 +157,17 @@ Show current account and vault size:
 ```bash
 nv status
 ```
+
+## Web UI
+
+Open the authenticated web UI:
+
+```text
+https://iiaide.com/nv/web
+```
+
+The web UI uses the same username and password as the CLI. It provides dashboard
+statistics, PDF listing/search, browser upload, and DOI-based download.
 
 ## Common Errors
 

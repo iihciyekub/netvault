@@ -21,11 +21,12 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("NETVAULT_BOOTSTRAP_ADMIN_PASSWORD", "admin-pass")
 
     for module_name in list(sys.modules):
-        if module_name.startswith("netvault.server"):
+        if module_name.startswith("netvault_server.server"):
             del sys.modules[module_name]
 
-    main = importlib.import_module("netvault.server.main")
-    crossref = importlib.import_module("netvault.server.crossref")
+    main = importlib.import_module("netvault_server.server.main")
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
 
     def fake_crossref_metadata(doi: str):
         return crossref.CrossrefMetadata(
@@ -38,7 +39,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             resource_url=f"https://doi.org/{doi}",
         )
 
-    monkeypatch.setattr(main, "fetch_crossref_metadata", fake_crossref_metadata)
+    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
         yield test_client
 

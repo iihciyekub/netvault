@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}PDFs - NetVault{% endblock %}
+{% block content %}
+<h1>PDFs</h1>
+<form method="get" action="/web/pdfs" class="toolbar">
+  <input name="q" value="{{ q }}" placeholder="Search DOI, title, journal, filename, sha256">
+  <button type="submit">Search</button>
+  <a class="button" href="/web/pdfs">Clear</a>
+</form>
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>DOI</th><th>Year</th><th>Title</th><th>Journal</th><th>Size</th><th></th></tr></thead>
+    <tbody>
+    {% for pdf in pdfs %}
+      <tr>
+        <td>{{ pdf.doi }}</td>
+        <td>{{ pdf.published_year or "-" }}</td>
+        <td>{{ pdf.title or pdf.original_name }}</td>
+        <td>{{ pdf.container_title or "-" }}</td>
+        <td class="num">{{ pdf.size|bytes }}</td>
+        <td><a class="button" href="/web/pdfs/download?doi={{ pdf.doi }}">Download</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">No PDFs found.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

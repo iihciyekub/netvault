@@ -9,7 +9,7 @@ https://iiaide.com/nv
 ## Architecture
 
 ```text
-User CLI
+User CLI or Web UI
   -> https://iiaide.com/nv
     -> Traefik on VPS
       -> netvault-server FastAPI container
@@ -17,8 +17,8 @@ User CLI
         -> storage/ directory for PDF objects
 ```
 
-The CLI never connects to PostgreSQL directly. All user and admin actions go
-through the FastAPI server.
+The CLI and browser never connect to PostgreSQL directly. All user and admin
+actions go through the FastAPI server.
 
 ## VPS Location
 
@@ -78,6 +78,12 @@ Health check:
 
 ```bash
 curl -fsS https://iiaide.com/nv/health
+```
+
+Web UI:
+
+```text
+https://iiaide.com/nv/web
 ```
 
 ## Environment
@@ -180,6 +186,12 @@ Login as an admin locally:
 nv login https://iiaide.com/nv
 ```
 
+Install the server/admin package in an admin environment:
+
+```bash
+python -m pip install -e packages/netvault-server
+```
+
 Create user:
 
 ```bash
@@ -248,4 +260,3 @@ nv update
 - No Alembic migration system yet; startup adds missing columns directly.
 - No one-command backup/restore script yet.
 - Soft-deleted PDF objects are not garbage-collected yet.
-- Batch DOI download from `--file` is not implemented yet.

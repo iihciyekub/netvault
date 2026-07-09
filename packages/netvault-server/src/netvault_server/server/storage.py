@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
 
-from netvault.server.config import get_settings
+from netvault_server.server.config import get_settings
 
 PDF_MAGIC = b"%PDF-"
 CHUNK_SIZE = 1024 * 1024

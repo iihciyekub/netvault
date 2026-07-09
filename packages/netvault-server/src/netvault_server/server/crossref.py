@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import requests
 
-from netvault.server.config import get_settings
+from netvault_server.server.config import get_settings
 
 
 @dataclass(frozen=True)

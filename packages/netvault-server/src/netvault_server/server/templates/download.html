@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Download - NetVault{% endblock %}
+{% block content %}
+<h1>Download by DOI</h1>
+<form method="post" action="/web/download" class="form wide">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>DOI text <textarea name="doi_text" rows="8" placeholder="Paste one or many DOI values">{{ doi_text }}</textarea></label>
+  <button type="submit">Find PDFs</button>
+</form>
+{% if matches %}
+<h2>Matches</h2>
+<table>
+  <thead><tr><th>DOI</th><th>Title</th><th>Size</th><th></th></tr></thead>
+  <tbody>
+  {% for pdf in matches %}
+    <tr>
+      <td>{{ pdf.doi }}</td>
+      <td>{{ pdf.title or pdf.original_name }}</td>
+      <td class="num">{{ pdf.size|bytes }}</td>
+      <td><a class="button" href="/web/pdfs/download?doi={{ pdf.doi }}">Download</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if missing %}
+<h2>Missing</h2>
+<ul>
+{% for doi in missing %}<li>{{ doi }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

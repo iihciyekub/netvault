@@ -3,7 +3,7 @@ from collections.abc import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from netvault.server.config import get_settings
+from netvault_server.server.config import get_settings
 
 
 class Base(DeclarativeBase):

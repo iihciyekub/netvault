@@ -5,9 +5,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from netvault.server.database import get_db
-from netvault.server.models import User, UserRole
-from netvault.server.security import decode_access_token
+from netvault_server.server.database import get_db
+from netvault_server.server.models import User, UserRole
+from netvault_server.server.security import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

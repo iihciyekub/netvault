@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from netvault.server.models import UserRole
+from netvault_server.server.models import UserRole
 
 
 class TokenResponse(BaseModel):

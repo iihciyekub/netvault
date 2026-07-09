@@ -1,15 +1,73 @@
+from pathlib import Path
+from typing import Any
+
 import requests
 import typer
 from rich.console import Console
 
-from netvault.cli.http import api_delete, api_post, auth_headers, raise_for_api_error, server_url
-from netvault.server.models import UserRole
+from netvault_server.server.models import UserRole
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover
+    import tomli as tomllib
+
+APP_DIR = Path.home() / ".config" / "netvault"
+CREDENTIALS_PATH = APP_DIR / "credentials.toml"
 
 app = typer.Typer(
     help="NetVault administrator CLI.",
     context_settings={"token_normalize_func": str.lower},
 )
 console = Console()
+
+
+def load_credentials() -> dict[str, Any]:
+    if not CREDENTIALS_PATH.exists():
+        return {}
+    with CREDENTIALS_PATH.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def require_credentials() -> tuple[str, str]:
+    credentials = load_credentials()
+    saved_server_url = credentials.get("server_url")
+    token = credentials.get("token")
+    if not isinstance(saved_server_url, str) or not isinstance(token, str):
+        raise RuntimeError("Not logged in. Run `nv login <server-url>` first.")
+    return saved_server_url, token
+
+
+def auth_headers() -> dict[str, str]:
+    _, token = require_credentials()
+    return {"Authorization": f"Bearer {token}"}
+
+
+def server_url() -> str:
+    url, _ = require_credentials()
+    return url
+
+
+def raise_for_api_error(response: requests.Response) -> None:
+    if response.ok:
+        return
+    try:
+        detail = response.json().get("detail", response.text)
+    except ValueError:
+        detail = response.text
+    raise RuntimeError(f"{response.status_code}: {detail}")
+
+
+def api_post(path: str, json: dict[str, Any] | None = None) -> Any:
+    response = requests.post(f"{server_url()}{path}", headers=auth_headers(), json=json, timeout=60)
+    raise_for_api_error(response)
+    return response.json()
+
+
+def api_delete(path: str) -> Any:
+    response = requests.delete(f"{server_url()}{path}", headers=auth_headers(), timeout=60)
+    raise_for_api_error(response)
+    return response.json()
 
 
 @app.command("create-user")

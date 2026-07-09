@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Login - NetVault{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>NetVault Login</h1>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/web/login" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Username <input name="username" autocomplete="username" required></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Login</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Upload - NetVault{% endblock %}
+{% block content %}
+<h1>Upload PDFs</h1>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/web/upload" enctype="multipart/form-data" class="form wide">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>PDF files <input name="files" type="file" accept="application/pdf,.pdf" multiple required></label>
+  <label>Manual DOI <input name="doi" placeholder="Only when uploading one file"></label>
+  <label class="check"><input name="no_crossref" type="checkbox" value="true"> Skip Crossref metadata</label>
+  <button type="submit">Upload</button>
+</form>
+{% if results %}
+<h2>Results</h2>
+<table>
+  <thead><tr><th>File</th><th>Status</th><th>DOI / Error</th></tr></thead>
+  <tbody>
+  {% for row in results %}
+    <tr>
+      <td>{{ row.filename }}</td>
+      <td>{% if row.ok %}{% if row.result.deduplicated %}existing{% else %}uploaded{% endif %}{% else %}failed{% endif %}</td>
+      <td>{% if row.ok %}{{ row.result.pdf.doi }}{% else %}{{ row.error }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

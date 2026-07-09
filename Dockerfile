@@ -5,11 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
-COPY src ./src
+COPY packages/netvault-server ./packages/netvault-server
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ./packages/netvault-server
 
 EXPOSE 8000
 
-CMD ["uvicorn", "netvault.server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "netvault_server.server.main:app", "--host", "0.0.0.0", "--port", "8000"]

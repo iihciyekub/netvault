@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from netvault.server.config import get_settings
+from netvault_server.server.config import get_settings
 
 ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

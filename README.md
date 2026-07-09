@@ -1,16 +1,17 @@
 # NetVault
 
 NetVault is a small multi-user PDF vault for a trusted team, lab, or study group.
-Users upload and download PDFs with a LiteVault-style CLI, while a remote FastAPI
-server stores files in a shared deduplicated repository.
+Users upload and download PDFs with a lightweight LiteVault-style CLI, while a
+remote FastAPI server stores files in a shared deduplicated repository and serves
+a small authenticated web UI.
 
 ## What It Provides
 
-- `netvault-server`: FastAPI service for authentication, metadata, uploads, and downloads.
+- `netvault`: lightweight user CLI package with `nv` and `netvault` commands.
+- `netvault-server`: separate FastAPI service package for Docker deployments, web UI, API, and admin CLI.
 - PostgreSQL metadata storage via Docker Compose.
 - Local filesystem PDF object storage under `storage/objects`.
-- `netvault` CLI for users.
-- `netvault-admin` CLI for administrators.
+- Authenticated web pages for dashboard stats, PDF upload, PDF list, and DOI download.
 
 The default Docker Compose setup binds the API to `127.0.0.1:8000`, so it is meant
 to be reached through SSH tunneling, VPN, or a trusted internal network.
@@ -21,9 +22,10 @@ to be reached through SSH tunneling, VPN, or a trusted internal network.
 - [Admin Guide](docs/admin-guide.md)
 - [Migration Guide](docs/migration.md)
 
-## Remote Server Setup
+## Deploy Server
 
-On the remote machine:
+The server package lives under `packages/netvault-server` and is installed only
+inside the Docker image. On the remote machine:
 
 ```bash
 git clone <your-netvault-repo>
@@ -59,6 +61,15 @@ override:
 The first startup creates a bootstrap admin if `NETVAULT_BOOTSTRAP_ADMIN` and
 `NETVAULT_BOOTSTRAP_ADMIN_PASSWORD` are set.
 
+The web UI is available at:
+
+```text
+https://iiaide.com/nv/web
+```
+
+It uses the same users and passwords as the CLI. Browser sessions are stored in
+an HttpOnly JWT cookie.
+
 ## SSH Tunnel
 
 From a user's local machine:
@@ -73,9 +84,9 @@ Then the NetVault server is available locally at:
 http://127.0.0.1:8000
 ```
 
-## Local CLI Install
+## Install CLI
 
-After publishing this repo to GitHub, users should install the CLI with:
+Users install only the lightweight CLI package:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash
@@ -182,7 +193,15 @@ progress bar.
 
 ## Admin CLI
 
-Login as an administrator first:
+The admin CLI is part of the server package, not the lightweight user CLI. Use it
+from a development checkout with the server package installed, or from an admin
+environment:
+
+```bash
+python -m pip install -e packages/netvault-server
+```
+
+Login as an administrator first with the user CLI:
 
 ```bash
 netvault login http://127.0.0.1:8000
@@ -209,6 +228,10 @@ netvault-admin delete-pdf 1
 - `GET /pdfs/by-doi/download?doi=...`
 - `GET /pdfs/{id-or-sha256}`
 - `GET /pdfs/{id-or-sha256}/download`
+- `GET /stats/summary`
+- `GET /stats/by-year`
+- `GET /stats/by-journal`
+- `GET /stats/by-journal-year`
 - `POST /admin/users`
 - `POST /admin/users/{username}/reset-password`
 - `POST /admin/users/{username}/deactivate`
@@ -218,7 +241,7 @@ netvault-admin delete-pdf 1
 ## Development
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev]" -e packages/netvault-server
 pytest
-uvicorn netvault.server.main:app --reload
+uvicorn netvault_server.server.main:app --reload
 ```

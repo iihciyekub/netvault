@@ -24,7 +24,7 @@ from netvault import __version__
 from netvault.cli.config import clear_credentials, load_credentials, save_credentials
 from netvault.cli.http import api_get, auth_headers, raise_for_api_error, server_url, upload_pdf
 from netvault.cli.update import update_from_github
-from netvault.server.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
+from netvault.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
 
 DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 

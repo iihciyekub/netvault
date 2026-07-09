@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}NetVault{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/web">NetVault</a>
+      {% if user %}
+      <nav>
+        <a href="/web">Dashboard</a>
+        <a href="/web/pdfs">PDFs</a>
+        <a href="/web/upload">Upload</a>
+        <a href="/web/download">Download</a>
+      </nav>
+      <form method="post" action="/web/logout" class="logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Logout {{ user.username }}</button>
+      </form>
+      {% endif %}
+    </header>
+    <main class="page">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
