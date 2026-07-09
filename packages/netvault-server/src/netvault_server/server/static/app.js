@@ -200,7 +200,7 @@
 
     const link = event.target.closest("a[href]");
     if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (link.target || link.hasAttribute("download")) return;
+    if (link.target || link.hasAttribute("download") || link.hasAttribute("data-no-pjax")) return;
     const url = sameOriginUrl(link.href);
     if (!url || !isWebPath(url) || isDownloadPath(url)) return;
     event.preventDefault();

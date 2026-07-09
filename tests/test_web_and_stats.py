@@ -336,6 +336,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     pdfs_with_query = client.get("/web/pdfs", params={"q": "10.1234/web.test"})
     assert pdfs_with_query.status_code == 200
     assert "10.1234/web.test" in pdfs_with_query.text
+    assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
+    assert "data-no-pjax" in pdfs_with_query.text
 
     lookup = client.post(
         "/web/download",
@@ -343,10 +345,16 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     )
     assert lookup.status_code == 200
     assert "Download" in lookup.text
+    assert "/web/pdfs/download?pdf_id=" in lookup.text
+    assert "data-no-pjax" in lookup.text
 
     downloaded = client.get("/web/pdfs/download", params={"doi": "10.1234/web.test"})
     assert downloaded.status_code == 200
     assert hashlib.sha256(downloaded.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
+    pdf_id = int(lookup.text.split("/web/pdfs/download?pdf_id=", 1)[1].split("\"", 1)[0])
+    downloaded_by_id = client.get("/web/pdfs/download", params={"pdf_id": pdf_id})
+    assert downloaded_by_id.status_code == 200
+    assert hashlib.sha256(downloaded_by_id.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
 
 
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:

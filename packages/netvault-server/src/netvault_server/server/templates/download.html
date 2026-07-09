@@ -16,7 +16,7 @@
       <td>{{ pdf.doi }}</td>
       <td>{{ pdf.title or pdf.original_name }}</td>
       <td class="num">{{ pdf.size|bytes }}</td>
-      <td><a class="button" href="{{ path_for('/web/pdfs/download') }}?doi={{ pdf.doi }}">Download</a></td>
+      <td><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
     </tr>
   {% endfor %}
   </tbody>
