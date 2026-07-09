@@ -492,10 +492,10 @@ def upload_command(
         console=console,
         transient=True,
     ) as progress:
-        hash_task = progress.add_task("Hashing PDFs", total=len(pdfs))
+        task = progress.add_task("Hashing PDFs", total=len(pdfs))
         for pdf_path in pdfs:
             try:
-                progress.update(hash_task, description=f"Hashing {pdf_path.name}")
+                progress.update(task, description=f"Hashing {pdf_path.name}")
                 if not has_pdf_header(pdf_path):
                     failed.append((pdf_path, "invalid PDF file: expected %PDF- header"))
                     continue
@@ -506,21 +506,31 @@ def upload_command(
             except OSError as exc:
                 failed.append((pdf_path, str(exc)))
             finally:
-                progress.advance(hash_task, 1)
+                progress.advance(task, 1)
 
         if cache_changed:
             save_hash_cache(hash_cache)
 
-        progress.update(hash_task, description="Checking server")
+        progress.update(task, description="Checking server")
         existing_by_sha = get_existing_pdfs_by_sha256(hashes_by_path.values())
-        process_task = progress.add_task("Processing PDFs", total=len(pdfs))
 
-        for pdf_path in pdfs:
-            if pdf_path not in hashes_by_path:
-                progress.advance(process_task, 1)
-                continue
+        new_pdfs: list[Path] = []
+        for pdf_path, sha256 in hashes_by_path.items():
+            existing_pdf = existing_by_sha.get(sha256)
+            if existing_pdf:
+                latest_pdf = existing_pdf
+                skipped += 1
+            else:
+                new_pdfs.append(pdf_path)
+
+        if not new_pdfs:
+            progress.update(task, description="Done", completed=len(pdfs), total=len(pdfs))
+        else:
+            progress.reset(task, total=len(new_pdfs), completed=0, description="Indexing new PDFs")
+
+        for pdf_path in new_pdfs:
             try:
-                progress.update(process_task, description=f"Checking {pdf_path.name}")
+                progress.update(task, description=f"Checking {pdf_path.name}")
                 sha256 = hashes_by_path[pdf_path]
                 existing_pdf = find_existing_pdf_before_upload(
                     pdf_path,
@@ -533,13 +543,13 @@ def upload_command(
                     skipped += 1
                     continue
 
-                progress.update(process_task, description=f"Uploading {pdf_path.name}")
+                progress.update(task, description=f"Uploading {pdf_path.name}")
                 result = upload_pdf(
                     pdf_path,
                     doi=doi,
                     no_crossref=no_crossref,
                 )
-                progress.update(process_task, description=f"Indexed {pdf_path.name}")
+                progress.update(task, description=f"Indexed {pdf_path.name}")
                 latest_pdf = result["pdf"]
                 if result["deduplicated"]:
                     deduped += 1
@@ -548,7 +558,7 @@ def upload_command(
             except RuntimeError as exc:
                 failed.append((pdf_path, str(exc)))
             finally:
-                progress.advance(process_task, 1)
+                progress.advance(task, 1)
 
     ok_count = uploaded + deduped + skipped
     parts = [f"done: {ok_count}/{len(pdfs)} processed"]
