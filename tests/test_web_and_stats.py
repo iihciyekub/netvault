@@ -151,6 +151,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     dashboard = client.get("/web")
     assert dashboard.status_code == 200
     assert "journal-heatmap" in dashboard.text
+    assert "data-tip=" in dashboard.text
+    assert "heatmap-tooltip.js" in dashboard.text
     assert "heat-cell level-4" in dashboard.text
 
     pdfs_without_query = client.get("/web/pdfs")
