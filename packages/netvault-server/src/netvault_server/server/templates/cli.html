@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}CLI - NetVault{% endblock %}
+{% block content %}
+<section class="command-grid">
+  <article class="command-card">
+    <div class="command-card-head">
+      <span>01</span>
+      <h2>Install / Update</h2>
+    </div>
+    <p>Install the lightweight local CLI, then keep it current from GitHub.</p>
+    <div class="command-list">
+      <div class="command-row">
+        <code>curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash</code>
+        <button class="copy-button" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv update</code>
+        <button class="copy-button" type="button" data-copy="nv update">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv --version</code>
+        <button class="copy-button" type="button" data-copy="nv --version">Copy</button>
+      </div>
+    </div>
+  </article>
+
+  <article class="command-card">
+    <div class="command-card-head">
+      <span>02</span>
+      <h2>Login</h2>
+    </div>
+    <p>Use the shared NetVault server account. The token is saved locally for future commands.</p>
+    <div class="command-list">
+      <div class="command-row">
+        <code>nv login https://iiaide.com/nv --username polyu --password '!1@2#3Qwe'</code>
+        <button class="copy-button" type="button" data-copy="nv login https://iiaide.com/nv --username polyu --password '!1@2#3Qwe'">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv status</code>
+        <button class="copy-button" type="button" data-copy="nv status">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv logout</code>
+        <button class="copy-button" type="button" data-copy="nv logout">Copy</button>
+      </div>
+    </div>
+  </article>
+
+  <article class="command-card">
+    <div class="command-card-head">
+      <span>03</span>
+      <h2>Get PDFs</h2>
+    </div>
+    <p>Download by one DOI, many DOI values, or a text file that contains DOI strings.</p>
+    <div class="command-list">
+      <div class="command-row">
+        <code>nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads</code>
+        <button class="copy-button" type="button" data-copy="nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv download 10.1016/j.ijpe.2018.04.006 10.1234/example --to ./downloads</code>
+        <button class="copy-button" type="button" data-copy="nv download 10.1016/j.ijpe.2018.04.006 10.1234/example --to ./downloads">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv download --file ./dois.txt --to ./downloads</code>
+        <button class="copy-button" type="button" data-copy="nv download --file ./dois.txt --to ./downloads">Copy</button>
+      </div>
+    </div>
+  </article>
+
+  <article class="command-card">
+    <div class="command-card-head">
+      <span>04</span>
+      <h2>Upload PDFs</h2>
+    </div>
+    <p>Upload one PDF, multiple files, or a folder. Existing files are skipped by sha256.</p>
+    <div class="command-list">
+      <div class="command-row">
+        <code>nv upload ./paper.pdf</code>
+        <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv upload ./paper-a.pdf ./paper-b.pdf</code>
+        <button class="copy-button" type="button" data-copy="nv upload ./paper-a.pdf ./paper-b.pdf">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv upload ./papers</code>
+        <button class="copy-button" type="button" data-copy="nv upload ./papers">Copy</button>
+      </div>
+      <div class="command-row">
+        <code>nv upload ./paper.pdf --doi 10.1234/example</code>
+        <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example">Copy</button>
+      </div>
+    </div>
+  </article>
+</section>
+{% endblock %}

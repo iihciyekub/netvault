@@ -194,16 +194,24 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     upload_page = client.get("/web/upload")
     assert upload_page.status_code == 200
     assert "<h1" not in upload_page.text
-    assert "raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh" in upload_page.text
-    assert "data-copy" in upload_page.text
+    assert "raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh" not in upload_page.text
     assert "data-upload-form" in upload_page.text
     assert "upload-progress" in upload_page.text
     download_page = client.get("/web/download")
     assert download_page.status_code == 200
     assert "<h1" not in download_page.text
-    assert "nv download --file ./dois.txt --to ./downloads" in download_page.text
+    assert "nv download --file ./dois.txt --to ./downloads" not in download_page.text
     assert "app.js" in download_page.text
     assert "clipboard.js" not in download_page.text
+    cli_page = client.get("/web/cli")
+    assert cli_page.status_code == 200
+    assert "<h1" not in cli_page.text
+    assert "Install / Update" in cli_page.text
+    assert "nv update" in cli_page.text
+    assert "nv login https://iiaide.com/nv --username polyu --password '!1@2#3Qwe'" in cli_page.text
+    assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
+    assert "nv upload ./papers" in cli_page.text
+    assert "data-copy" in cli_page.text
 
     upload = client.post(
         "/web/upload",

@@ -18,6 +18,7 @@
       <nav>
         <a class="{% if request.url.path == '/web' %}active{% endif %}" href="{{ path_for('/web') }}">Home</a>
         <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" href="{{ path_for('/web/pdfs') }}">Search</a>
+        <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}">CLI</a>
         <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" href="{{ path_for('/web/upload') }}">Upload</a>
         <a class="{% if request.url.path == '/web/download' %}active{% endif %}" href="{{ path_for('/web/download') }}">Download</a>
       </nav>

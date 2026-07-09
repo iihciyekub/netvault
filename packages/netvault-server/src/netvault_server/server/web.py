@@ -196,6 +196,14 @@ def pdfs_page(
     return render(request, "pdfs.html", {"user": user, "pdfs": pdfs, "q": q, "searched": bool(q)})
 
 
+@router.get("/web/cli", response_class=HTMLResponse, include_in_schema=False)
+def cli_page(request: Request, db: Session = Depends(get_db)) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    return render(request, "cli.html", {"user": user})
+
+
 @router.get("/web/upload", response_class=HTMLResponse, include_in_schema=False)
 def upload_page(request: Request, db: Session = Depends(get_db)) -> Any:
     user = require_web_user(request, db)
