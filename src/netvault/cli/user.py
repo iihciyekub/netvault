@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import requests
@@ -18,6 +19,7 @@ from netvault import __version__
 from netvault.cli.config import clear_credentials, load_credentials, save_credentials
 from netvault.cli.http import api_get, auth_headers, raise_for_api_error, server_url, upload_pdf
 from netvault.cli.update import update_from_github
+from netvault.server.doi import extract_doi_evidence
 
 DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 
@@ -73,6 +75,61 @@ def iter_pdf_paths(path: Path) -> list[Path]:
     if path.is_dir():
         return sorted(candidate for candidate in path.rglob("*.pdf") if candidate.is_file())
     raise typer.BadParameter(f"{path} does not exist")
+
+
+def file_sha256(path: Path, progress_callback=None) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+            if progress_callback:
+                progress_callback(len(chunk))
+    return digest.hexdigest()
+
+
+def existing_pdf_from_response(response: requests.Response) -> dict | None:
+    if response.status_code == 404:
+        return None
+    raise_for_api_error(response)
+    return response.json()
+
+
+def get_existing_pdf_by_sha256(sha256: str) -> dict | None:
+    response = requests.get(
+        f"{server_url()}/pdfs/{sha256}",
+        headers=auth_headers(),
+        timeout=30,
+    )
+    return existing_pdf_from_response(response)
+
+
+def get_existing_pdf_by_doi(doi: str) -> dict | None:
+    response = requests.get(
+        f"{server_url()}/pdfs/by-doi",
+        headers=auth_headers(),
+        params={"doi": doi},
+        timeout=30,
+    )
+    return existing_pdf_from_response(response)
+
+
+def extract_local_doi(path: Path, explicit_doi: str | None) -> str | None:
+    evidence = extract_doi_evidence(path, explicit_doi=explicit_doi)
+    if evidence.status == "ok":
+        return evidence.doi
+    if explicit_doi or evidence.status == "conflict":
+        raise RuntimeError(evidence.reason or "DOI extraction failed")
+    return None
+
+
+def find_existing_pdf_before_upload(path: Path, explicit_doi: str | None, on_read=None) -> dict | None:
+    sha256 = file_sha256(path, progress_callback=on_read)
+    doi = extract_local_doi(path, explicit_doi)
+    if doi:
+        existing = get_existing_pdf_by_doi(doi)
+        if existing:
+            return existing
+    return get_existing_pdf_by_sha256(sha256)
 
 
 def save_login(server: str, username: str, password: str) -> None:
@@ -151,9 +208,10 @@ def upload_command(
 
     uploaded = 0
     deduped = 0
+    skipped = 0
     failed: list[tuple[Path, str]] = []
     latest_pdf: dict | None = None
-    total_bytes = sum(pdf_path.stat().st_size for pdf_path in pdfs)
+    total_bytes = sum(pdf_path.stat().st_size for pdf_path in pdfs) * 2
     with Progress(
         SpinnerColumn(),
         TextColumn("{task.description}"),
@@ -164,21 +222,44 @@ def upload_command(
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("Uploading PDFs", total=total_bytes)
+        task = progress.add_task("Processing PDFs", total=total_bytes)
         for pdf_path in pdfs:
-            progress.update(task, description=f"Uploading {pdf_path.name}")
+            progress.update(task, description=f"Checking {pdf_path.name}")
             pdf_size = pdf_path.stat().st_size
+            processed_for_file = 0
+
+            def advance_file(delta: int) -> None:
+                nonlocal processed_for_file
+                if delta > 0:
+                    progress.advance(task, delta)
+                    processed_for_file += delta
+
+            def show_check_progress(bytes_read: int) -> None:
+                advance_file(bytes_read)
+
             uploaded_for_file = 0
 
             def show_upload_progress(bytes_sent: int, _total_for_file: int) -> None:
                 nonlocal uploaded_for_file
                 visible_sent = min(bytes_sent, pdf_size)
                 delta = visible_sent - uploaded_for_file
+                advance_file(delta)
                 if delta > 0:
-                    progress.advance(task, delta)
                     uploaded_for_file = visible_sent
 
             try:
+                existing_pdf = find_existing_pdf_before_upload(
+                    pdf_path,
+                    doi,
+                    on_read=show_check_progress,
+                )
+                if existing_pdf:
+                    latest_pdf = existing_pdf
+                    skipped += 1
+                    advance_file(pdf_size)
+                    continue
+
+                progress.update(task, description=f"Uploading {pdf_path.name}")
                 result = upload_pdf(
                     pdf_path,
                     doi=doi,
@@ -186,7 +267,7 @@ def upload_command(
                     progress_callback=show_upload_progress,
                 )
                 if uploaded_for_file < pdf_size:
-                    progress.advance(task, pdf_size - uploaded_for_file)
+                    advance_file(pdf_size - uploaded_for_file)
                 progress.update(task, description=f"Indexed {pdf_path.name}")
                 latest_pdf = result["pdf"]
                 if result["deduplicated"]:
@@ -195,13 +276,19 @@ def upload_command(
                     uploaded += 1
             except RuntimeError as exc:
                 failed.append((pdf_path, str(exc)))
+            finally:
+                expected_for_file = pdf_size * 2
+                if processed_for_file < expected_for_file:
+                    advance_file(expected_for_file - processed_for_file)
 
-    ok_count = uploaded + deduped
+    ok_count = uploaded + deduped + skipped
     parts = [f"done: {ok_count}/{len(pdfs)} processed"]
     if uploaded:
         parts.append(f"{uploaded} uploaded")
     if deduped:
         parts.append(f"{deduped} deduped")
+    if skipped:
+        parts.append(f"{skipped} skipped")
     if failed:
         parts.append(f"{len(failed)} failed")
     if latest_pdf:

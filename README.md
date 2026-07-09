@@ -140,6 +140,10 @@ nv upload ~/Documents/papers
 nv upload ./paper.pdf
 ```
 
+Before uploading bytes, the CLI checks the local PDF's DOI and sha256 against
+the server. If the PDF is already in the vault, it is reported as `skipped`
+without re-uploading the file.
+
 If a scanned or unusually encoded PDF cannot be parsed, provide the DOI explicitly:
 
 ```bash

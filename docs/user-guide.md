@@ -71,11 +71,13 @@ nv upload ~/Downloads/papers
 NetVault only accepts PDF files. On upload it:
 
 1. Checks the file is a PDF.
-2. Computes sha256.
-3. Extracts DOI from the PDF or filename.
-4. Fetches Crossref metadata.
-5. Stores the PDF by sha256.
-6. Stores DOI and metadata in PostgreSQL.
+2. Computes sha256 locally.
+3. Extracts DOI locally when possible.
+4. Skips the upload if the DOI or sha256 is already in the vault.
+5. Uploads only new PDFs.
+6. Fetches Crossref metadata.
+7. Stores the PDF by sha256.
+8. Stores DOI and metadata in PostgreSQL.
 
 If DOI extraction fails, provide the DOI manually:
 
