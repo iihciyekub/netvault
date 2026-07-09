@@ -106,7 +106,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="NetVault", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="NetVault", version="0.3.1", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -184,7 +184,7 @@ async def upload_pdf(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"DOI {normalized_doi} is already linked to a different PDF",
         )
-    if pdf_by_sha is not None and pdf_by_sha.doi != normalized_doi:
+    if pdf_by_sha is not None and pdf_by_sha.doi and pdf_by_sha.doi != normalized_doi:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"This PDF is already linked to DOI {pdf_by_sha.doi}",
@@ -207,7 +207,11 @@ async def upload_pdf(
         db.add(pdf)
         db.flush()
         created_pdf = True
-    elif pdf.is_deleted:
+    elif not pdf.doi:
+        pdf.doi = normalized_doi
+        pdf.doi_source = evidence.source
+        pdf.doi_evidence = doi_evidence_json(evidence)
+    if pdf.is_deleted:
         pdf.is_deleted = False
         pdf.deleted_at = None
         pdf.deleted_by_id = None
