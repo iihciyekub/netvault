@@ -12,10 +12,8 @@
     {% endfor %}
   </div>
   <div class="summary-tags" aria-label="Current filter summary">
-    <span>{% for option in journal_filters %}{% if option.key == journal_filter %}{{ option.label }}{% endif %}{% endfor %}</span>
-    <span>{{ summary.active_pdfs }} PDFs</span>
+    <span class="summary-count">{{ summary.active_pdfs }}</span>
     <span>{{ summary.total_size|bytes }}</span>
-    <span>{% if summary.min_year %}{{ summary.min_year }}-{{ summary.max_year }}{% else %}-{% endif %}</span>
   </div>
 </div>
 

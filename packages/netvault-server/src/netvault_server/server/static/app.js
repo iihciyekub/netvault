@@ -4,6 +4,9 @@
   const mainSelector = "#app-main";
   const htmlType = "text/html";
   let activeTooltipTarget = null;
+  const pageCache = new Map();
+  const prefetching = new Set();
+  const maxCachedPages = 10;
 
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -36,28 +39,84 @@
     }
   };
 
-  const updateFromHtml = (html, url, push) => {
+  const cacheKey = (url) => {
+    const parsed = sameOriginUrl(url);
+    return parsed ? parsed.href : url;
+  };
+
+  const shouldCachePage = (options = {}) => {
+    const method = String(options.method || "GET").toUpperCase();
+    return method === "GET" && !options.body;
+  };
+
+  const rememberPage = (url, state) => {
+    if (!state) return;
+    const key = cacheKey(url);
+    pageCache.delete(key);
+    pageCache.set(key, state);
+    while (pageCache.size > maxCachedPages) pageCache.delete(pageCache.keys().next().value);
+  };
+
+  const parsePageState = (html) => {
     const nextDoc = new DOMParser().parseFromString(html, htmlType);
     const nextMain = qs(mainSelector, nextDoc);
-    if (!nextMain) {
+    if (!nextMain) return null;
+    const nextTopbar = qs(".topbar", nextDoc);
+    return {
+      bodyClass: nextDoc.body.className,
+      mainHTML: nextMain.innerHTML,
+      title: nextDoc.title || document.title,
+      topbarHTML: nextTopbar ? nextTopbar.innerHTML : null,
+    };
+  };
+
+  const snapshotPage = () => {
+    const currentMain = qs(mainSelector);
+    const currentTopbar = qs(".topbar");
+    if (!currentMain) return null;
+    return {
+      bodyClass: document.body.className,
+      mainHTML: currentMain.innerHTML,
+      title: document.title,
+      topbarHTML: currentTopbar ? currentTopbar.innerHTML : null,
+    };
+  };
+
+  const applyPageState = (state, url, push) => {
+    const currentMain = qs(mainSelector);
+    const currentTopbar = qs(".topbar");
+    if (!currentMain) {
       window.location.href = url;
       return;
     }
-
-    const currentMain = qs(mainSelector);
-    const nextTopbar = qs(".topbar", nextDoc);
-    const currentTopbar = qs(".topbar");
-    if (currentTopbar && nextTopbar) currentTopbar.innerHTML = nextTopbar.innerHTML;
-    document.body.className = nextDoc.body.className;
-    currentMain.innerHTML = nextMain.innerHTML;
-    document.title = nextDoc.title || document.title;
+    if (currentTopbar && state.topbarHTML !== null) currentTopbar.innerHTML = state.topbarHTML;
+    document.body.className = state.bodyClass;
+    currentMain.innerHTML = state.mainHTML;
+    document.title = state.title;
 
     if (push && url !== window.location.href) history.pushState({}, "", url);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setLoading(false);
   };
 
+  const updateFromHtml = (html, url, push, cache = false) => {
+    const state = parsePageState(html);
+    if (!state) {
+      window.location.href = url;
+      return;
+    }
+    if (cache) rememberPage(url, state);
+    applyPageState(state, url, push);
+  };
+
   const fetchPage = async (url, options = {}, push = true) => {
+    const useCache = shouldCachePage(options);
+    const key = cacheKey(url);
+    if (useCache && pageCache.has(key)) {
+      applyPageState(pageCache.get(key), url, push);
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch(url, {
@@ -71,12 +130,43 @@
         return;
       }
       const html = await response.text();
-      updateFromHtml(html, response.url || url, push);
+      if (!useCache) pageCache.clear();
+      updateFromHtml(html, response.url || url, push, useCache);
     } catch {
       window.location.href = url;
     } finally {
       setLoading(false);
     }
+  };
+
+  const prefetchPage = async (href) => {
+    const url = sameOriginUrl(href);
+    if (!url || !isWebPath(url) || isDownloadPath(url)) return;
+    const key = url.href;
+    if (pageCache.has(key) || prefetching.has(key)) return;
+    prefetching.add(key);
+    try {
+      const response = await fetch(key, {
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch" },
+      });
+      const contentType = response.headers.get("content-type") || "";
+      if (response.ok && contentType.includes(htmlType)) {
+        const state = parsePageState(await response.text());
+        rememberPage(response.url || key, state);
+      }
+    } catch {
+      // Prefetch is only an acceleration hint; failed prefetches should stay silent.
+    } finally {
+      prefetching.delete(key);
+    }
+  };
+
+  const markLinkActive = (link) => {
+    const group = link.closest(".primary-nav, .utility-nav, .filter-tabs");
+    if (!group) return;
+    qsa("a.active", group).forEach((item) => item.classList.remove("active"));
+    link.classList.add("active");
   };
 
   const copyText = async (button) => {
@@ -295,9 +385,10 @@
     });
 
     xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 400) {
+    if (xhr.status >= 200 && xhr.status < 400) {
         if (progressBar) progressBar.style.width = "100%";
         if (progressText) progressText.textContent = "Done";
+        pageCache.clear();
         updateFromHtml(xhr.responseText, xhr.responseURL || form.action, true);
         renderUploadRows(preRows);
       } else {
@@ -331,7 +422,15 @@
     const url = sameOriginUrl(link.href);
     if (!url || !isWebPath(url) || isDownloadPath(url)) return;
     event.preventDefault();
+    markLinkActive(link);
     fetchPage(url.href);
+  });
+
+  document.addEventListener("pointerover", (event) => {
+    const link = event.target.closest("a[href]");
+    if (!link || link.target || link.hasAttribute("download") || link.hasAttribute("data-no-pjax")) return;
+    if (!link.closest(".topbar, .filter-tabs")) return;
+    prefetchPage(link.href);
   });
 
   document.addEventListener("submit", (event) => {
@@ -403,4 +502,6 @@
   window.addEventListener("popstate", () => {
     fetchPage(window.location.href, {}, false);
   });
+
+  rememberPage(window.location.href, snapshotPage());
 })();

@@ -257,7 +257,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "No journal-year data." in dashboard.text
     assert "UTD24" in dashboard.text
     assert "ABS 4*" in dashboard.text
-    assert "0 PDFs" in dashboard.text
+    assert "summary-count" in dashboard.text
+    assert ">0</span>" in dashboard.text
+    assert "0 PDFs" not in dashboard.text
+    assert "1974-" not in dashboard.text
+    assert "Current filter summary" in dashboard.text
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
     assert "Info" in dashboard.text
@@ -293,7 +297,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert "<h1" not in info_page.text
     assert "Version" in info_page.text
-    assert "0.5.28" in info_page.text
+    assert "0.5.29" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert "yongjian.li@polyu.ed.hk" in info_page.text
 
