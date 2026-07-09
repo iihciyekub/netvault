@@ -16,8 +16,7 @@ from netvault_server.server.main_helpers import process_upload
 from netvault_server.server.models import DownloadRecord, Pdf, User
 from netvault_server.server.security import create_access_token, decode_access_token, verify_password
 from netvault_server.server.stats import (
-    get_by_journal_year,
-    get_summary,
+    get_dashboard_stats,
 )
 from netvault_server.server.storage import object_path
 
@@ -152,13 +151,13 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> Any:
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
+    stats = get_dashboard_stats(db)
     return render(
         request,
         "dashboard.html",
         {
             "user": user,
-            "summary": get_summary(db),
-            "journal_year": get_by_journal_year(db),
+            **stats,
         },
     )
 

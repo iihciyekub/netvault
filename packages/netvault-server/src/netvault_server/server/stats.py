@@ -1,4 +1,5 @@
 from html import unescape
+from time import monotonic
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -10,6 +11,9 @@ from netvault_server.server.deps import get_current_user
 from netvault_server.server.models import DownloadRecord, Pdf, UploadRecord, User
 
 router = APIRouter(prefix="/stats", tags=["stats"])
+STATS_CACHE_TTL_SECONDS = 30.0
+_dashboard_cache: dict[str, Any] | None = None
+_dashboard_cache_expires_at = 0.0
 
 
 def active_pdfs():
@@ -30,6 +34,25 @@ def clean_label(value: str | None) -> str | None:
         return None
     cleaned = unescape(value).strip()
     return cleaned or None
+
+
+def invalidate_stats_cache() -> None:
+    global _dashboard_cache, _dashboard_cache_expires_at
+    _dashboard_cache = None
+    _dashboard_cache_expires_at = 0.0
+
+
+def get_dashboard_stats(db: Session) -> dict[str, Any]:
+    global _dashboard_cache, _dashboard_cache_expires_at
+    now = monotonic()
+    if _dashboard_cache is not None and now < _dashboard_cache_expires_at:
+        return _dashboard_cache
+    _dashboard_cache = {
+        "summary": get_summary(db),
+        "journal_year": get_by_journal_year(db),
+    }
+    _dashboard_cache_expires_at = now + STATS_CACHE_TTL_SECONDS
+    return _dashboard_cache
 
 
 def get_summary(db: Session) -> dict[str, Any]:

@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, or_, select, text
@@ -26,7 +26,7 @@ from netvault_server.server.schemas import (
 )
 from netvault_server.server.security import create_access_token, hash_password, verify_password
 from netvault_server.server.storage import ensure_storage_dirs, object_path
-from netvault_server.server.stats import router as stats_router
+from netvault_server.server.stats import invalidate_stats_cache, router as stats_router
 from netvault_server.server.web import router as web_router
 
 
@@ -89,10 +89,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="NetVault", version="0.5.6", lifespan=lifespan)
+app = FastAPI(title="NetVault", version="0.5.7", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(stats_router)
 app.include_router(web_router)
+
+
+@app.middleware("http")
+async def add_static_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
 
 
 @app.get("/health")
@@ -308,6 +316,7 @@ def delete_pdf_by_doi(
     pdf.deleted_at = utc_now()
     pdf.deleted_by_id = admin.id
     db.commit()
+    invalidate_stats_cache()
     db.refresh(pdf)
     return pdf_to_read(pdf)
 
@@ -323,5 +332,6 @@ def delete_pdf(
     pdf.deleted_at = utc_now()
     pdf.deleted_by_id = admin.id
     db.commit()
+    invalidate_stats_cache()
     db.refresh(pdf)
     return pdf_to_read(pdf)

@@ -33,13 +33,17 @@
       {% endfor %}
       <div class="heat-total-head">Total</div>
       {% for row in journal_year.rows %}
-        <div class="heat-journal" title="{{ row.journal }}">{{ row.journal }}</div>
+        <div class="heat-journal" data-tip="{{ row.journal }}">{{ row.journal }}</div>
         {% for cell in row.cells %}
+          {% if cell.count > 0 %}
           <span
             class="heat-cell level-{{ cell.level }}"
             data-tip="{{ row.journal }} · {{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
             aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count }} PDFs"
           ></span>
+          {% else %}
+          <span class="heat-cell level-0" aria-hidden="true"></span>
+          {% endif %}
         {% endfor %}
         <div class="heat-total">{{ row.total }}</div>
       {% endfor %}
@@ -49,7 +53,4 @@
   <div class="empty-state">No journal-year data.</div>
   {% endif %}
 </section>
-{% endblock %}
-{% block scripts %}
-<script src="{{ path_for('/static/heatmap-tooltip.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

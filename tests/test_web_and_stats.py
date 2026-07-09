@@ -123,9 +123,52 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert journal_year.json()["rows"][0]["cells"][0] == {"year": 2026, "count": 1, "level": 4}
 
 
+def test_dashboard_stats_cache_can_be_invalidated(client: TestClient) -> None:
+    headers = login_headers(client)
+    uploaded = client.post(
+        "/pdfs/upload",
+        headers=headers,
+        files={"file": ("web.pdf", PDF_BYTES, "application/pdf")},
+    )
+    assert uploaded.status_code == 200
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    stats = importlib.import_module("netvault_server.server.stats")
+    with database.SessionLocal() as db:
+        cached = stats.get_dashboard_stats(db)
+        assert cached["summary"]["active_pdfs"] == 1
+        admin = db.query(models.User).filter_by(username="admin").one()
+        db.add(
+            models.Pdf(
+                doi="10.1234/cache.test",
+                doi_source="manual",
+                sha256="2" * 64,
+                original_name="cache.pdf",
+                title="Cache test",
+                authors="[]",
+                container_title="Cache Journal",
+                publisher=None,
+                published_year=2025,
+                crossref_status="ok",
+                size=12,
+                storage_path="objects/22/cache.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.commit()
+        assert stats.get_dashboard_stats(db)["summary"]["active_pdfs"] == 1
+        stats.invalidate_stats_cache()
+        assert stats.get_dashboard_stats(db)["summary"]["active_pdfs"] == 2
+
+
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
     login_page = client.get("/web/login")
     assert "<h1" not in login_page.text
+    assert "app.js" in login_page.text
+    assert "clipboard.js" not in login_page.text
+    assert "upload.js" not in login_page.text
+    assert "heatmap-tooltip.js" not in login_page.text
     csrf = login_page.cookies["netvault_csrf"]
     bad_upload = client.post(
         "/web/upload",
@@ -153,11 +196,14 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "<h1" not in upload_page.text
     assert "raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh" in upload_page.text
     assert "data-copy" in upload_page.text
+    assert "data-upload-form" in upload_page.text
+    assert "upload-progress" in upload_page.text
     download_page = client.get("/web/download")
     assert download_page.status_code == 200
     assert "<h1" not in download_page.text
     assert "nv download --file ./dois.txt --to ./downloads" in download_page.text
-    assert "clipboard.js" in download_page.text
+    assert "app.js" in download_page.text
+    assert "clipboard.js" not in download_page.text
 
     upload = client.post(
         "/web/upload",
@@ -167,11 +213,37 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert upload.status_code == 200
     assert "10.1234/web.test" in upload.text
     assert "Drop PDF files" in upload.text
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    stats = importlib.import_module("netvault_server.server.stats")
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        db.add(
+            models.Pdf(
+                doi="10.1234/zero-cell.test",
+                doi_source="manual",
+                sha256="3" * 64,
+                original_name="zero-cell.pdf",
+                title="Zero cell test",
+                authors="[]",
+                container_title="Another Journal",
+                publisher=None,
+                published_year=2025,
+                crossref_status="ok",
+                size=12,
+                storage_path="objects/33/zero-cell.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.commit()
+    stats.invalidate_stats_cache()
     dashboard = client.get("/web")
     assert dashboard.status_code == 200
     assert "journal-heatmap" in dashboard.text
     assert "data-tip=" in dashboard.text
-    assert "heatmap-tooltip.js" in dashboard.text
+    assert "aria-hidden=\"true\"" in dashboard.text
+    assert "0 PDFs" not in dashboard.text
+    assert "heatmap-tooltip.js" not in dashboard.text
     assert "heat-cell level-4" in dashboard.text
 
     pdfs_without_query = client.get("/web/pdfs")
@@ -194,6 +266,13 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     downloaded = client.get("/web/pdfs/download", params={"doi": "10.1234/web.test"})
     assert downloaded.status_code == 200
     assert hashlib.sha256(downloaded.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
+
+
+def test_static_assets_are_long_cached(client: TestClient) -> None:
+    for path in ("/static/styles.css", "/static/app.js"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
 def test_root_package_is_cli_only() -> None:

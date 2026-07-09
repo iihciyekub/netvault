@@ -137,5 +137,8 @@ async def process_upload(
         )
     )
     db.commit()
+    from netvault_server.server.stats import invalidate_stats_cache
+
+    invalidate_stats_cache()
     db.refresh(pdf)
     return UploadResponse(pdf=pdf_to_read(pdf), deduplicated=object_deduplicated or not created_pdf)

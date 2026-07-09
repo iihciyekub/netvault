@@ -23,7 +23,7 @@
   </div>
 </section>
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
-<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide">
+<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide" data-upload-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="dropzone" id="dropzone">
     <input id="file-input" name="files" type="file" accept="application/pdf,.pdf" multiple required>
@@ -32,6 +32,10 @@
   </label>
   <label>Manual DOI <input name="doi" placeholder="Only when uploading one file"></label>
   <label class="check"><input name="no_crossref" type="checkbox" value="true"> Skip Crossref metadata</label>
+  <div class="upload-progress" aria-live="polite" hidden>
+    <div class="upload-progress-bar"><span></span></div>
+    <p>Preparing upload...</p>
+  </div>
   <button class="primary" type="submit">Upload</button>
 </form>
 {% if results %}
@@ -49,8 +53,4 @@
   </tbody>
 </table>
 {% endif %}
-{% endblock %}
-{% block scripts %}
-<script src="{{ path_for('/static/upload.js') }}?v={{ asset_version }}"></script>
-<script src="{{ path_for('/static/clipboard.js') }}?v={{ asset_version }}"></script>
 {% endblock %}
