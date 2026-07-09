@@ -218,12 +218,13 @@
     }
 
     const method = (form.method || "GET").toUpperCase();
+    const body = new FormData(form);
     setFormBusy(form, true, method === "GET" ? "Searching..." : "Loading...");
     if (method === "GET") {
-      const params = new URLSearchParams(new FormData(form));
+      const params = new URLSearchParams(body);
       fetchPage(`${url.origin}${url.pathname}?${params.toString()}`);
     } else {
-      fetchPage(url.href, { method, body: new FormData(form) }).finally(() => setFormBusy(form, false, "Submit"));
+      fetchPage(url.href, { method, body }).finally(() => setFormBusy(form, false, "Submit"));
     }
   });
 
