@@ -260,6 +260,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "0 PDFs" in dashboard.text
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
+    assert "Info" in dashboard.text
     assert "By Year" not in dashboard.text
     assert "Top Journals" not in dashboard.text
     assert "Upload PDFs" not in dashboard.text
@@ -288,6 +289,13 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
     assert "data-copy" in cli_page.text
+    info_page = client.get("/web/info")
+    assert info_page.status_code == 200
+    assert "<h1" not in info_page.text
+    assert "Version" in info_page.text
+    assert "0.5.27" in info_page.text
+    assert "github.com/iihciyekub/netvault" in info_page.text
+    assert "yongjian.li@polyu.ed.hk" in info_page.text
 
     upload = client.post(
         "/web/upload",
@@ -349,6 +357,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert lookup.status_code == 200
     assert "Download" in lookup.text
     assert "Download All ZIP" in lookup.text
+    assert "results-header" in lookup.text
     assert "data-native-submit" in lookup.text
     assert "/web/pdfs/download?pdf_id=" in lookup.text
     assert "data-no-pjax" in lookup.text

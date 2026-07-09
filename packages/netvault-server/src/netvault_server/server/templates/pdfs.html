@@ -18,7 +18,7 @@
         <td>{{ pdf.title or pdf.original_name }}</td>
         <td>{{ pdf.container_title or "-" }}</td>
         <td class="num">{{ pdf.size|bytes }}</td>
-        <td><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
+        <td class="row-action"><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
       </tr>
     {% else %}
       <tr><td colspan="6">No PDFs found.</td></tr>

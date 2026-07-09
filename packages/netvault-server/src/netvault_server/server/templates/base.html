@@ -21,6 +21,7 @@
         <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}">CLI</a>
         <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" href="{{ path_for('/web/upload') }}">Upload</a>
         <a class="{% if request.url.path == '/web/download' %}active{% endif %}" href="{{ path_for('/web/download') }}">Download</a>
+        <a class="{% if request.url.path == '/web/info' %}active{% endif %}" href="{{ path_for('/web/info') }}">Info</a>
         {% if user.role.value == "admin" %}
         <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" href="{{ path_for('/web/admin') }}">Admin</a>
         {% endif %}

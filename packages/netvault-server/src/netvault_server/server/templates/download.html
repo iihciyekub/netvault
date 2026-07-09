@@ -7,30 +7,36 @@
   <button class="primary" type="submit">Find PDFs</button>
 </form>
 {% if matches %}
-<h2>Matches</h2>
-<div class="table-actions">
-  <form method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {% for pdf in matches %}
-      <input type="hidden" name="pdf_ids" value="{{ pdf.id }}">
-    {% endfor %}
-    <button class="primary" type="submit">Download All ZIP</button>
-  </form>
-  <span>{{ matches|length }} PDF{% if matches|length != 1 %}s{% endif %} matched</span>
-</div>
-<table class="results">
-  <thead><tr><th>DOI</th><th>Title</th><th>Size</th><th></th></tr></thead>
-  <tbody>
-  {% for pdf in matches %}
-    <tr>
-      <td>{{ pdf.doi }}</td>
-      <td>{{ pdf.title or pdf.original_name }}</td>
-      <td class="num">{{ pdf.size|bytes }}</td>
-      <td><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<section class="results-section">
+  <div class="results-header">
+    <div>
+      <h2>Matches</h2>
+      <p>{{ matches|length }} PDF{% if matches|length != 1 %}s{% endif %} matched</p>
+    </div>
+    <form method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for pdf in matches %}
+        <input type="hidden" name="pdf_ids" value="{{ pdf.id }}">
+      {% endfor %}
+      <button class="primary" type="submit">Download All ZIP</button>
+    </form>
+  </div>
+  <div class="table-scroll">
+    <table class="results">
+      <thead><tr><th>DOI</th><th>Title</th><th>Size</th><th></th></tr></thead>
+      <tbody>
+      {% for pdf in matches %}
+        <tr>
+          <td>{{ pdf.doi }}</td>
+          <td>{{ pdf.title or pdf.original_name }}</td>
+          <td class="num">{{ pdf.size|bytes }}</td>
+          <td class="row-action"><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endif %}
 {% if missing %}
 <h2>Missing</h2>

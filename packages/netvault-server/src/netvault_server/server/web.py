@@ -208,6 +208,14 @@ def dashboard(request: Request, filter: str = "all", db: Session = Depends(get_d
     )
 
 
+@router.get("/web/info", response_class=HTMLResponse, include_in_schema=False)
+def info_page(request: Request, db: Session = Depends(get_db)) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    return render(request, "info.html", {"user": user, "version": __version__})
+
+
 @router.get("/web/pdfs", response_class=HTMLResponse, include_in_schema=False)
 def pdfs_page(
     request: Request,

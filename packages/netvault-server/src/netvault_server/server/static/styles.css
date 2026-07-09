@@ -307,7 +307,10 @@ h2 {
   font-size: 13px;
 }
 
-.table-scroll { overflow-x: auto; }
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 16px;
+}
 
 table {
   width: 100%;
@@ -332,24 +335,95 @@ th {
 
 tr:last-child td { border-bottom: 0; }
 .compact th, .compact td { padding: 9px 8px; }
-.results { margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.results { margin-top: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .num { text-align: right; white-space: nowrap; }
 
-.table-actions {
+.results-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.results-section .table-scroll {
+  margin-top: 0;
+}
+
+.results-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
+  gap: 16px;
 }
 
-.table-actions form {
+.results-header h2 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.results-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.results-header form {
+  flex: 0 0 auto;
   margin: 0;
 }
 
-.table-actions span {
+.row-action {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.results td {
+  vertical-align: middle;
+}
+
+.results th:first-child,
+.results td:first-child {
+  padding-left: 12px;
+}
+
+.results th:last-child,
+.results td:last-child {
+  padding-right: 12px;
+}
+
+.info-panel {
+  max-width: 720px;
+  padding: 4px 0;
+}
+
+.info-list {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.info-list div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.info-list dt {
   color: var(--muted);
-  font-size: 13px;
+  font-weight: 600;
+}
+
+.info-list dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.info-list a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .heatmap-scroll {
@@ -926,6 +1000,13 @@ ul {
   .admin-grid { grid-template-columns: 1fr; }
   .command-grid { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
+  .results-header {
+    align-items: flex-start;
+  }
+  .info-list div {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
 }
 
 @media (max-width: 430px) {
