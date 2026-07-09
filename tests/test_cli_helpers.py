@@ -10,7 +10,60 @@ from netvault.cli.user import (
     collect_pdf_paths,
     unique_destination,
 )
+from netvault.cli.update import build_update_command
 from netvault.doi import extract_doi_evidence
+
+
+def test_update_command_uses_uv_for_uv_tool_install(monkeypatch) -> None:
+    monkeypatch.setattr("netvault.cli.update.shutil.which", lambda name: "/opt/homebrew/bin/uv" if name == "uv" else None)
+
+    command = build_update_command(
+        "git+https://github.com/iihciyekub/netvault.git",
+        "/Users/yjli/.local/share/uv/tools/netvault/bin/python",
+    )
+
+    assert command == [
+        "/opt/homebrew/bin/uv",
+        "tool",
+        "install",
+        "--force",
+        "git+https://github.com/iihciyekub/netvault.git",
+    ]
+
+
+def test_update_command_uses_pipx_for_pipx_install(monkeypatch) -> None:
+    def fake_which(name: str) -> str | None:
+        return "/usr/local/bin/pipx" if name == "pipx" else None
+
+    monkeypatch.setattr("netvault.cli.update.shutil.which", fake_which)
+
+    command = build_update_command(
+        "git+https://github.com/iihciyekub/netvault.git",
+        "/Users/yjli/.local/share/pipx/venvs/netvault/bin/python",
+    )
+
+    assert command == [
+        "/usr/local/bin/pipx",
+        "install",
+        "--force",
+        "git+https://github.com/iihciyekub/netvault.git",
+    ]
+
+
+def test_update_command_falls_back_to_current_python_pip(monkeypatch) -> None:
+    monkeypatch.setattr("netvault.cli.update.shutil.which", lambda name: None)
+
+    command = build_update_command("git+https://github.com/iihciyekub/netvault.git", "/tmp/venv/bin/python")
+
+    assert command == [
+        "/tmp/venv/bin/python",
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--force-reinstall",
+        "git+https://github.com/iihciyekub/netvault.git",
+    ]
 
 
 def test_collect_pdf_paths_recurses_and_deduplicates(tmp_path: Path) -> None:
