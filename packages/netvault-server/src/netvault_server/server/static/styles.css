@@ -351,8 +351,10 @@ tr:last-child td { border-bottom: 0; }
   --cell-size: 14px;
   --cell-column: 18px;
   --cell-gap: 4px;
+  --heat-row-height: 24px;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) repeat(var(--year-count), var(--cell-column)) 54px;
+  grid-template-columns: minmax(300px, 390px) repeat(var(--year-count), var(--cell-column)) 54px;
+  grid-auto-rows: var(--heat-row-height);
   gap: 8px var(--cell-gap);
   align-items: center;
   min-width: max-content;
@@ -401,6 +403,7 @@ tr:last-child td { border-bottom: 0; }
   z-index: 3;
   justify-self: stretch;
   overflow: visible;
+  align-self: stretch;
   width: var(--cell-column);
   height: 54px;
   background: #ffffff;
@@ -432,11 +435,11 @@ tr:last-child td { border-bottom: 0; }
   align-items: center;
   overflow: hidden;
   min-width: 0;
-  min-height: calc(var(--cell-size) + 6px);
+  height: var(--heat-row-height);
   padding: 2px 12px 2px 0;
   background: #ffffff;
   font-size: 13px;
-  line-height: 1.25;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
