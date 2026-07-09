@@ -293,7 +293,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert "<h1" not in info_page.text
     assert "Version" in info_page.text
-    assert "0.5.27" in info_page.text
+    assert "0.5.28" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert "yongjian.li@polyu.ed.hk" in info_page.text
 

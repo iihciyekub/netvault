@@ -15,21 +15,25 @@
         <span>NetVault</span>
       </a>
       {% if user %}
-      <nav>
+      <nav class="primary-nav" aria-label="Primary">
         <a class="{% if request.url.path == '/web' %}active{% endif %}" href="{{ path_for('/web') }}">Home</a>
         <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" href="{{ path_for('/web/pdfs') }}">Search</a>
-        <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}">CLI</a>
         <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" href="{{ path_for('/web/upload') }}">Upload</a>
         <a class="{% if request.url.path == '/web/download' %}active{% endif %}" href="{{ path_for('/web/download') }}">Download</a>
-        <a class="{% if request.url.path == '/web/info' %}active{% endif %}" href="{{ path_for('/web/info') }}">Info</a>
-        {% if user.role.value == "admin" %}
-        <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" href="{{ path_for('/web/admin') }}">Admin</a>
-        {% endif %}
       </nav>
-      <form method="post" action="{{ path_for('/web/logout') }}" class="logout">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="ghost" type="submit">{{ user.username }} / Logout</button>
-      </form>
+      <div class="topbar-right">
+        <nav class="utility-nav" aria-label="Utilities">
+          <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}">CLI</a>
+          {% if user.role.value == "admin" %}
+          <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" href="{{ path_for('/web/admin') }}">Admin</a>
+          {% endif %}
+          <a class="{% if request.url.path == '/web/info' %}active{% endif %}" href="{{ path_for('/web/info') }}">Info</a>
+        </nav>
+        <form method="post" action="{{ path_for('/web/logout') }}" class="logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="ghost" type="submit">{{ user.username }} / Logout</button>
+        </form>
+      </div>
       {% endif %}
     </header>
     <main class="page" id="app-main">
