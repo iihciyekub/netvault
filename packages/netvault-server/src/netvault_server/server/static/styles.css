@@ -255,16 +255,19 @@ tr:last-child td { border-bottom: 0; }
 }
 
 .heat-year {
-  display: grid;
-  place-items: end center;
-  justify-self: center;
-  width: var(--cell-size);
-  height: 38px;
+  position: relative;
+  justify-self: stretch;
+  width: var(--cell-column);
+  height: 44px;
 }
 
 .heat-year span {
   display: block;
-  transform: rotate(-90deg);
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  line-height: 1;
+  transform: translateX(-50%) rotate(-90deg);
   transform-origin: center;
   white-space: nowrap;
 }
