@@ -335,6 +335,23 @@ tr:last-child td { border-bottom: 0; }
 .results { margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .num { text-align: right; white-space: nowrap; }
 
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.table-actions form {
+  margin: 0;
+}
+
+.table-actions span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .heatmap-scroll {
   overflow: auto;
   padding-top: 8px;

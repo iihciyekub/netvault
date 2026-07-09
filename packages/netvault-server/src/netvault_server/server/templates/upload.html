@@ -2,7 +2,7 @@
 {% block title %}Upload - NetVault{% endblock %}
 {% block content %}
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
-<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide" data-upload-form>
+<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide" data-upload-form data-precheck-url="{{ path_for('/web/pdfs/exists') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="dropzone" id="dropzone">
     <input id="file-input" name="files" type="file" accept="application/pdf,.pdf" multiple required>

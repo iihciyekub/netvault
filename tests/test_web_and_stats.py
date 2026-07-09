@@ -1,6 +1,8 @@
 import hashlib
 import importlib
+import io
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -269,6 +271,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "<h1" not in upload_page.text
     assert "raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh" not in upload_page.text
     assert "data-upload-form" in upload_page.text
+    assert "data-precheck-url=\"/web/pdfs/exists\"" in upload_page.text
     assert "upload-progress" in upload_page.text
     download_page = client.get("/web/download")
     assert download_page.status_code == 200
@@ -345,6 +348,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     )
     assert lookup.status_code == 200
     assert "Download" in lookup.text
+    assert "Download All ZIP" in lookup.text
+    assert "data-native-submit" in lookup.text
     assert "/web/pdfs/download?pdf_id=" in lookup.text
     assert "data-no-pjax" in lookup.text
 
@@ -355,6 +360,23 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     downloaded_by_id = client.get("/web/pdfs/download", params={"pdf_id": pdf_id})
     assert downloaded_by_id.status_code == 200
     assert hashlib.sha256(downloaded_by_id.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
+    exists = client.post(
+        "/web/pdfs/exists",
+        headers={"x-csrf-token": client.cookies["netvault_csrf"]},
+        json={"sha256": [hashlib.sha256(PDF_BYTES).hexdigest()]},
+    )
+    assert exists.status_code == 200
+    assert hashlib.sha256(PDF_BYTES).hexdigest() in exists.json()["existing"]
+    zipped = client.post(
+        "/web/pdfs/download-all",
+        data={"csrf_token": client.cookies["netvault_csrf"], "pdf_ids": [str(pdf_id)]},
+    )
+    assert zipped.status_code == 200
+    assert zipped.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(zipped.content)) as archive:
+        names = archive.namelist()
+        assert names == ["10.1234_web.test.pdf"]
+        assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
 
 
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:

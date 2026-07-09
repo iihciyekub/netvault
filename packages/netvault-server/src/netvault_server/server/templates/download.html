@@ -8,6 +8,16 @@
 </form>
 {% if matches %}
 <h2>Matches</h2>
+<div class="table-actions">
+  <form method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for pdf in matches %}
+      <input type="hidden" name="pdf_ids" value="{{ pdf.id }}">
+    {% endfor %}
+    <button class="primary" type="submit">Download All ZIP</button>
+  </form>
+  <span>{{ matches|length }} PDF{% if matches|length != 1 %}s{% endif %} matched</span>
+</div>
 <table class="results">
   <thead><tr><th>DOI</th><th>Title</th><th>Size</th><th></th></tr></thead>
   <tbody>

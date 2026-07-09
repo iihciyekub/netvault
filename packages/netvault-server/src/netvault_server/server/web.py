@@ -1,10 +1,13 @@
 from pathlib import Path
 import secrets
+import tempfile
 from typing import Any
+import zipfile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -13,7 +16,7 @@ from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
 from netvault_server.server.journal_filters import normalize_filter_key
-from netvault_server.server.main_helpers import process_upload
+from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.models import DownloadRecord, Pdf, User, UserRole
 from netvault_server.server.security import create_access_token, decode_access_token, hash_password, verify_password
 from netvault_server.server.stats import (
@@ -65,6 +68,23 @@ def validate_csrf(request: Request, submitted_token: str) -> None:
     cookie_token = request.cookies.get(CSRF_COOKIE)
     if not cookie_token or not submitted_token or not secrets.compare_digest(cookie_token, submitted_token):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid CSRF token")
+
+
+def safe_zip_name(pdf: Pdf, used: set[str]) -> str:
+    raw = (pdf.doi or pdf.original_name or str(pdf.id)).replace("/", "_").replace("\\", "_")
+    if not raw.lower().endswith(".pdf"):
+        raw = f"{raw}.pdf"
+    name = "".join(char if char.isalnum() or char in " ._-()" else "_" for char in raw).strip(" ._")
+    if not name:
+        name = f"{pdf.id}.pdf"
+    candidate = name
+    index = 2
+    while candidate.lower() in used:
+        base = name[:-4] if name.lower().endswith(".pdf") else name
+        candidate = f"{base}-{index}.pdf"
+        index += 1
+    used.add(candidate.lower())
+    return candidate
 
 
 def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse:
@@ -353,6 +373,23 @@ async def upload_submit(
     return render(request, "upload.html", {"user": user, "results": results, "error": None})
 
 
+@router.post("/web/pdfs/exists", include_in_schema=False)
+async def web_existing_pdfs_by_sha256(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    validate_csrf(request, request.headers.get("x-csrf-token", ""))
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    payload = await request.json()
+    hashes = sorted({sha for sha in payload.get("sha256", []) if isinstance(sha, str) and len(sha) == 64})
+    if not hashes:
+        return {"existing": {}}
+    pdfs = db.scalars(select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))).all()
+    return {"existing": {pdf.sha256: pdf_to_read(pdf).model_dump(mode="json") for pdf in pdfs}}
+
+
 @router.get("/web/download", response_class=HTMLResponse, include_in_schema=False)
 def download_page(request: Request, db: Session = Depends(get_db)) -> Any:
     user = require_web_user(request, db)
@@ -416,3 +453,46 @@ def web_pdf_download(
     db.add(DownloadRecord(pdf_id=pdf.id, user_id=user.id))
     db.commit()
     return FileResponse(path, media_type="application/pdf", filename=Path(pdf.original_name).name)
+
+
+@router.post("/web/pdfs/download-all", include_in_schema=False)
+def web_pdf_download_all(
+    request: Request,
+    pdf_ids: list[int] = Form(default=[]),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, csrf_token_value)
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    ids = list(dict.fromkeys(pdf_ids))
+    if not ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No PDFs selected")
+    pdfs = db.scalars(select(Pdf).where(Pdf.id.in_(ids), Pdf.is_deleted.is_(False))).all()
+    ordered = sorted(pdfs, key=lambda pdf: ids.index(pdf.id))
+    if not ordered:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No PDFs found")
+
+    handle = tempfile.NamedTemporaryFile(prefix="netvault-download-", suffix=".zip", delete=False)
+    zip_path = Path(handle.name)
+    handle.close()
+    used_names: set[str] = set()
+    try:
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            for pdf in ordered:
+                path = object_path(pdf.sha256)
+                if not path.exists():
+                    continue
+                archive.write(path, arcname=safe_zip_name(pdf, used_names))
+                db.add(DownloadRecord(pdf_id=pdf.id, user_id=user.id))
+        db.commit()
+    except Exception:
+        zip_path.unlink(missing_ok=True)
+        raise
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename="netvault-pdfs.zip",
+        background=BackgroundTask(zip_path.unlink, missing_ok=True),
+    )

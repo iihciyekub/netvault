@@ -149,22 +149,148 @@
     else summary.textContent = `${count} files selected`;
   };
 
-  const uploadWithProgress = (form) => {
+  const toHex = (buffer) =>
+    Array.from(new Uint8Array(buffer))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+
+  const fileSha256 = async (file) => {
+    const buffer = await file.arrayBuffer();
+    return toHex(await crypto.subtle.digest("SHA-256", buffer));
+  };
+
+  const hasPdfHeader = async (file) => {
+    const header = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+    return header[0] === 0x25 && header[1] === 0x50 && header[2] === 0x44 && header[3] === 0x46 && header[4] === 0x2d;
+  };
+
+  const resultDetail = (row) => {
+    if (!row.ok) return row.error || "";
+    return row.doi || "";
+  };
+
+  const renderUploadRows = (rows) => {
+    if (!rows.length) return;
+    qsa("[data-client-upload-results]").forEach((node) => node.remove());
+    let table = qs(".results");
+    if (!table) {
+      const heading = document.createElement("h2");
+      heading.textContent = "Results";
+      heading.setAttribute("data-client-upload-results", "");
+      table = document.createElement("table");
+      table.className = "results";
+      table.setAttribute("data-client-upload-results", "");
+      table.innerHTML = "<thead><tr><th>File</th><th>Status</th><th>DOI / Error</th></tr></thead><tbody></tbody>";
+      const form = qs("[data-upload-form]");
+      form.insertAdjacentElement("afterend", table);
+      form.insertAdjacentElement("afterend", heading);
+    }
+    const tbody = qs("tbody", table);
+    rows
+      .slice()
+      .reverse()
+      .forEach((row) => {
+        const tr = document.createElement("tr");
+        const file = document.createElement("td");
+        const status = document.createElement("td");
+        const detail = document.createElement("td");
+        file.textContent = row.filename || "";
+        status.textContent = row.ok ? row.status || "uploaded" : "failed";
+        detail.textContent = resultDetail(row);
+        tr.append(file, status, detail);
+        tbody.prepend(tr);
+      });
+  };
+
+  const checkExistingPdfs = async (form, hashes, csrfToken) => {
+    const url = form.getAttribute("data-precheck-url");
+    if (!url || !hashes.length) return {};
+    const response = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken,
+        "X-Requested-With": "fetch",
+      },
+      body: JSON.stringify({ sha256: hashes }),
+    });
+    if (!response.ok) throw new Error("Server check failed");
+    const payload = await response.json();
+    return payload.existing || {};
+  };
+
+  const uploadWithProgress = async (form) => {
     const xhr = new XMLHttpRequest();
-    const body = new FormData(form);
     const progress = qs(".upload-progress", form);
     const progressBar = qs(".upload-progress-bar span", form);
     const progressText = qs(".upload-progress p", form);
+    const fileInput = qs("input[type='file']", form);
+    const selectedFiles = fileInput ? Array.from(fileInput.files) : [];
+    const originalBody = new FormData(form);
+    const csrfToken = originalBody.get("csrf_token") || "";
+    const manualDoi = String(originalBody.get("doi") || "").trim();
+    const preRows = [];
 
-    setFormBusy(form, true, "Uploading...");
+    setFormBusy(form, true, "Checking...");
     if (progress) progress.hidden = false;
     if (progressBar) progressBar.style.width = "0%";
-    if (progressText) progressText.textContent = "Uploading 0%";
+    if (progressText) progressText.textContent = "Hashing PDFs...";
+
+    if (manualDoi && selectedFiles.length !== 1) {
+      renderUploadRows([{ filename: "Upload", ok: false, error: "Manual DOI can only be used with one file." }]);
+      if (progressText) progressText.textContent = "Upload stopped";
+      setFormBusy(form, false, "Upload");
+      return;
+    }
+
+    const hashedFiles = [];
+    for (const [index, file] of selectedFiles.entries()) {
+      if (!file.name.toLowerCase().endsWith(".pdf") || !(await hasPdfHeader(file))) {
+        preRows.push({ filename: file.name, ok: false, error: "invalid PDF file: expected %PDF- header" });
+        continue;
+      }
+      const sha256 = await fileSha256(file);
+      hashedFiles.push({ file, sha256 });
+      if (progressBar) progressBar.style.width = `${Math.round(((index + 1) / Math.max(1, selectedFiles.length)) * 35)}%`;
+      if (progressText) progressText.textContent = `Hashing ${index + 1}/${selectedFiles.length} PDFs`;
+    }
+
+    if (progressText) progressText.textContent = "Checking server...";
+    const existing = await checkExistingPdfs(
+      form,
+      hashedFiles.map((entry) => entry.sha256),
+      csrfToken
+    );
+    const newFiles = [];
+    hashedFiles.forEach((entry) => {
+      const pdf = existing[entry.sha256];
+      if (pdf) {
+        preRows.push({ filename: entry.file.name, ok: true, status: "existing", doi: pdf.doi });
+      } else {
+        newFiles.push(entry.file);
+      }
+    });
+
+    if (!newFiles.length) {
+      if (progressBar) progressBar.style.width = "100%";
+      if (progressText) progressText.textContent = "Done";
+      renderUploadRows(preRows);
+      setFormBusy(form, false, "Upload");
+      return;
+    }
+
+    const body = new FormData();
+    body.append("csrf_token", csrfToken);
+    body.append("doi", manualDoi);
+    if (originalBody.get("no_crossref")) body.append("no_crossref", originalBody.get("no_crossref"));
+    newFiles.forEach((file) => body.append("files", file, file.name));
+    if (progressText) progressText.textContent = `Uploading ${newFiles.length} new PDF${newFiles.length === 1 ? "" : "s"}...`;
 
     xhr.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return;
       const percent = Math.round((event.loaded / event.total) * 100);
-      if (progressBar) progressBar.style.width = `${percent}%`;
+      if (progressBar) progressBar.style.width = `${35 + Math.round(percent * 0.65)}%`;
       if (progressText) progressText.textContent = percent >= 100 ? "Processing PDFs..." : `Uploading ${percent}%`;
     });
 
@@ -173,6 +299,7 @@
         if (progressBar) progressBar.style.width = "100%";
         if (progressText) progressText.textContent = "Done";
         updateFromHtml(xhr.responseText, xhr.responseURL || form.action, true);
+        renderUploadRows(preRows);
       } else {
         if (progressText) progressText.textContent = "Upload failed";
         setFormBusy(form, false, "Upload");
@@ -210,11 +337,16 @@
   document.addEventListener("submit", (event) => {
     const form = event.target;
     const url = sameOriginUrl(form.action);
+    if (form.hasAttribute("data-native-submit")) return;
     if (!url || !isWebPath(url)) return;
     event.preventDefault();
 
     if (form.matches("[data-upload-form]")) {
-      uploadWithProgress(form);
+      uploadWithProgress(form).catch(() => {
+        const progressText = qs(".upload-progress p", form);
+        if (progressText) progressText.textContent = "Upload check failed";
+        setFormBusy(form, false, "Upload");
+      });
       return;
     }
 
