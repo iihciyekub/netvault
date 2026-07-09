@@ -256,6 +256,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Current View" in dashboard.text
     assert "UTD24" in dashboard.text
     assert "ABS 4*" in dashboard.text
+    assert "<span>Users</span>" not in dashboard.text
+    assert "Admin" in dashboard.text
     assert "By Year" not in dashboard.text
     assert "Top Journals" not in dashboard.text
     assert "Upload PDFs" not in dashboard.text
@@ -345,6 +347,62 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     downloaded = client.get("/web/pdfs/download", params={"doi": "10.1234/web.test"})
     assert downloaded.status_code == 200
     assert hashlib.sha256(downloaded.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
+
+
+def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:
+    web_login(client)
+    admin_page = client.get("/web/admin")
+    assert admin_page.status_code == 200
+    assert "Create User" in admin_page.text
+    assert "Reset Password" in admin_page.text
+
+    csrf = client.cookies["netvault_csrf"]
+    created = client.post(
+        "/web/admin/users/create",
+        data={"username": "carol", "password": "carol-pass", "role": "user", "csrf_token": csrf},
+    )
+    assert created.status_code == 200
+    assert "Created carol (user)." in created.text
+    assert "carol" in created.text
+
+    old_login = client.post("/auth/login", json={"username": "carol", "password": "carol-pass"})
+    assert old_login.status_code == 200
+
+    reset = client.post(
+        "/web/admin/users/reset-password",
+        data={"username": "carol", "password": "new-carol-pass", "csrf_token": client.cookies["netvault_csrf"]},
+    )
+    assert reset.status_code == 200
+    assert "Updated password for carol." in reset.text
+    assert client.post("/auth/login", json={"username": "carol", "password": "carol-pass"}).status_code == 401
+    assert client.post("/auth/login", json={"username": "carol", "password": "new-carol-pass"}).status_code == 200
+
+    deactivated = client.post(
+        "/web/admin/users/set-active",
+        data={"username": "carol", "active": "false", "csrf_token": client.cookies["netvault_csrf"]},
+    )
+    assert deactivated.status_code == 200
+    assert "Deactivated carol." in deactivated.text
+    assert client.post("/auth/login", json={"username": "carol", "password": "new-carol-pass"}).status_code == 401
+
+    activated = client.post(
+        "/web/admin/users/set-active",
+        data={"username": "carol", "active": "true", "csrf_token": client.cookies["netvault_csrf"]},
+    )
+    assert activated.status_code == 200
+    assert "Activated carol." in activated.text
+
+    client.cookies.clear()
+    login_page = client.get("/web/login")
+    csrf = login_page.cookies["netvault_csrf"]
+    login = client.post(
+        "/web/login",
+        data={"username": "carol", "password": "new-carol-pass", "csrf_token": csrf},
+    )
+    assert login.status_code == 200
+    user_home = client.get("/web")
+    assert "Admin" not in user_home.text
+    assert client.get("/web/admin").status_code == 403
 
 
 def test_static_assets_are_long_cached(client: TestClient) -> None:

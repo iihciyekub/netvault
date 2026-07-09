@@ -14,8 +14,8 @@ from netvault_server.server.database import get_db
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
 from netvault_server.server.journal_filters import normalize_filter_key
 from netvault_server.server.main_helpers import process_upload
-from netvault_server.server.models import DownloadRecord, Pdf, User
-from netvault_server.server.security import create_access_token, decode_access_token, verify_password
+from netvault_server.server.models import DownloadRecord, Pdf, User, UserRole
+from netvault_server.server.security import create_access_token, decode_access_token, hash_password, verify_password
 from netvault_server.server.stats import (
     get_dashboard_stats,
 )
@@ -101,6 +101,31 @@ def get_cookie_user(request: Request, db: Session) -> User | None:
 def require_web_user(request: Request, db: Session) -> User | RedirectResponse:
     user = get_cookie_user(request, db)
     return user if user else redirect("/web/login")
+
+
+def require_web_admin(request: Request, db: Session) -> User | RedirectResponse:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return user
+
+
+def admin_context(
+    request: Request,
+    user: User,
+    db: Session,
+    *,
+    error: str | None = None,
+    message: str | None = None,
+) -> HTMLResponse:
+    users = db.scalars(select(User).order_by(User.username.asc())).all()
+    return render(
+        request,
+        "admin.html",
+        {"user": user, "users": users, "error": error, "message": message, "roles": list(UserRole)},
+    )
 
 
 @router.get("/", include_in_schema=False)
@@ -203,6 +228,91 @@ def cli_page(request: Request, db: Session = Depends(get_db)) -> Any:
     if isinstance(user, RedirectResponse):
         return user
     return render(request, "cli.html", {"user": user})
+
+
+@router.get("/web/admin", response_class=HTMLResponse, include_in_schema=False)
+def admin_page(request: Request, db: Session = Depends(get_db)) -> Any:
+    user = require_web_admin(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    return admin_context(request, user, db)
+
+
+@router.post("/web/admin/users/create", response_class=HTMLResponse, include_in_schema=False)
+def admin_create_user(
+    request: Request,
+    username: str = Form(""),
+    password: str = Form(""),
+    role: str = Form("user"),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, csrf_token_value)
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    username = username.strip()
+    password = password.strip()
+    try:
+        user_role = UserRole(role)
+    except ValueError:
+        return admin_context(request, admin, db, error="Invalid role.")
+    if not username or not password:
+        return admin_context(request, admin, db, error="Username and password are required.")
+    existing = db.scalar(select(User).where(User.username == username))
+    if existing is not None:
+        return admin_context(request, admin, db, error="Username already exists.")
+    db.add(User(username=username, password_hash=hash_password(password), role=user_role))
+    db.commit()
+    return admin_context(request, admin, db, message=f"Created {username} ({user_role.value}).")
+
+
+@router.post("/web/admin/users/reset-password", response_class=HTMLResponse, include_in_schema=False)
+def admin_reset_password(
+    request: Request,
+    username: str = Form(""),
+    password: str = Form(""),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, csrf_token_value)
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    username = username.strip()
+    password = password.strip()
+    target = db.scalar(select(User).where(User.username == username))
+    if target is None:
+        return admin_context(request, admin, db, error="User not found.")
+    if not password:
+        return admin_context(request, admin, db, error="New password is required.")
+    target.password_hash = hash_password(password)
+    db.commit()
+    return admin_context(request, admin, db, message=f"Updated password for {target.username}.")
+
+
+@router.post("/web/admin/users/set-active", response_class=HTMLResponse, include_in_schema=False)
+def admin_set_user_active(
+    request: Request,
+    username: str = Form(""),
+    active: bool = Form(...),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, csrf_token_value)
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    username = username.strip()
+    target = db.scalar(select(User).where(User.username == username))
+    if target is None:
+        return admin_context(request, admin, db, error="User not found.")
+    if target.id == admin.id and not active:
+        return admin_context(request, admin, db, error="You cannot deactivate your current account.")
+    target.is_active = active
+    db.commit()
+    verb = "Activated" if active else "Deactivated"
+    return admin_context(request, admin, db, message=f"{verb} {target.username}.")
 
 
 @router.get("/web/upload", response_class=HTMLResponse, include_in_schema=False)

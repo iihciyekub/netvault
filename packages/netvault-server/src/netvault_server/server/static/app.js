@@ -48,6 +48,7 @@
     const nextTopbar = qs(".topbar", nextDoc);
     const currentTopbar = qs(".topbar");
     if (currentTopbar && nextTopbar) currentTopbar.innerHTML = nextTopbar.innerHTML;
+    document.body.className = nextDoc.body.className;
     currentMain.innerHTML = nextMain.innerHTML;
     document.title = nextDoc.title || document.title;
 

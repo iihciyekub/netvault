@@ -196,7 +196,7 @@ h2 {
 
 .summary-metrics {
   flex: 0 0 auto;
-  grid-template-columns: minmax(160px, 1.05fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(160px, 1.05fr) repeat(3, minmax(0, 1fr));
 }
 
 .metrics article,
@@ -480,6 +480,7 @@ tr:last-child td { border-bottom: 0; }
 }
 
 input,
+select,
 textarea {
   width: 100%;
   min-height: 42px;
@@ -494,6 +495,7 @@ textarea {
 
 textarea { resize: vertical; }
 input:focus,
+select:focus,
 textarea:focus {
   border-color: #000000;
   box-shadow: 0 0 0 3px var(--focus);
@@ -564,6 +566,26 @@ button:disabled,
 }
 
 .form.wide { max-width: none; }
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.admin-grid h2 {
+  margin-bottom: 0;
+}
+
+.inline-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.admin-table td:last-child {
+  text-align: right;
+}
 
 .cli-help {
   display: grid;
@@ -750,6 +772,12 @@ label {
   background: var(--danger-bg);
 }
 
+.alert.success {
+  border-color: var(--line-strong);
+  color: var(--fg);
+  background: var(--soft);
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -849,6 +877,7 @@ ul {
   .actions .button { flex: 1 1 auto; }
   .metrics { grid-template-columns: 1fr; }
   .summary-metrics { grid-template-columns: 1fr; }
+  .admin-grid { grid-template-columns: 1fr; }
   .command-grid { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
 }
