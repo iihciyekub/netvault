@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-logging.getLogger("pypdf").setLevel(logging.ERROR)
+logging.getLogger("pypdf").setLevel(logging.CRITICAL)
 
 DOI_SUFFIX_RE = r"[-._;()/:,A-Z0-9+%<>=]+"
 DOI_RE = re.compile(rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE})", re.IGNORECASE)

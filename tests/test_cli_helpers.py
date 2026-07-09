@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 
 from netvault.cli.user import (
     cached_file_sha256,
@@ -12,7 +13,13 @@ from netvault.cli.user import (
     unique_destination,
 )
 from netvault.cli.update import build_update_command
+import netvault.doi
 from netvault.doi import extract_doi_evidence
+
+
+def test_pypdf_logs_are_quiet_for_cli_upload() -> None:
+    assert logging.getLogger("pypdf").getEffectiveLevel() >= logging.CRITICAL
+    assert netvault.doi.PdfReader is not None
 
 
 def test_update_command_uses_uv_for_uv_tool_install(monkeypatch) -> None:
