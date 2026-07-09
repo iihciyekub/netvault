@@ -26,6 +26,15 @@ DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 
 app = typer.Typer(
     help="NetVault team PDF vault CLI.",
+    epilog="""\b
+Examples:
+  nv login https://iiaide.com/nv
+  nv upload ./paper.pdf ./papers
+  nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
+  nv download --file ./dois.txt --to ./downloads
+  nv update
+""",
+    rich_markup_mode=None,
     context_settings={"token_normalize_func": str.lower},
 )
 console = Console()
@@ -227,7 +236,13 @@ def ensure_logged_in() -> None:
     console.print(f"Logged in to {server.rstrip('/')} as {username}.")
 
 
-@app.command()
+@app.command(
+    epilog="""\b
+Examples:
+  nv login https://iiaide.com/nv
+  nv login
+""",
+)
 def login(
     server: str = typer.Argument(DEFAULT_SERVER_URL, help="NetVault server URL."),
     username: str = typer.Option(..., prompt=True),
@@ -237,7 +252,12 @@ def login(
     console.print(f"Logged in to {server.rstrip('/')} as {username}.")
 
 
-@app.command()
+@app.command(
+    epilog="""\b
+Examples:
+  nv logout
+""",
+)
 def logout() -> None:
     try:
         response = requests.post(f"{server_url()}/auth/logout", headers=auth_headers(), timeout=30)
@@ -247,7 +267,22 @@ def logout() -> None:
     console.print("Logged out.")
 
 
-@app.command("upload")
+@app.command(
+    "upload",
+    epilog="""\b
+Examples:
+  nv upload ./paper.pdf
+  nv upload ./paper-a.pdf ./paper-b.pdf
+  nv upload ~/Downloads/papers
+  nv upload ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+  nv upload ~/Downloads/papers --no-crossref
+
+\b
+Notes:
+  Directories are scanned recursively for .pdf/.PDF files.
+  Existing PDFs are skipped before upload by checking DOI and sha256.
+""",
+)
 def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
@@ -355,17 +390,42 @@ def upload_command(
         console.print(f"failed: {pdf_path}: {error}")
 
 
-@app.command("list")
+@app.command(
+    "list",
+    epilog="""\b
+Examples:
+  nv list
+""",
+)
 def list_command() -> None:
     render_pdf_table(api_get("/pdfs"))
 
 
-@app.command()
+@app.command(
+    epilog="""\b
+Examples:
+  nv search supply
+  nv search 10.1016
+""",
+)
 def search(query: str = typer.Argument(...)) -> None:
     render_pdf_table(api_get("/pdfs/search", q=query))
 
 
-@app.command()
+@app.command(
+    epilog="""\b
+Examples:
+  nv download 10.1016/j.ijpe.2018.04.006 --to ~/Downloads
+  nv download 10.1016/j.ijpe.2018.04.006 10.1234/example.doi --to ./downloads
+  nv download --file ./dois.txt --to ./downloads
+  nv download 10.1016/j.ijpe.2018.04.006 --file ./more-dois.txt --to ./downloads
+
+\b
+Notes:
+  --file reads any text file and extracts DOI values with NetVault's DOI regex.
+  Duplicate DOI values are downloaded once.
+""",
+)
 def download(
     dois: list[str] = typer.Argument(None, help="DOI values, for example 10.1145/3368089.3409742"),
     to: Path = typer.Option(Path("."), "--to", help="Destination directory"),
@@ -443,7 +503,12 @@ def download(
         console.print(f"failed: {doi}: {error}")
 
 
-@app.command()
+@app.command(
+    epilog="""\b
+Examples:
+  nv status
+""",
+)
 def status() -> None:
     me = api_get("/me")
     pdfs = api_get("/pdfs")
@@ -454,7 +519,13 @@ def status() -> None:
     console.print(f"Total bytes: {total_size:,}")
 
 
-@app.command()
+@app.command(
+    epilog="""\b
+Examples:
+  nv update
+  nv update --repo-url https://github.com/YOUR_NAME/YOUR_REPO.git
+""",
+)
 def update(
     repo_url: str | None = typer.Option(
         None,
