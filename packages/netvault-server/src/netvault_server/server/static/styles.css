@@ -379,8 +379,7 @@ tr:last-child td { border-bottom: 0; }
   top: 0;
   z-index: 6;
   align-self: stretch;
-  height: calc(100% + 18px);
-  margin-bottom: -18px;
+  height: 54px;
   background: #ffffff;
 }
 
@@ -429,11 +428,15 @@ tr:last-child td { border-bottom: 0; }
   position: sticky;
   left: 0;
   z-index: 5;
+  display: flex;
+  align-items: center;
   overflow: hidden;
   min-width: 0;
+  min-height: calc(var(--cell-size) + 6px);
   padding: 2px 12px 2px 0;
   background: #ffffff;
   font-size: 13px;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
