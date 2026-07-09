@@ -76,6 +76,10 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert by_year.json() == [{"year": 2026, "count": 1}]
     by_journal = client.get("/stats/by-journal", headers=headers)
     assert by_journal.json()[0] == {"journal": "Web Journal", "count": 1}
+    journal_year = client.get("/stats/by-journal-year", headers=headers)
+    assert journal_year.status_code == 200
+    assert journal_year.json()["max_count"] == 1
+    assert journal_year.json()["rows"][0]["cells"][0] == {"year": 2026, "count": 1, "level": 4}
 
 
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
@@ -94,7 +98,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert response.status_code == 200
     dashboard = client.get("/web")
     assert dashboard.status_code == 200
-    assert "Dashboard" in dashboard.text
+    assert "No journal-year data." in dashboard.text
 
     csrf = client.cookies["netvault_csrf"]
     upload = client.post(
@@ -105,6 +109,10 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert upload.status_code == 200
     assert "10.1234/web.test" in upload.text
     assert "Drop PDF files" in upload.text
+    dashboard = client.get("/web")
+    assert dashboard.status_code == 200
+    assert "journal-heatmap" in dashboard.text
+    assert "heat-cell level-4" in dashboard.text
 
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200

@@ -188,6 +188,20 @@ h2 {
 }
 
 .panel { padding: 16px; }
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panel-subtitle {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .table-scroll { overflow-x: auto; }
 
 table {
@@ -215,6 +229,96 @@ tr:last-child td { border-bottom: 0; }
 .compact th, .compact td { padding: 9px 8px; }
 .results { margin-top: 16px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .num { text-align: right; white-space: nowrap; }
+
+.heatmap-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.journal-heatmap {
+  --cell-size: 14px;
+  --cell-column: 18px;
+  --cell-gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) repeat(var(--year-count), var(--cell-column)) 54px;
+  gap: 8px var(--cell-gap);
+  align-items: center;
+  min-width: max-content;
+}
+
+.heat-corner,
+.heat-year,
+.heat-total-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.heat-year,
+.heat-total-head,
+.heat-total {
+  text-align: center;
+}
+
+.heat-year {
+  display: grid;
+  place-items: end center;
+  justify-self: center;
+  width: var(--cell-size);
+  height: 38px;
+}
+
+.heat-year span {
+  display: block;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  white-space: nowrap;
+}
+
+.heat-journal {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  overflow: hidden;
+  min-width: 0;
+  padding: 2px 12px 2px 0;
+  background: #ffffff;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heat-cell {
+  display: inline-block;
+  justify-self: center;
+  width: var(--cell-size);
+  height: var(--cell-size);
+  border: 1px solid rgba(27, 31, 36, 0.06);
+  border-radius: 3px;
+  background: #ebedf0;
+}
+
+.heat-cell.level-0 { background: #ebedf0; }
+.heat-cell.level-1 { background: #9be9a8; }
+.heat-cell.level-2 { background: #40c463; }
+.heat-cell.level-3 { background: #30a14e; }
+.heat-cell.level-4 { background: #216e39; }
+
+.heat-total {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 input,
 textarea {
@@ -402,8 +506,13 @@ ul {
   }
   .page { width: min(100vw - 28px, 1040px); padding-top: 32px; }
   .page-head { display: grid; align-items: start; gap: 16px; }
+  .panel-heading { display: grid; gap: 10px; }
   .actions { width: 100%; }
   .actions .button { flex: 1 1 auto; }
   .metrics, .split { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
+  .journal-heatmap {
+    --cell-column: 18px;
+    grid-template-columns: minmax(190px, 220px) repeat(var(--year-count), var(--cell-column)) 48px;
+  }
 }

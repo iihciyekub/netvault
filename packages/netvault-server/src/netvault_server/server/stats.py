@@ -71,10 +71,36 @@ def get_by_journal_year(db: Session, limit: int = 20) -> dict[str, Any]:
     by_journal = {name: {year: 0 for year in years} for name in top_journals}
     for row in rows:
         by_journal[row.journal][row.published_year] = row.count
+    max_count = max((row.count for row in rows), default=0)
+
+    def level(count: int) -> int:
+        if count <= 0 or max_count <= 0:
+            return 0
+        if count >= max_count:
+            return 4
+        ratio = count / max_count
+        if ratio >= 0.66:
+            return 3
+        if ratio >= 0.33:
+            return 2
+        return 1
+
     return {
         "years": years,
+        "max_count": max_count,
         "rows": [
-            {"journal": journal_name, "counts": [counts[year] for year in years]}
+            {
+                "journal": journal_name,
+                "total": sum(counts.values()),
+                "cells": [
+                    {
+                        "year": year,
+                        "count": counts[year],
+                        "level": level(counts[year]),
+                    }
+                    for year in years
+                ],
+            }
             for journal_name, counts in by_journal.items()
         ],
     }
