@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
 from netvault_server.server.main_helpers import process_upload
@@ -42,6 +43,18 @@ def format_bytes(size: int) -> str:
 templates.env.filters["bytes"] = format_bytes
 
 
+def base_path() -> str:
+    raw = get_settings().base_path.strip()
+    if not raw or raw == "/":
+        return ""
+    return "/" + raw.strip("/")
+
+
+def external_path(path: str) -> str:
+    suffix = path if path.startswith("/") else f"/{path}"
+    return f"{base_path()}{suffix}"
+
+
 def csrf_token(request: Request) -> str:
     token = request.cookies.get(CSRF_COOKIE)
     return token if token else secrets.token_urlsafe(32)
@@ -59,14 +72,14 @@ def validate_csrf(request: Request, submitted_token: str) -> None:
 
 def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse:
     token = csrf_token(request)
-    context = {**context, "request": request, "csrf_token": token}
+    context = {**context, "request": request, "csrf_token": token, "path_for": external_path}
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
     return response
 
 
 def redirect(path: str) -> RedirectResponse:
-    return RedirectResponse(path, status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(external_path(path), status_code=status.HTTP_303_SEE_OTHER)
 
 
 def get_cookie_user(request: Request, db: Session) -> User | None:

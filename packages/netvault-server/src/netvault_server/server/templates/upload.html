@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Upload PDFs</h1>
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
-<form method="post" action="/web/upload" enctype="multipart/form-data" class="form wide">
+<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>PDF files <input name="files" type="file" accept="application/pdf,.pdf" multiple required></label>
   <label>Manual DOI <input name="doi" placeholder="Only when uploading one file"></label>

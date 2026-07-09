@@ -2,10 +2,10 @@
 {% block title %}PDFs - NetVault{% endblock %}
 {% block content %}
 <h1>PDFs</h1>
-<form method="get" action="/web/pdfs" class="toolbar">
+<form method="get" action="{{ path_for('/web/pdfs') }}" class="toolbar">
   <input name="q" value="{{ q }}" placeholder="Search DOI, title, journal, filename, sha256">
   <button type="submit">Search</button>
-  <a class="button" href="/web/pdfs">Clear</a>
+  <a class="button" href="{{ path_for('/web/pdfs') }}">Clear</a>
 </form>
 <div class="table-scroll">
   <table>
@@ -18,7 +18,7 @@
         <td>{{ pdf.title or pdf.original_name }}</td>
         <td>{{ pdf.container_title or "-" }}</td>
         <td class="num">{{ pdf.size|bytes }}</td>
-        <td><a class="button" href="/web/pdfs/download?doi={{ pdf.doi }}">Download</a></td>
+        <td><a class="button" href="{{ path_for('/web/pdfs/download') }}?doi={{ pdf.doi }}">Download</a></td>
       </tr>
     {% else %}
       <tr><td colspan="6">No PDFs found.</td></tr>

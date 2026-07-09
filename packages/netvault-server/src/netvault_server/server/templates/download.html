@@ -2,7 +2,7 @@
 {% block title %}Download - NetVault{% endblock %}
 {% block content %}
 <h1>Download by DOI</h1>
-<form method="post" action="/web/download" class="form wide">
+<form method="post" action="{{ path_for('/web/download') }}" class="form wide">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>DOI text <textarea name="doi_text" rows="8" placeholder="Paste one or many DOI values">{{ doi_text }}</textarea></label>
   <button type="submit">Find PDFs</button>
@@ -17,7 +17,7 @@
       <td>{{ pdf.doi }}</td>
       <td>{{ pdf.title or pdf.original_name }}</td>
       <td class="num">{{ pdf.size|bytes }}</td>
-      <td><a class="button" href="/web/pdfs/download?doi={{ pdf.doi }}">Download</a></td>
+      <td><a class="button" href="{{ path_for('/web/pdfs/download') }}?doi={{ pdf.doi }}">Download</a></td>
     </tr>
   {% endfor %}
   </tbody>

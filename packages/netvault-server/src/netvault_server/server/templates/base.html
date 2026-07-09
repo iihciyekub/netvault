@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}NetVault{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}">
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/web">NetVault</a>
+      <a class="brand" href="{{ path_for('/web') }}">NetVault</a>
       {% if user %}
       <nav>
-        <a href="/web">Dashboard</a>
-        <a href="/web/pdfs">PDFs</a>
-        <a href="/web/upload">Upload</a>
-        <a href="/web/download">Download</a>
+        <a href="{{ path_for('/web') }}">Dashboard</a>
+        <a href="{{ path_for('/web/pdfs') }}">PDFs</a>
+        <a href="{{ path_for('/web/upload') }}">Upload</a>
+        <a href="{{ path_for('/web/download') }}">Download</a>
       </nav>
-      <form method="post" action="/web/logout" class="logout">
+      <form method="post" action="{{ path_for('/web/logout') }}" class="logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">Logout {{ user.username }}</button>
       </form>

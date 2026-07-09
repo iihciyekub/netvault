@@ -24,6 +24,7 @@ services:
       NETVAULT_DATABASE_URL: postgresql+psycopg://netvault:netvault-change-me@db:5432/netvault
       NETVAULT_STORAGE_ROOT: /netvault/storage
       NETVAULT_SECRET_KEY: change-this-before-real-use
+      NETVAULT_BASE_PATH: ${NETVAULT_BASE_PATH:-}
       NETVAULT_BOOTSTRAP_ADMIN: admin
       NETVAULT_BOOTSTRAP_ADMIN_PASSWORD: change-me-now
     volumes:
