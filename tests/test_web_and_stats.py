@@ -101,6 +101,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "No journal-year data." in dashboard.text
     assert "By Year" not in dashboard.text
     assert "Top Journals" not in dashboard.text
+    assert "Upload PDFs" not in dashboard.text
+    assert "Download by DOI" not in dashboard.text
 
     csrf = client.cookies["netvault_csrf"]
     upload = client.post(
