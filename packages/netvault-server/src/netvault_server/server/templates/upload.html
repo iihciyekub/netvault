@@ -34,5 +34,5 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
-<script src="{{ path_for('/static/upload.js') }}"></script>
+<script src="{{ path_for('/static/upload.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

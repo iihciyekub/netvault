@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
@@ -70,7 +71,13 @@ def validate_csrf(request: Request, submitted_token: str) -> None:
 
 def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse:
     token = csrf_token(request)
-    context = {**context, "request": request, "csrf_token": token, "path_for": external_path}
+    context = {
+        **context,
+        "request": request,
+        "csrf_token": token,
+        "path_for": external_path,
+        "asset_version": __version__,
+    }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
     return response
