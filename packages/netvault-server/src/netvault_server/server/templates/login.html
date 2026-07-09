@@ -2,10 +2,6 @@
 {% block title %}Login - NetVault{% endblock %}
 {% block content %}
 <section class="auth">
-  <div class="page-head centered">
-    <p class="eyebrow">NetVault</p>
-    <h1>Sign in</h1>
-  </div>
   {% if error %}<div class="alert">{{ error }}</div>{% endif %}
   <form method="post" action="{{ path_for('/web/login') }}" class="form auth-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

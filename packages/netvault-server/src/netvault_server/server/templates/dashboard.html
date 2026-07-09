@@ -1,13 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - NetVault{% endblock %}
 {% block content %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow">Library</p>
-    <h1>NetVault</h1>
-  </div>
-</section>
-
 <section class="metrics">
   <article><span>PDFs</span><strong>{{ summary.active_pdfs }}</strong></article>
   <article><span>Size</span><strong>{{ summary.total_size|bytes }}</strong></article>

@@ -1,9 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Upload - NetVault{% endblock %}
 {% block content %}
-<section class="page-head compact">
-  <p class="eyebrow">Upload</p>
-  <h1>Add PDFs</h1>
+<section class="cli-help panel">
+  <h2>CLI</h2>
+  <div class="command-list">
+    <div class="command-row">
+      <code>curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash</code>
+      <button class="copy-button" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash">Copy</button>
+    </div>
+    <div class="command-row">
+      <code>nv login https://iiaide.com/nv</code>
+      <button class="copy-button" type="button" data-copy="nv login https://iiaide.com/nv">Copy</button>
+    </div>
+    <div class="command-row">
+      <code>nv upload ./paper.pdf</code>
+      <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf">Copy</button>
+    </div>
+    <div class="command-row">
+      <code>nv upload ./papers</code>
+      <button class="copy-button" type="button" data-copy="nv upload ./papers">Copy</button>
+    </div>
+  </div>
 </section>
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
 <form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide">
@@ -35,4 +52,5 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ path_for('/static/upload.js') }}?v={{ asset_version }}"></script>
+<script src="{{ path_for('/static/clipboard.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

@@ -15,6 +15,15 @@ def active_pdfs():
     return Pdf.is_deleted.is_(False), Pdf.doi.is_not(None)
 
 
+def known_journal():
+    journal = func.trim(Pdf.container_title)
+    return (
+        Pdf.container_title.is_not(None),
+        journal != "",
+        func.lower(journal).not_in(["unknown", "(unknown)"]),
+    )
+
+
 def get_summary(db: Session) -> dict[str, Any]:
     row = db.execute(
         select(
@@ -45,10 +54,10 @@ def get_by_year(db: Session) -> list[dict[str, Any]]:
 
 
 def get_by_journal(db: Session, limit: int = 20) -> list[dict[str, Any]]:
-    journal = func.coalesce(Pdf.container_title, "(unknown)")
+    journal = func.trim(Pdf.container_title)
     rows = db.execute(
         select(journal.label("journal"), func.count(Pdf.id).label("count"))
-        .where(*active_pdfs())
+        .where(*active_pdfs(), *known_journal())
         .group_by(journal)
         .order_by(func.count(Pdf.id).desc(), journal.asc())
         .limit(limit)
@@ -59,11 +68,11 @@ def get_by_journal(db: Session, limit: int = 20) -> list[dict[str, Any]]:
 def get_by_journal_year(db: Session, limit: int = 20) -> dict[str, Any]:
     top_journals = [row["journal"] for row in get_by_journal(db, limit=limit)]
     if not top_journals:
-        return {"years": [], "rows": []}
-    journal = func.coalesce(Pdf.container_title, "(unknown)")
+        return {"years": [], "max_count": 0, "rows": []}
+    journal = func.trim(Pdf.container_title)
     rows = db.execute(
         select(journal.label("journal"), Pdf.published_year, func.count(Pdf.id).label("count"))
-        .where(*active_pdfs(), journal.in_(top_journals), Pdf.published_year.is_not(None))
+        .where(*active_pdfs(), *known_journal(), journal.in_(top_journals), Pdf.published_year.is_not(None))
         .group_by(journal, Pdf.published_year)
         .order_by(journal.asc(), Pdf.published_year.asc())
     ).all()

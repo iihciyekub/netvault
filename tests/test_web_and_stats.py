@@ -74,8 +74,30 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert summary.json()["active_pdfs"] == 1
     by_year = client.get("/stats/by-year", headers=headers)
     assert by_year.json() == [{"year": 2026, "count": 1}]
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        db.add(
+            models.Pdf(
+                doi="10.1234/unknown.test",
+                doi_source="manual",
+                sha256="0" * 64,
+                original_name="unknown.pdf",
+                title="Unknown venue",
+                authors="[]",
+                container_title="(unknown)",
+                publisher=None,
+                published_year=2026,
+                crossref_status="ok",
+                size=12,
+                storage_path="objects/00/unknown.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.commit()
     by_journal = client.get("/stats/by-journal", headers=headers)
-    assert by_journal.json()[0] == {"journal": "Web Journal", "count": 1}
+    assert by_journal.json() == [{"journal": "Web Journal", "count": 1}]
     journal_year = client.get("/stats/by-journal-year", headers=headers)
     assert journal_year.status_code == 200
     assert journal_year.json()["max_count"] == 1
@@ -84,6 +106,7 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
 
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
     login_page = client.get("/web/login")
+    assert "<h1" not in login_page.text
     csrf = login_page.cookies["netvault_csrf"]
     bad_upload = client.post(
         "/web/upload",
@@ -98,6 +121,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert response.status_code == 200
     dashboard = client.get("/web")
     assert dashboard.status_code == 200
+    assert "<h1" not in dashboard.text
     assert "No journal-year data." in dashboard.text
     assert "By Year" not in dashboard.text
     assert "Top Journals" not in dashboard.text
@@ -105,6 +129,17 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Download by DOI" not in dashboard.text
 
     csrf = client.cookies["netvault_csrf"]
+    upload_page = client.get("/web/upload")
+    assert upload_page.status_code == 200
+    assert "<h1" not in upload_page.text
+    assert "raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh" in upload_page.text
+    assert "data-copy" in upload_page.text
+    download_page = client.get("/web/download")
+    assert download_page.status_code == 200
+    assert "<h1" not in download_page.text
+    assert "nv download --file ./dois.txt --to ./downloads" in download_page.text
+    assert "clipboard.js" in download_page.text
+
     upload = client.post(
         "/web/upload",
         data={"csrf_token": csrf},
@@ -120,6 +155,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
 
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200
+    assert "<h1" not in pdfs_without_query.text
     assert "Search by DOI or metadata." in pdfs_without_query.text
     assert "10.1234/web.test" not in pdfs_without_query.text
 

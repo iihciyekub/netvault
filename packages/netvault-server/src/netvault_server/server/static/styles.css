@@ -414,9 +414,45 @@ button:hover,
 
 .form.wide { max-width: none; }
 
+.cli-help {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.command-list {
+  display: grid;
+  gap: 8px;
+}
+
+.command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.command-row code {
+  overflow-x: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.copy-button {
+  min-height: 36px;
+  padding-inline: 12px;
+}
+
 .auth {
   width: min(400px, 100%);
-  margin: 52px auto 0;
+  margin: 24px auto 0;
 }
 
 .auth-form { padding: 20px; }
@@ -567,6 +603,8 @@ ul {
   .actions .button { flex: 1 1 auto; }
   .metrics { grid-template-columns: 1fr; }
   .searchbar input { flex-basis: 100%; }
+  .command-row { grid-template-columns: minmax(0, 1fr); }
+  .copy-button { justify-self: start; }
 }
 
 @media (max-width: 430px) {
