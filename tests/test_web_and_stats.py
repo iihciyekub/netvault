@@ -365,7 +365,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
     assert "0.7.5" in info_page.text
-    assert "app.js?v=0.7.5-ui3" in info_page.text
+    assert "app.js?v=0.7.5-ui4" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert 'class="author-email"' in info_page.text
     assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text

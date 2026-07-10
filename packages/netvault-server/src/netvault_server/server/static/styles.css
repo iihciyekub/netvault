@@ -866,17 +866,6 @@ tr:last-child td { border-bottom: 0; }
   background: #ffffff;
 }
 
-.heat-corner::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -12px;
-  bottom: 0;
-  width: 12px;
-  background: linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0));
-  pointer-events: none;
-}
-
 .heat-year {
   position: sticky;
   top: 0;
