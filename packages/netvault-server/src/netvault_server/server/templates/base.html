@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}NetVault{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='7' fill='%23000'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='12' font-weight='700' fill='%23fff'%3ENV%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ path_for('/static/vendor/fontawesome/css/fontawesome.min.css') }}?v=7.3.0">
+    <link rel="stylesheet" href="{{ path_for('/static/vendor/fontawesome/css/solid.min.css') }}?v=7.3.0">
     <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}?v={{ asset_version }}">
   </head>
   <body class="{% block body_class %}{% endblock %}">
@@ -12,27 +14,27 @@
     <div class="top-loader" aria-hidden="true"></div>
     <header class="topbar">
       <a class="brand" href="{{ path_for('/web') }}">
-        <span class="brand-mark">NV</span>
+        <span class="brand-mark"><i class="fa-solid fa-quote-left" aria-hidden="true"></i></span>
         <span>NetVault</span>
       </a>
       {% if user %}
       <nav class="primary-nav" aria-label="Primary">
-        <a class="{% if request.url.path == '/web' %}active{% endif %}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} href="{{ path_for('/web') }}">Home</a>
-        <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} href="{{ path_for('/web/pdfs') }}">Search</a>
-        <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" {% if request.url.path == '/web/upload' %}aria-current="page"{% endif %} href="{{ path_for('/web/upload') }}">Upload</a>
-        <a class="{% if request.url.path == '/web/download' %}active{% endif %}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} href="{{ path_for('/web/download') }}">Download</a>
+        <a class="{% if request.url.path == '/web' %}active{% endif %}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} href="{{ path_for('/web') }}"><i class="fa-solid fa-chart-column fa-fw" aria-hidden="true"></i><span>Home</span></a>
+        <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-magnifying-glass fa-fw" aria-hidden="true"></i><span>Search</span></a>
+        <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" {% if request.url.path == '/web/upload' %}aria-current="page"{% endif %} href="{{ path_for('/web/upload') }}"><i class="fa-solid fa-cloud-arrow-up fa-fw" aria-hidden="true"></i><span>Upload</span></a>
+        <a class="{% if request.url.path == '/web/download' %}active{% endif %}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} href="{{ path_for('/web/download') }}"><i class="fa-solid fa-cloud-arrow-down fa-fw" aria-hidden="true"></i><span>Download</span></a>
       </nav>
       <div class="topbar-right">
         <nav class="utility-nav" aria-label="Utilities">
-          <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}">CLI</a>
+          <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" {% if request.url.path == '/web/cli' %}aria-current="page"{% endif %} href="{{ path_for('/web/cli') }}"><i class="fa-solid fa-terminal fa-fw" aria-hidden="true"></i><span>CLI</span></a>
           {% if user.role.value == "admin" %}
-          <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" href="{{ path_for('/web/admin') }}">Admin</a>
+          <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" {% if request.url.path == '/web/admin' %}aria-current="page"{% endif %} href="{{ path_for('/web/admin') }}"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i><span>Admin</span></a>
           {% endif %}
-          <a class="{% if request.url.path == '/web/info' %}active{% endif %}" href="{{ path_for('/web/info') }}">Info</a>
+          <a class="{% if request.url.path == '/web/info' %}active{% endif %}" {% if request.url.path == '/web/info' %}aria-current="page"{% endif %} href="{{ path_for('/web/info') }}"><i class="fa-solid fa-circle-info fa-fw" aria-hidden="true"></i><span>Info</span></a>
         </nav>
         <form method="post" action="{{ path_for('/web/logout') }}" class="logout">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="ghost" type="submit">{{ user.username }} / Logout</button>
+          <button class="ghost user-menu" type="submit"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span>{{ user.username }}</span><span class="user-menu-separator">/</span><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i><span data-button-label>Logout</span></button>
         </form>
       </div>
       {% endif %}

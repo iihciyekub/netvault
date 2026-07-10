@@ -4,39 +4,62 @@
 {% block content %}
 <form method="get" action="{{ path_for('/web/pdfs') }}" class="searchbar">
   <label class="sr-only" for="pdf-search">Search by DOI or metadata</label>
-  <input id="pdf-search" name="q" value="{{ q }}" placeholder="DOI, title, journal, filename, sha256" autofocus>
-  <button class="primary" type="submit">Search</button>
-  {% if q %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}">Clear</a>{% endif %}
+  <input id="pdf-search" name="q" value="{{ q }}" placeholder="DOI, title, author, journal, publisher, filename" autofocus>
+  <button class="primary" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span data-button-label>Search</span></button>
+  {% if q %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear</span></a>{% endif %}
 </form>
 {% if searched %}
-<p class="result-count">{{ total }} result{% if total != 1 %}s{% endif %}</p>
-<div class="table-scroll">
-  <table class="results">
-    <thead><tr><th>DOI</th><th>Year</th><th>Title</th><th>Journal</th><th>Size</th><th></th></tr></thead>
-    <tbody>
-    {% for pdf in pdfs %}
-      <tr>
-        <td>{{ pdf.doi }}</td>
-        <td>{{ pdf.published_year or "-" }}</td>
-        <td>{{ pdf.title or pdf.original_name }}</td>
-        <td>{{ pdf.container_title or "-" }}</td>
-        <td class="num">{{ pdf.size|bytes }}</td>
-        <td class="row-action"><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
-      </tr>
-    {% else %}
-      <tr><td colspan="6">No PDFs found.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
+<div class="result-summary">
+  <p class="result-count"><i class="fa-solid fa-book-open" aria-hidden="true"></i>{{ total }} result{% if total != 1 %}s{% endif %}</p>
+  {% if total_pages > 1 %}<span>{{ page }} / {{ total_pages }}</span>{% endif %}
 </div>
+<section class="paper-results" aria-label="Search results">
+    {% for pdf in pdfs %}
+    <article class="paper-result">
+      <div class="paper-result-main">
+        <div class="paper-result-kicker">
+          <a class="doi-link" href="{{ pdf.crossref_url or ('https://doi.org/' ~ (pdf.doi|urlencode)) }}" target="_blank" rel="noreferrer" data-no-pjax>
+            <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>{{ pdf.doi }}</span><i class="fa-solid fa-arrow-up-right-from-square external-mark" aria-hidden="true"></i>
+          </a>
+          {% if pdf.crossref_status == "ok" %}
+          <span class="crossref-badge is-verified" title="Metadata retrieved from Crossref">
+            <span class="verified-seal" aria-hidden="true"><i class="fa-solid fa-certificate"></i><i class="fa-solid fa-check"></i></span>
+            <span>Crossref metadata</span>
+          </span>
+          {% else %}
+          <span class="crossref-badge is-unverified"><i class="fa-solid fa-circle-question" aria-hidden="true"></i><span>Crossref {{ pdf.crossref_status|replace('_', ' ') }}</span></span>
+          {% endif %}
+        </div>
+        <h2 class="paper-title">{{ pdf.title or pdf.original_name }}</h2>
+        {% if pdf.authors and pdf.authors != "[]" %}
+        <p class="paper-authors"><i class="fa-solid fa-user-group" aria-hidden="true"></i><span>{{ pdf.authors }}</span></p>
+        {% endif %}
+        <div class="paper-metadata">
+          {% if pdf.container_title %}<span><i class="fa-solid fa-book" aria-hidden="true"></i>{{ pdf.container_title }}</span>{% endif %}
+          {% if pdf.published_year %}<span><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>{{ pdf.published_year }}</span>{% endif %}
+          {% if pdf.publisher %}<span><i class="fa-solid fa-building-columns" aria-hidden="true"></i>{{ pdf.publisher }}</span>{% endif %}
+        </div>
+        <div class="paper-file-meta">
+          <span><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ pdf.original_name }}</span>
+          <span>{{ pdf.size|bytes }}</span>
+        </div>
+      </div>
+      <div class="paper-result-actions">
+        <a class="button primary" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty-state"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>No PDFs found.</div>
+    {% endfor %}
+</section>
 {% if total_pages > 1 %}
 <nav class="pagination" aria-label="Search result pages">
-  {% if page > 1 %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page - 1 }}">Previous</a>{% endif %}
+  {% if page > 1 %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page - 1 }}"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>Previous</span></a>{% endif %}
   <span>Page {{ page }} of {{ total_pages }}</span>
-  {% if page < total_pages %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page + 1 }}">Next</a>{% endif %}
+  {% if page < total_pages %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page + 1 }}"><span>Next</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
 </nav>
 {% endif %}
 {% else %}
-<div class="empty-state">Search by DOI or metadata.</div>
+<div class="empty-state"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>Search by DOI or Crossref metadata.</div>
 {% endif %}
 {% endblock %}

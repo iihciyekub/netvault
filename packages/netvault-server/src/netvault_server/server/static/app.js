@@ -6,7 +6,10 @@
   let activeTooltipTarget = null;
   const pageCache = new Map();
   const prefetching = new Set();
+  const journalRowsCache = new WeakMap();
+  const journalPinsStorageKey = "netvault:pinned-journals:v1";
   const maxCachedPages = 10;
+  let journalFilterTimer = null;
 
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -34,8 +37,14 @@
     });
     const submit = qs("[type='submit']", form);
     if (submit) {
-      if (!submit.dataset.originalText) submit.dataset.originalText = submit.textContent.trim();
-      submit.textContent = busy ? label : submit.dataset.originalText;
+      const labelNode = qs("[data-button-label]", submit);
+      if (labelNode) {
+        if (!labelNode.dataset.originalText) labelNode.dataset.originalText = labelNode.textContent.trim();
+        labelNode.textContent = busy ? label : labelNode.dataset.originalText;
+      } else {
+        if (!submit.dataset.originalText) submit.dataset.originalText = submit.textContent.trim();
+        submit.textContent = busy ? label : submit.dataset.originalText;
+      }
     }
   };
 
@@ -97,6 +106,7 @@
     if (push && url !== window.location.href) history.pushState({}, "", url);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setLoading(false);
+    initJournalPins(currentMain);
     currentMain.focus({ preventScroll: true });
   };
 
@@ -172,7 +182,8 @@
 
   const copyText = async (button) => {
     const text = button.getAttribute("data-copy") || "";
-    const original = button.textContent;
+    const label = qs("[data-copy-label]", button) || button;
+    const original = label.textContent;
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
@@ -187,12 +198,12 @@
         document.execCommand("copy");
         textarea.remove();
       }
-      button.textContent = "Copied";
+      label.textContent = "Copied";
     } catch {
-      button.textContent = "Failed";
+      label.textContent = "Failed";
     }
     window.setTimeout(() => {
-      button.textContent = original;
+      label.textContent = original;
     }, 1000);
   };
 
@@ -208,6 +219,7 @@
       document.body.appendChild(tooltip);
     }
     tooltip.textContent = text;
+    tooltip.classList.toggle("has-icon", target.classList.contains("heat-cell"));
     tooltip.classList.add("is-visible");
     positionTooltip(event);
   };
@@ -229,6 +241,119 @@
     activeTooltipTarget = null;
     const tooltip = qs(".heatmap-tooltip");
     if (tooltip) tooltip.classList.remove("is-visible");
+  };
+
+  const normalizedJournalText = (value) => value.normalize("NFKC").toLocaleLowerCase();
+
+  const journalRows = (heatmap) => {
+    if (journalRowsCache.has(heatmap)) return journalRowsCache.get(heatmap);
+    const elementsByRow = new Map();
+    qsa("[data-journal-row]", heatmap).forEach((element) => {
+      const rowId = element.dataset.journalRow;
+      if (!elementsByRow.has(rowId)) elementsByRow.set(rowId, []);
+      elementsByRow.get(rowId).push(element);
+    });
+    const rows = qsa(".heat-journal[data-journal-name]", heatmap).map((label) => ({
+      name: normalizedJournalText(label.dataset.journalName || label.textContent || ""),
+      label: label.dataset.journalName || label.textContent || "",
+      elements: elementsByRow.get(label.dataset.journalRow) || [label],
+    }));
+    journalRowsCache.set(heatmap, rows);
+    return rows;
+  };
+
+  const loadJournalPins = () => {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(journalPinsStorageKey) || "[]");
+      if (!Array.isArray(value)) return [];
+      return value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim());
+    } catch {
+      return [];
+    }
+  };
+
+  const saveJournalPins = (pins) => {
+    try {
+      window.localStorage.setItem(journalPinsStorageKey, JSON.stringify(pins));
+    } catch {
+      // Filtering still works for this page when storage is unavailable.
+    }
+  };
+
+  const renderJournalPins = (panel) => {
+    const clearButton = qs("[data-journal-pin-clear]", panel);
+    const pins = loadJournalPins();
+    if (clearButton) clearButton.hidden = pins.length === 0;
+  };
+
+  const applyJournalFilters = (panel) => {
+    if (!panel || !panel.isConnected) return;
+    const heatmap = qs(".journal-heatmap", panel);
+    if (!heatmap) return;
+    const input = qs("[data-journal-filter]", panel);
+    const query = normalizedJournalText(input ? input.value.trim() : "");
+    const rows = journalRows(heatmap);
+    const pinnedNames = new Set(loadJournalPins().map(normalizedJournalText));
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const visible = (!query || row.name.includes(query)) && (!pinnedNames.size || pinnedNames.has(row.name));
+      row.elements.forEach((element) => {
+        element.hidden = !visible;
+      });
+      if (visible) visibleCount += 1;
+    });
+    const status = qs("[data-journal-filter-status], .heatmap-filter-status", panel);
+    if (status) {
+      const noun = rows.length === 1 ? "journal" : "journals";
+      status.textContent = query || pinnedNames.size ? `${visibleCount} of ${rows.length} ${noun}` : `${rows.length} ${noun}`;
+    }
+    const noMatches = qs("[data-journal-no-matches]", panel);
+    if (noMatches) noMatches.hidden = visibleCount !== 0;
+    const scroll = heatmap.closest(".heatmap-scroll");
+    if (scroll) scroll.hidden = visibleCount === 0;
+  };
+
+  const scheduleJournalFilter = (input) => {
+    window.clearTimeout(journalFilterTimer);
+    journalFilterTimer = window.setTimeout(() => applyJournalFilters(input.closest(".heatmap-panel")), 300);
+  };
+
+  const flushJournalFilter = (input) => {
+    window.clearTimeout(journalFilterTimer);
+    applyJournalFilters(input.closest(".heatmap-panel"));
+  };
+
+  const addJournalPin = (input) => {
+    const panel = input.closest(".heatmap-panel");
+    const heatmap = qs(".journal-heatmap", panel);
+    const feedback = qs("[data-journal-pin-feedback]", panel);
+    const requested = normalizedJournalText(input.value.trim());
+    if (!heatmap || !requested) return;
+    const rows = journalRows(heatmap);
+    let match = rows.find((row) => row.name === requested);
+    if (!match) {
+      const partialMatches = rows.filter((row) => row.name.includes(requested));
+      if (partialMatches.length === 1) match = partialMatches[0];
+    }
+    if (!match) {
+      if (feedback) feedback.textContent = "Choose an exact journal name from the list.";
+      return;
+    }
+    const pins = loadJournalPins();
+    if (!pins.some((name) => normalizedJournalText(name) === match.name)) pins.push(match.label);
+    saveJournalPins(pins);
+    input.value = "";
+    if (feedback) feedback.textContent = "Journal pinned.";
+    renderJournalPins(panel);
+    applyJournalFilters(panel);
+  };
+
+  const initJournalPins = (root = document) => {
+    qsa("[data-journal-pin-panel]", root).forEach((pinPanel) => {
+      const panel = pinPanel.closest(".heatmap-panel");
+      renderJournalPins(panel);
+      applyJournalFilters(panel);
+    });
   };
 
   const updateFileSummary = (input) => {
@@ -410,6 +535,24 @@
   };
 
   document.addEventListener("click", (event) => {
+    const pinAdd = event.target.closest("[data-journal-pin-add]");
+    if (pinAdd) {
+      const input = qs("[data-journal-pin-input]", pinAdd.closest(".heatmap-panel"));
+      if (input) addJournalPin(input);
+      return;
+    }
+
+    const pinClear = event.target.closest("[data-journal-pin-clear]");
+    if (pinClear) {
+      saveJournalPins([]);
+      const panel = pinClear.closest(".heatmap-panel");
+      const feedback = qs("[data-journal-pin-feedback]", panel);
+      if (feedback) feedback.textContent = "Pins cleared.";
+      renderJournalPins(panel);
+      applyJournalFilters(panel);
+      return;
+    }
+
     const copyButton = event.target.closest("[data-copy]");
     if (copyButton) {
       event.preventDefault();
@@ -465,6 +608,30 @@
     if (event.target.matches("#file-input")) updateFileSummary(event.target);
   });
 
+  document.addEventListener("input", (event) => {
+    if (event.target.matches("[data-journal-filter]")) scheduleJournalFilter(event.target);
+  });
+
+  document.addEventListener("search", (event) => {
+    if (event.target.matches("[data-journal-filter]")) flushJournalFilter(event.target);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target.matches("[data-journal-pin-input]")) {
+      event.preventDefault();
+      addJournalPin(event.target);
+      return;
+    }
+    if (event.key === "Enter" && event.target.matches("[data-journal-filter]")) {
+      event.preventDefault();
+      flushJournalFilter(event.target);
+    }
+  });
+
+  document.addEventListener("focusout", (event) => {
+    if (event.target.matches("[data-journal-filter]")) flushJournalFilter(event.target);
+  });
+
   document.addEventListener("dragenter", (event) => {
     const dropzone = event.target.closest("#dropzone");
     if (dropzone) dropzone.classList.add("is-dragging");
@@ -505,4 +672,5 @@
   });
 
   rememberPage(window.location.href, snapshotPage());
+  initJournalPins();
 })();

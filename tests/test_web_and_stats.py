@@ -235,6 +235,8 @@ def test_dashboard_stats_cache_can_be_invalidated(client: TestClient) -> None:
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
     login_page = client.get("/web/login")
     assert '<h1 class="sr-only">Log in to NetVault</h1>' in login_page.text
+    assert "vendor/fontawesome/css/fontawesome.min.css" in login_page.text
+    assert "vendor/fontawesome/css/solid.min.css" in login_page.text
     assert "app.js" in login_page.text
     assert "clipboard.js" not in login_page.text
     assert "upload.js" not in login_page.text
@@ -265,6 +267,14 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
     assert "Info" in dashboard.text
+    assert "fa-chart-column" in dashboard.text
+    assert "fa-magnifying-glass" in dashboard.text
+    assert "fa-cloud-arrow-up" in dashboard.text
+    assert "fa-cloud-arrow-down" in dashboard.text
+    assert "fa-quote-left" in dashboard.text
+    assert "fa-box-archive" not in dashboard.text
+    assert '<h2 id="journal-year-title" class="sr-only">Journal by Year</h2>' in dashboard.text
+    assert "Publication density across matching journals." not in dashboard.text
     assert "By Year" not in dashboard.text
     assert "Top Journals" not in dashboard.text
     assert "Upload PDFs" not in dashboard.text
@@ -293,13 +303,33 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
     assert "data-copy" in cli_page.text
+    assert 'class="command-timeline"' in cli_page.text
+    assert cli_page.text.count('class="timeline-node"') == 4
+    assert "Step 01" in cli_page.text
+    assert "Step 04" in cli_page.text
+    assert "fa-cloud-arrow-down" in cli_page.text
+    assert "data-copy-label" in cli_page.text
+    assert "syntax-command" in cli_page.text
+    assert "syntax-option" in cli_page.text
+    assert "syntax-url" in cli_page.text
+    assert "syntax-path" in cli_page.text
     info_page = client.get("/web/info")
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.6.0" in info_page.text
+    assert "0.6.2" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
-    assert "yongjian.li@polyu.ed.hk" in info_page.text
+    assert 'class="author-email"' in info_page.text
+    assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text
+    assert "mailto:" not in info_page.text
+    assert "Usage Declaration" in info_page.text
+    assert "must be deleted within 24 hours after use" in info_page.text
+    assert "Bulk redistribution" in info_page.text
+    assert "Acknowledgement" in info_page.text
+    assert "The Hong Kong Polytechnic University (PolyU)" in info_page.text
+    assert "School of Fashion and Textiles (SFT)" in info_page.text
+    assert "Professor Fan" in info_page.text
+    assert "Professor Di Fan" not in info_page.text
 
     upload = client.post(
         "/web/upload",
@@ -336,7 +366,22 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     dashboard = client.get("/web")
     assert dashboard.status_code == 200
     assert "journal-heatmap" in dashboard.text
+    assert 'data-journal-filter' in dashboard.text
+    assert 'data-journal-pin-panel' in dashboard.text
+    assert 'data-journal-pin-input' in dashboard.text
+    assert 'data-journal-pin-add' in dashboard.text
+    assert 'data-journal-pin-clear' in dashboard.text
+    assert 'data-journal-pin-list' not in dashboard.text
+    assert 'placeholder="Pin a journal name..."' in dashboard.text
+    assert 'id="journal-pin-options"' in dashboard.text
+    assert 'placeholder="Filter journal names..."' in dashboard.text
+    assert 'data-journal-name="Web Journal"' in dashboard.text
+    assert 'data-journal-name="Another Journal"' in dashboard.text
+    assert "data-journal-row=" in dashboard.text
+    assert "No journals match the current filters." in dashboard.text
     assert "data-tip=" in dashboard.text
+    assert 'data-tip="2026 · 1 PDF"' in dashboard.text
+    assert 'data-tip="Another Journal · 2026' not in dashboard.text
     assert "aria-hidden=\"true\"" in dashboard.text
     assert "0 PDFs" not in dashboard.text
     assert "heatmap-tooltip.js" not in dashboard.text
@@ -345,14 +390,31 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200
     assert '<h1 class="sr-only">Search PDFs</h1>' in pdfs_without_query.text
-    assert "Search by DOI or metadata." in pdfs_without_query.text
+    assert "Search by DOI or Crossref metadata." in pdfs_without_query.text
     assert "10.1234/web.test" not in pdfs_without_query.text
 
     pdfs_with_query = client.get("/web/pdfs", params={"q": "10.1234/web.test"})
     assert pdfs_with_query.status_code == 200
     assert "10.1234/web.test" in pdfs_with_query.text
+    assert "paper-result" in pdfs_with_query.text
+    assert "Grace Hopper" in pdfs_with_query.text
+    assert "Web Journal" in pdfs_with_query.text
+    assert "NetVault Press" in pdfs_with_query.text
+    assert "crossref-badge is-verified" in pdfs_with_query.text
+    assert "fa-certificate" in pdfs_with_query.text
+    assert "fa-check" in pdfs_with_query.text
+    assert "Metadata retrieved from Crossref" in pdfs_with_query.text
+    assert "https://doi.org/10.1234/web.test" in pdfs_with_query.text
     assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
     assert "data-no-pjax" in pdfs_with_query.text
+
+    publisher_search = client.get("/web/pdfs", params={"q": "NetVault Press"})
+    assert publisher_search.status_code == 200
+    assert "10.1234/web.test" in publisher_search.text
+
+    font = client.get("/static/vendor/fontawesome/webfonts/fa-solid-900.woff2")
+    assert font.status_code == 200
+    assert font.headers["cache-control"] == "public, max-age=31536000, immutable"
 
     lookup = client.post(
         "/web/download",
@@ -448,8 +510,58 @@ def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> Non
     assert client.get("/web/admin").status_code == 403
 
 
+def test_search_pagination_shows_crossref_metadata_cards(client: TestClient) -> None:
+    web_login(client)
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        for index in range(51):
+            db.add(
+                models.Pdf(
+                    doi=f"10.5555/paged.{index}",
+                    doi_source="manual",
+                    sha256=f"{index + 1000:064x}",
+                    original_name=f"paged-{index}.pdf",
+                    title=f"Paged paper {index}",
+                    authors="Ada Lovelace; Alan Turing",
+                    container_title="Pagination Journal",
+                    publisher="Paged Publisher",
+                    published_year=2026,
+                    crossref_status="ok",
+                    crossref_url=f"https://doi.org/10.5555/paged.{index}",
+                    size=100 + index,
+                    storage_path=f"objects/ff/paged-{index}.pdf",
+                    uploaded_by_id=admin.id,
+                )
+            )
+        db.commit()
+
+    first = client.get("/web/pdfs", params={"q": "Paged Publisher"})
+    second = client.get("/web/pdfs", params={"q": "Paged Publisher", "page": 2})
+
+    assert first.status_code == 200
+    assert first.text.count('class="paper-result"') == 50
+    assert "Page 1 of 2" in first.text
+    assert "page=2" in first.text
+    assert "fa-chevron-right" in first.text
+    assert "Ada Lovelace; Alan Turing" in first.text
+    assert "crossref-badge is-verified" in first.text
+    assert second.status_code == 200
+    assert second.text.count('class="paper-result"') == 1
+    assert "Page 2 of 2" in second.text
+    assert "page=1" in second.text
+    assert "fa-chevron-left" in second.text
+
+
 def test_static_assets_are_long_cached(client: TestClient) -> None:
-    for path in ("/static/styles.css", "/static/app.js"):
+    for path in (
+        "/static/styles.css",
+        "/static/app.js",
+        "/static/vendor/fontawesome/css/fontawesome.min.css",
+        "/static/vendor/fontawesome/css/solid.min.css",
+        "/static/vendor/fontawesome/webfonts/fa-solid-900.woff2",
+    ):
         response = client.get(path)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"

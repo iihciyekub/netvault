@@ -6,13 +6,13 @@
 <form method="post" action="{{ path_for('/web/download') }}" class="form wide">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>DOI text <textarea name="doi_text" rows="8" placeholder="10.1016/j.ijpe.2018.04.006">{{ doi_text }}</textarea></label>
-  <button class="primary" type="submit">Find PDFs</button>
+  <button class="primary" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span data-button-label>Find PDFs</span></button>
 </form>
 {% if matches %}
 <section class="results-section">
   <div class="results-header">
     <div>
-      <h2>Matches</h2>
+      <h2><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Matches</h2>
       <p>{{ matches|length }} PDF{% if matches|length != 1 %}s{% endif %} matched</p>
     </div>
     <form method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit>
@@ -20,7 +20,7 @@
       {% for pdf in matches %}
         <input type="hidden" name="pdf_ids" value="{{ pdf.id }}">
       {% endfor %}
-      <button class="primary" type="submit">Download All ZIP</button>
+      <button class="primary" type="submit"><i class="fa-solid fa-file-zipper" aria-hidden="true"></i><span data-button-label>Download All ZIP</span></button>
     </form>
   </div>
   <div class="table-scroll">
@@ -32,7 +32,7 @@
           <td>{{ pdf.doi }}</td>
           <td>{{ pdf.title or pdf.original_name }}</td>
           <td class="num">{{ pdf.size|bytes }}</td>
-          <td class="row-action"><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax>Download</a></td>
+          <td class="row-action"><a class="button" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -41,7 +41,7 @@
 </section>
 {% endif %}
 {% if missing %}
-<h2>Missing</h2>
+<h2><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Missing</h2>
 <ul>
 {% for doi in missing %}<li>{{ doi }}</li>{% endfor %}
 </ul>

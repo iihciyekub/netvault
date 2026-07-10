@@ -110,7 +110,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": __version__,
+        "asset_version": f"{__version__}-ui2",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -274,6 +274,7 @@ def pdfs_page(
                 Pdf.title.ilike(pattern),
                 Pdf.authors.ilike(pattern),
                 Pdf.container_title.ilike(pattern),
+                Pdf.publisher.ilike(pattern),
                 Pdf.original_name.ilike(pattern),
                 Pdf.sha256.ilike(pattern),
             ),

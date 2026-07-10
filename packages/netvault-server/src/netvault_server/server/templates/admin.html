@@ -8,7 +8,7 @@
 <section class="admin-grid">
   <form method="post" action="{{ path_for('/web/admin/users/create') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <h2>Create User</h2>
+    <h2><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Create User</h2>
     <label>Username <input name="username" autocomplete="off" required></label>
     <label>Password <input name="password" type="password" autocomplete="new-password" required></label>
     <label>Role
@@ -18,12 +18,12 @@
         {% endfor %}
       </select>
     </label>
-    <button class="primary" type="submit">Create</button>
+    <button class="primary" type="submit"><i class="fa-solid fa-user-plus" aria-hidden="true"></i><span data-button-label>Create</span></button>
   </form>
 
   <form method="post" action="{{ path_for('/web/admin/users/reset-password') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <h2>Reset Password</h2>
+    <h2><i class="fa-solid fa-key" aria-hidden="true"></i> Reset Password</h2>
     <label>User
       <select name="username">
         {% for managed_user in users %}
@@ -32,7 +32,7 @@
       </select>
     </label>
     <label>New password <input name="password" type="password" autocomplete="new-password" required></label>
-    <button class="primary" type="submit">Update Password</button>
+    <button class="primary" type="submit"><i class="fa-solid fa-key" aria-hidden="true"></i><span data-button-label>Update Password</span></button>
   </form>
 </section>
 
@@ -52,7 +52,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="username" value="{{ managed_user.username }}">
             <input type="hidden" name="active" value="{% if managed_user.is_active %}false{% else %}true{% endif %}">
-            <button class="ghost" type="submit">{% if managed_user.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+            <button class="ghost" type="submit"><i class="fa-solid {% if managed_user.is_active %}fa-user-slash{% else %}fa-user-check{% endif %}" aria-hidden="true"></i><span data-button-label>{% if managed_user.is_active %}Deactivate{% else %}Activate{% endif %}</span></button>
           </form>
           {% endif %}
         </td>

@@ -13,17 +13,30 @@
     {% endfor %}
   </div>
   <div class="summary-tags" aria-label="Current filter summary">
-    <span class="summary-count">{{ summary.active_pdfs }}</span>
-    <span>{{ summary.total_size|bytes }}</span>
+    <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs }}</span>
+    <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ summary.total_size|bytes }}</span>
   </div>
 </div>
 
-<section class="panel heatmap-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>Journal by Year</h2>
-        <p class="panel-subtitle">Publication density across matching journals.</p>
+<section class="panel heatmap-panel" aria-labelledby="journal-year-title">
+    <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
+    {% if journal_year.rows %}
+    <div class="heatmap-filter-bar">
+      <label class="sr-only" for="journal-name-filter">Filter journals by name</label>
+      <div class="heatmap-filter-field">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <input
+          id="journal-name-filter"
+          type="search"
+          placeholder="Filter journal names..."
+          autocomplete="off"
+          spellcheck="false"
+          aria-controls="journal-year-heatmap"
+          aria-describedby="journal-filter-status"
+          data-journal-filter
+        >
       </div>
+      <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite">{{ journal_year.rows|length }} journal{% if journal_year.rows|length != 1 %}s{% endif %}</output>
       <div class="heatmap-legend" aria-label="Heatmap legend">
         <span>Less</span>
         <span class="heat-cell level-0"></span>
@@ -34,31 +47,55 @@
         <span>More</span>
       </div>
     </div>
-    {% if journal_year.rows %}
+    <div class="journal-pin-bar" data-journal-pin-panel>
+      <div class="journal-pin-entry">
+        <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
+        <label class="sr-only" for="journal-pin-input">Pin a journal</label>
+        <input
+          id="journal-pin-input"
+          type="text"
+          list="journal-pin-options"
+          placeholder="Pin a journal name..."
+          autocomplete="off"
+          spellcheck="false"
+          aria-describedby="journal-pin-feedback"
+          data-journal-pin-input
+        >
+        <button type="button" class="journal-pin-add" data-journal-pin-add><i class="fa-solid fa-thumbtack" aria-hidden="true"></i><span>Pin</span></button>
+      </div>
+      <datalist id="journal-pin-options">
+        {% for row in journal_year.rows %}<option value="{{ row.journal }}"></option>{% endfor %}
+      </datalist>
+      <button type="button" class="journal-pin-clear" data-journal-pin-clear hidden><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear pins</span></button>
+      <span id="journal-pin-feedback" class="journal-pin-feedback" data-journal-pin-feedback aria-live="polite"></span>
+    </div>
     <div class="heatmap-scroll">
-      <div class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
+      <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
         <div class="heat-corner"></div>
         {% for year in journal_year.years %}
           <div class="heat-year"><span>{{ year }}</span></div>
         {% endfor %}
         <div class="heat-total-head">Total</div>
         {% for row in journal_year.rows %}
-          <div class="heat-journal" data-tip="{{ row.journal }}">{{ row.journal }}</div>
+          {% set journal_row = loop.index0 %}
+          <div class="heat-journal" data-journal-row="{{ journal_row }}" data-journal-name="{{ row.journal }}" data-tip="{{ row.journal }}">{{ row.journal }}</div>
           {% for cell in row.cells %}
             {% if cell.count > 0 %}
             <span
               class="heat-cell level-{{ cell.level }}"
-              data-tip="{{ row.journal }} · {{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
+              data-journal-row="{{ journal_row }}"
+              data-tip="{{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
               aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count }} PDFs"
             ></span>
             {% else %}
-            <span class="heat-cell level-0" aria-hidden="true"></span>
+            <span class="heat-cell level-0" data-journal-row="{{ journal_row }}" aria-hidden="true"></span>
             {% endif %}
           {% endfor %}
-          <div class="heat-total">{{ row.total }}</div>
+          <div class="heat-total" data-journal-row="{{ journal_row }}">{{ row.total }}</div>
         {% endfor %}
       </div>
     </div>
+    <div class="empty-state heatmap-no-matches" data-journal-no-matches hidden>No journals match the current filters.</div>
     {% else %}
     <div class="empty-state">No journal-year data.</div>
     {% endif %}

@@ -7,6 +7,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="dropzone" id="dropzone">
     <input id="file-input" name="files" type="file" accept="application/pdf,.pdf" multiple required>
+    <i class="fa-solid fa-cloud-arrow-up drop-icon" aria-hidden="true"></i>
     <span class="drop-title">Drop PDF files</span>
     <span class="drop-meta" id="file-summary">Choose files</span>
   </label>
@@ -16,10 +17,10 @@
     <div class="upload-progress-bar"><span></span></div>
     <p>Preparing upload...</p>
   </div>
-  <button class="primary" type="submit">Upload</button>
+  <button class="primary" type="submit"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span data-button-label>Upload</span></button>
 </form>
 {% if results %}
-<h2>Results</h2>
+<h2><i class="fa-solid fa-list-check" aria-hidden="true"></i> Results</h2>
 <table class="results">
   <thead><tr><th>File</th><th>Status</th><th>DOI / Error</th></tr></thead>
   <tbody>

@@ -227,6 +227,7 @@ def search_pdfs(
                 Pdf.title.ilike(pattern),
                 Pdf.authors.ilike(pattern),
                 Pdf.container_title.ilike(pattern),
+                Pdf.publisher.ilike(pattern),
                 Pdf.original_name.ilike(pattern),
                 Pdf.sha256.ilike(pattern),
                 User.username.ilike(pattern),

@@ -169,7 +169,7 @@ async def process_upload(
         if not no_crossref and (created_pdf or not pdf.title or pdf.crossref_status in (None, "pending", "unavailable")):
             metadata = await run_in_threadpool(fetch_crossref_metadata, normalized_doi)
             apply_crossref_metadata(pdf, metadata)
-        elif no_crossref and not pdf.crossref_status:
+        elif no_crossref:
             pdf.crossref_status = "skipped"
 
         storage_deduplicated = promote_staged_pdf(staged_path, sha256)

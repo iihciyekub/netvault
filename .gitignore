@@ -10,3 +10,4 @@ build/
 *.egg-info/
 storage/
 .env
+mynote.md

@@ -164,6 +164,13 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     searched = client.get("/pdfs/search", headers=admin_headers, params={"q": "paper"})
     assert searched.status_code == 200
     assert searched.json()[0]["sha256"] == hashlib.sha256(PDF_BYTES).hexdigest()
+    publisher_search = client.get(
+        "/pdfs/search",
+        headers=admin_headers,
+        params={"q": "NetVault Press"},
+    )
+    assert publisher_search.status_code == 200
+    assert publisher_search.json()[0]["doi"] == DOI
 
     detail = client.get("/pdfs/by-doi", headers=admin_headers, params={"doi": DOI})
     assert detail.status_code == 200
@@ -248,6 +255,25 @@ def test_upload_uses_filename_doi_when_pdf_contains_reference_noise(client: Test
     assert uploaded.status_code == 200
     assert uploaded.json()["pdf"]["doi"] == "10.1016/j.chb.2015.03.041"
     assert uploaded.json()["pdf"]["doi_source"] == "filename"
+
+
+def test_no_crossref_upload_is_marked_skipped(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+    response = client.post(
+        "/pdfs/upload",
+        headers=headers,
+        data={"no_crossref": "true"},
+        files={
+            "file": (
+                "skip.pdf",
+                b"%PDF-1.4\nDOI: 10.1234/crossref.skip\n%%EOF\n",
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["pdf"]["crossref_status"] == "skipped"
 
 
 def test_rejects_unauthenticated_non_pdf_and_non_admin_delete(client: TestClient) -> None:
