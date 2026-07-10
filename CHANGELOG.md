@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3 - 2026-07-10
+
+- Show the shared username and password directly in the CLI login command and
+  make the copy action include the complete non-interactive login command.
+
 ## 0.7.2 - 2026-07-10
 
 - Make live incremental backups ignore transient upload, lock, and quarantine
