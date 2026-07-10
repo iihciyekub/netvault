@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-07-10
+
+- Raise the default authenticated upload allowance to 5,000 files per hour so
+  legitimate high-volume research imports are not interrupted.
+
 ## 0.7.0 - 2026-07-10
 
 - Add PostgreSQL trigram search, active-list, journal-year, upload-log, and
