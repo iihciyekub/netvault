@@ -212,7 +212,7 @@ def get_existing_pdf_by_sha256(sha256: str) -> dict | None:
     return existing_pdf_from_response(response)
 
 
-def get_existing_pdfs_by_sha256(hashes: Iterable[str]) -> dict[str, dict]:
+def get_existing_pdfs_by_sha256(hashes: Iterable[str], progress_callback=None) -> dict[str, dict]:
     unique_hashes = sorted({sha256 for sha256 in hashes if sha256})
     if not unique_hashes:
         return {}
@@ -224,16 +224,21 @@ def get_existing_pdfs_by_sha256(hashes: Iterable[str]) -> dict[str, dict]:
             existing_payload = response.get("existing", {})
             if isinstance(existing_payload, dict):
                 existing.update(existing_payload)
+            if progress_callback:
+                progress_callback(min(index + chunk_size, len(unique_hashes)))
         return existing
     except (RuntimeError, requests.RequestException):
-        for sha256 in unique_hashes:
+        existing = {}
+        for index, sha256 in enumerate(unique_hashes, start=1):
             pdf = get_existing_pdf_by_sha256(sha256)
             if pdf:
                 existing[sha256] = pdf
+            if progress_callback:
+                progress_callback(index)
         return existing
 
 
-def get_existing_pdfs_by_doi(dois: Iterable[str]) -> dict[str, dict]:
+def get_existing_pdfs_by_doi(dois: Iterable[str], progress_callback=None) -> dict[str, dict]:
     unique_dois = sorted({doi for doi in dois if doi})
     if not unique_dois:
         return {}
@@ -248,12 +253,17 @@ def get_existing_pdfs_by_doi(dois: Iterable[str]) -> dict[str, dict]:
             payload = response.get("existing_doi", {})
             if isinstance(payload, dict):
                 existing.update(payload)
+            if progress_callback:
+                progress_callback(min(index + chunk_size, len(unique_dois)))
         return existing
     except (RuntimeError, requests.RequestException):
-        for doi in unique_dois:
+        existing = {}
+        for index, doi in enumerate(unique_dois, start=1):
             pdf = get_existing_pdf_by_doi(doi)
             if pdf:
                 existing[doi] = pdf
+            if progress_callback:
+                progress_callback(index)
         return existing
 
 
@@ -603,8 +613,16 @@ def upload_command(
         if cache_changed:
             save_hash_cache(hash_cache)
 
-        progress.update(task, description="Checking server")
-        existing_by_sha = get_existing_pdfs_by_sha256(hashes_by_path.values())
+        progress.reset(
+            task,
+            total=len(hashes_by_path),
+            completed=0,
+            description="Checking server for existing files",
+        )
+        existing_by_sha = get_existing_pdfs_by_sha256(
+            hashes_by_path.values(),
+            progress_callback=lambda completed: progress.update(task, completed=completed),
+        )
 
         new_pdfs: list[Path] = []
         for pdf_path, sha256 in hashes_by_path.items():
@@ -617,6 +635,12 @@ def upload_command(
 
         dois_by_path: dict[Path, str] = {}
         upload_candidates: list[Path] = []
+        progress.reset(
+            task,
+            total=len(new_pdfs),
+            completed=0,
+            description="Reading DOI metadata",
+        )
         for pdf_path in new_pdfs:
             try:
                 extracted = extract_local_doi(pdf_path, doi)
@@ -627,7 +651,18 @@ def upload_command(
                 upload_candidates.append(pdf_path)
             except (RuntimeError, OSError) as exc:
                 failed.append((pdf_path, str(exc)))
-        existing_by_doi = get_existing_pdfs_by_doi(dois_by_path.values())
+            finally:
+                progress.advance(task, 1)
+        progress.reset(
+            task,
+            total=len(dois_by_path),
+            completed=0,
+            description="Checking DOI duplicates",
+        )
+        existing_by_doi = get_existing_pdfs_by_doi(
+            dois_by_path.values(),
+            progress_callback=lambda completed: progress.update(task, completed=completed),
+        )
         new_pdfs = []
         for pdf_path in upload_candidates:
             existing_pdf = existing_by_doi.get(dois_by_path[pdf_path])

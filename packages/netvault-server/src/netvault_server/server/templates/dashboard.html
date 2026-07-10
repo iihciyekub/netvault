@@ -13,7 +13,7 @@
     {% endfor %}
   </div>
   <div class="summary-tags" aria-label="Current filter summary">
-    <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs }}</span>
+    <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs|number }}</span>
     <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ summary.total_size|bytes }}</span>
   </div>
 </div>
@@ -85,14 +85,14 @@
               type="button"
               class="heat-cell level-{{ cell.level }}"
               data-journal-row="{{ journal_row }}"
-              data-tip="{{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
-              aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count }} PDFs"
+              data-tip="{{ cell.year }} · {{ cell.count|number }} PDF{% if cell.count != 1 %}s{% endif %}"
+              aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count|number }} PDFs"
             ></button>
             {% else %}
             <span class="heat-cell level-0" data-journal-row="{{ journal_row }}" aria-hidden="true"></span>
             {% endif %}
           {% endfor %}
-          <div class="heat-total" data-journal-row="{{ journal_row }}">{{ row.total }}</div>
+          <div class="heat-total" data-journal-row="{{ journal_row }}">{{ row.total|number }}</div>
         {% endfor %}
       </div>
     </div>

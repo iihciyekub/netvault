@@ -55,7 +55,12 @@ def format_bytes(size: int) -> str:
     return f"{size:,} B"
 
 
+def format_number(value: int) -> str:
+    return f"{value:,}"
+
+
 templates.env.filters["bytes"] = format_bytes
+templates.env.filters["number"] = format_number
 
 
 def base_path() -> str:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.5 - 2026-07-10
+
+- Make the journal-year heatmap denser and right-align journal names.
+- Format dashboard PDF counts with thousands separators.
+- Show distinct, measurable upload preflight stages for server checks, local
+  DOI extraction, and DOI duplicate checks.
+
 ## 0.7.4 - 2026-07-10
 
 - Correct the published shared CLI credentials and keep the password

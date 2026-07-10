@@ -8,6 +8,7 @@ from netvault.cli.user import (
     download_part_path,
     file_sha256,
     find_existing_pdf_before_upload,
+    get_existing_pdfs_by_sha256,
     has_pdf_header,
     load_hash_cache,
     plan_download_destination,
@@ -231,6 +232,23 @@ def test_existing_sha_skips_doi_extraction(monkeypatch) -> None:
         )
         == existing
     )
+
+
+def test_server_precheck_reports_progress(monkeypatch) -> None:
+    monkeypatch.setattr(
+        user_cli,
+        "api_post",
+        lambda *args, **kwargs: {"existing": {"a" * 64: {"sha256": "a" * 64}}},
+    )
+    completed: list[int] = []
+
+    existing = get_existing_pdfs_by_sha256(
+        ["a" * 64, "b" * 64],
+        progress_callback=completed.append,
+    )
+
+    assert list(existing) == ["a" * 64]
+    assert completed == [2]
 
 
 def test_smart_doi_prefers_filename_over_content_noise(tmp_path: Path) -> None:

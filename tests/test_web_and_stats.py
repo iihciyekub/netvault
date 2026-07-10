@@ -11,6 +11,12 @@ from fastapi.testclient import TestClient
 PDF_BYTES = b"%PDF-1.4\nDOI: 10.1234/web.test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 
 
+def test_dashboard_number_format_uses_thousands_separators() -> None:
+    web = importlib.import_module("netvault_server.server.web")
+
+    assert web.format_number(12539) == "12,539"
+
+
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("NETVAULT_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
@@ -358,7 +364,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.4" in info_page.text
+    assert "0.7.5" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert 'class="author-email"' in info_page.text
     assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text
