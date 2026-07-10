@@ -865,8 +865,7 @@ tr:last-child td { border-bottom: 0; }
   background: #ffffff;
 }
 
-.heat-corner::after,
-.heat-journal::after {
+.heat-corner::after {
   content: "";
   position: absolute;
   top: 0;
