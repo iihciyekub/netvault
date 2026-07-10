@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2 - 2026-07-10
+
+- Make live incremental backups ignore transient upload, lock, and quarantine
+  files, automatically remove incomplete snapshots, and only link against
+  previously verified backup manifests.
+
 ## 0.7.1 - 2026-07-10
 
 - Raise the default authenticated upload allowance to 5,000 files per hour so

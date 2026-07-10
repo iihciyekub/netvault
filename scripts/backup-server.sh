@@ -15,8 +15,16 @@ flock -n 9 || { echo "A NetVault backup is already running." >&2; exit 1; }
 cd "$REPO_DIR"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 destination="$BACKUP_ROOT/$stamp"
-previous="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tail -1 || true)"
+previous=""
+while read -r candidate; do
+  [[ -f "$BACKUP_ROOT/$candidate/manifest.txt" ]] && previous="$candidate"
+done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
 mkdir -p "$destination/storage"
+completed=0
+cleanup_incomplete() {
+  [[ "$completed" -eq 1 ]] || rm -rf -- "$destination"
+}
+trap cleanup_incomplete EXIT
 link_args=()
 if [[ -n "$previous" && -d "$BACKUP_ROOT/$previous/storage" ]]; then
   link_args=(--link-dest="$BACKUP_ROOT/$previous/storage")
@@ -26,7 +34,8 @@ dump_tmp="$destination/netvault.pg.dump.tmp"
 docker compose -f "$COMPOSE_FILE" exec -T db sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$dump_tmp"
 mv "$dump_tmp" "$destination/netvault.pg.dump"
-rsync -a --delete "${link_args[@]}" storage/ "$destination/storage/"
+rsync -a --delete --exclude='/tmp/' --exclude='/locks/' --exclude='/quarantine/' \
+  "${link_args[@]}" storage/ "$destination/storage/"
 
 object_count="$(find "$destination/storage/objects" -type f -name '*.pdf' | wc -l | tr -d ' ')"
 object_bytes="$(find "$destination/storage/objects" -type f -name '*.pdf' -printf '%s\n' | awk '{sum += $1} END {printf "%.0f", sum}')"
@@ -38,6 +47,8 @@ object_bytes="$(find "$destination/storage/objects" -type f -name '*.pdf' -print
   printf 'database_sha256=%s\n' "$(sha256sum "$destination/netvault.pg.dump" | awk '{print $1}')"
 } > "$destination/manifest.txt"
 chmod -R go-rwx "$destination"
+completed=1
+trap - EXIT
 
 find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime "+$KEEP_DAYS" -exec rm -rf -- {} +
 echo "NetVault backup completed: $destination"
