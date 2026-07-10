@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from netvault_server import __version__
@@ -18,7 +18,17 @@ from netvault_server.server.doi import find_dois_in_text, normalize_doi
 from netvault_server.server.journal_filters import normalize_filter_key
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.models import DownloadRecord, Pdf, User, UserRole
-from netvault_server.server.security import create_access_token, decode_access_token, hash_password, verify_password
+from netvault_server.server.security import (
+    DUMMY_PASSWORD_HASH,
+    clear_login_failures,
+    create_access_token,
+    decode_access_token_claims,
+    hash_password,
+    login_is_allowed,
+    password_needs_rehash,
+    record_login_failure,
+    verify_password,
+)
 from netvault_server.server.stats import (
     get_dashboard_stats,
 )
@@ -61,7 +71,13 @@ def csrf_token(request: Request) -> str:
 
 
 def set_csrf_cookie(response: HTMLResponse | RedirectResponse, token: str) -> None:
-    response.set_cookie(CSRF_COOKIE, token, httponly=True, samesite="lax")
+    response.set_cookie(
+        CSRF_COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=get_settings().secure_cookies,
+    )
 
 
 def validate_csrf(request: Request, submitted_token: str) -> None:
@@ -109,11 +125,12 @@ def get_cookie_user(request: Request, db: Session) -> User | None:
     token = request.cookies.get(TOKEN_COOKIE)
     if not token:
         return None
-    username = decode_access_token(token)
-    if not username:
+    claims = decode_access_token_claims(token)
+    if not claims:
         return None
+    username, token_version = claims
     user = db.scalar(select(User).where(User.username == username))
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.token_version != token_version:
         return None
     return user
 
@@ -167,15 +184,27 @@ def login_submit(
     db: Session = Depends(get_db),
 ) -> Any:
     validate_csrf(request, csrf_token_value)
+    client_host = request.client.host if request.client else "unknown"
+    login_key = f"{client_host}:{username.casefold()}"
+    if not login_is_allowed(login_key):
+        return render(request, "login.html", {"error": "Too many login attempts. Try again shortly."})
     user = db.scalar(select(User).where(User.username == username))
-    if user is None or not user.is_active or not verify_password(password, user.password_hash):
+    candidate_hash = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
+    password_valid = verify_password(password, candidate_hash)
+    if user is None or not user.is_active or not password_valid:
+        record_login_failure(login_key)
         return render(request, "login.html", {"error": "Invalid username or password."})
+    clear_login_failures(login_key)
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(password)
+        db.commit()
     response = redirect("/web")
     response.set_cookie(
         TOKEN_COOKIE,
-        create_access_token(user.username),
+        create_access_token(user.username, user.token_version),
         httponly=True,
         samesite="lax",
+        secure=get_settings().secure_cookies,
     )
     set_csrf_cookie(response, csrf_token(request))
     return response
@@ -185,8 +214,13 @@ def login_submit(
 def logout_submit(
     request: Request,
     csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
 ) -> Any:
     validate_csrf(request, csrf_token_value)
+    user = get_cookie_user(request, db)
+    if user is not None:
+        user.token_version += 1
+        db.commit()
     response = redirect("/web/login")
     response.delete_cookie(TOKEN_COOKIE)
     return response
@@ -220,6 +254,7 @@ def info_page(request: Request, db: Session = Depends(get_db)) -> Any:
 def pdfs_page(
     request: Request,
     q: str = "",
+    page: int = Query(default=1, ge=1),
     db: Session = Depends(get_db),
 ) -> Any:
     user = require_web_user(request, db)
@@ -227,27 +262,45 @@ def pdfs_page(
         return user
     q = q.strip()
     pdfs = []
+    total = 0
+    page_size = 50
     if q:
         pattern = f"%{q}%"
+        conditions = (
+            Pdf.is_deleted.is_(False),
+            Pdf.doi.is_not(None),
+            or_(
+                Pdf.doi.ilike(pattern),
+                Pdf.title.ilike(pattern),
+                Pdf.authors.ilike(pattern),
+                Pdf.container_title.ilike(pattern),
+                Pdf.original_name.ilike(pattern),
+                Pdf.sha256.ilike(pattern),
+            ),
+        )
+        total = int(db.scalar(select(func.count(Pdf.id)).where(*conditions)) or 0)
         query = (
             select(Pdf)
-            .where(
-                Pdf.is_deleted.is_(False),
-                Pdf.doi.is_not(None),
-                or_(
-                    Pdf.doi.ilike(pattern),
-                    Pdf.title.ilike(pattern),
-                    Pdf.authors.ilike(pattern),
-                    Pdf.container_title.ilike(pattern),
-                    Pdf.original_name.ilike(pattern),
-                    Pdf.sha256.ilike(pattern),
-                ),
-            )
+            .where(*conditions)
             .order_by(Pdf.uploaded_at.desc())
-            .limit(100)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         pdfs = db.scalars(query).all()
-    return render(request, "pdfs.html", {"user": user, "pdfs": pdfs, "q": q, "searched": bool(q)})
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    return render(
+        request,
+        "pdfs.html",
+        {
+            "user": user,
+            "pdfs": pdfs,
+            "q": q,
+            "searched": bool(q),
+            "page": page,
+            "total": total,
+            "total_pages": total_pages,
+        },
+    )
 
 
 @router.get("/web/cli", response_class=HTMLResponse, include_in_schema=False)
@@ -287,6 +340,10 @@ def admin_create_user(
         return admin_context(request, admin, db, error="Invalid role.")
     if not username or not password:
         return admin_context(request, admin, db, error="Username and password are required.")
+    if len(password) < 8 or len(password) > 128:
+        return admin_context(request, admin, db, error="Password must be 8-128 characters.")
+    if len(username) > 80 or not all(char.isalnum() or char in "._-" for char in username):
+        return admin_context(request, admin, db, error="Username may contain letters, numbers, dot, dash, and underscore.")
     existing = db.scalar(select(User).where(User.username == username))
     if existing is not None:
         return admin_context(request, admin, db, error="Username already exists.")
@@ -314,7 +371,10 @@ def admin_reset_password(
         return admin_context(request, admin, db, error="User not found.")
     if not password:
         return admin_context(request, admin, db, error="New password is required.")
+    if len(password) < 8 or len(password) > 128:
+        return admin_context(request, admin, db, error="Password must be 8-128 characters.")
     target.password_hash = hash_password(password)
+    target.token_version += 1
     db.commit()
     return admin_context(request, admin, db, message=f"Updated password for {target.username}.")
 
@@ -365,6 +425,20 @@ async def upload_submit(
     if isinstance(user, RedirectResponse):
         return user
     manual_doi = doi.strip() or None
+    settings = get_settings()
+    if len(files) > settings.max_upload_files:
+        return render(
+            request,
+            "upload.html",
+            {"user": user, "results": [], "error": f"Upload at most {settings.max_upload_files} files at once."},
+        )
+    known_total = sum(upload.size or 0 for upload in files)
+    if known_total > settings.max_batch_bytes:
+        return render(
+            request,
+            "upload.html",
+            {"user": user, "results": [], "error": "Upload batch exceeds the configured size limit."},
+        )
     if manual_doi and len(files) != 1:
         return render(
             request,
@@ -391,7 +465,16 @@ async def web_existing_pdfs_by_sha256(
     if isinstance(user, RedirectResponse):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
     payload = await request.json()
-    hashes = sorted({sha for sha in payload.get("sha256", []) if isinstance(sha, str) and len(sha) == 64})
+    submitted = payload.get("sha256", [])
+    if not isinstance(submitted, list) or len(submitted) > 500:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At most 500 hashes are allowed")
+    hashes = sorted(
+        {
+            sha.lower()
+            for sha in submitted
+            if isinstance(sha, str) and len(sha) == 64 and all(char in "0123456789abcdefABCDEF" for char in sha)
+        }
+    )
     if not hashes:
         return {"existing": {}}
     pdfs = db.scalars(select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))).all()
@@ -403,7 +486,11 @@ def download_page(request: Request, db: Session = Depends(get_db)) -> Any:
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    return render(request, "download.html", {"user": user, "matches": [], "missing": [], "doi_text": ""})
+    return render(
+        request,
+        "download.html",
+        {"user": user, "matches": [], "missing": [], "doi_text": "", "error": None},
+    )
 
 
 @router.post("/web/download", response_class=HTMLResponse, include_in_schema=False)
@@ -418,18 +505,26 @@ def download_lookup(
     if isinstance(user, RedirectResponse):
         return user
     dois = find_dois_in_text(doi_text)
-    matches = []
-    missing = []
-    for doi in dois:
-        pdf = db.scalar(select(Pdf).where(Pdf.doi == doi, Pdf.is_deleted.is_(False)))
-        if pdf:
-            matches.append(pdf)
-        else:
-            missing.append(doi)
+    if len(dois) > 500:
+        return render(
+            request,
+            "download.html",
+            {
+                "user": user,
+                "matches": [],
+                "missing": [],
+                "doi_text": doi_text,
+                "error": "Submit at most 500 DOI values at once.",
+            },
+        )
+    pdfs = db.scalars(select(Pdf).where(Pdf.doi.in_(dois), Pdf.is_deleted.is_(False))).all() if dois else []
+    by_doi = {pdf.doi: pdf for pdf in pdfs}
+    matches = [by_doi[doi] for doi in dois if doi in by_doi]
+    missing = [doi for doi in dois if doi not in by_doi]
     return render(
         request,
         "download.html",
-        {"user": user, "matches": matches, "missing": missing, "doi_text": doi_text},
+        {"user": user, "matches": matches, "missing": missing, "doi_text": doi_text, "error": None},
     )
 
 
@@ -477,10 +572,22 @@ def web_pdf_download_all(
     ids = list(dict.fromkeys(pdf_ids))
     if not ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No PDFs selected")
+    settings = get_settings()
+    if len(ids) > settings.max_zip_files:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Select at most {settings.max_zip_files} PDFs",
+        )
     pdfs = db.scalars(select(Pdf).where(Pdf.id.in_(ids), Pdf.is_deleted.is_(False))).all()
-    ordered = sorted(pdfs, key=lambda pdf: ids.index(pdf.id))
+    positions = {pdf_id: index for index, pdf_id in enumerate(ids)}
+    ordered = sorted(pdfs, key=lambda pdf: positions[pdf.id])
     if not ordered:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No PDFs found")
+    if sum(pdf.size for pdf in ordered) > settings.max_zip_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Selected PDFs exceed the ZIP size limit",
+        )
 
     handle = tempfile.NamedTemporaryFile(prefix="netvault-download-", suffix=".zip", delete=False)
     zip_path = Path(handle.name)

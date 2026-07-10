@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Login - NetVault{% endblock %}
+{% block heading %}Log in to NetVault{% endblock %}
 {% block content %}
 <section class="auth">
-  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
   <form method="post" action="{{ path_for('/web/login') }}" class="form auth-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Username <input name="username" autocomplete="username" required></label>

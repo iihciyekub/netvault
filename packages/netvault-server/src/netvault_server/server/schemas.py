@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from netvault_server.server.models import UserRole
 
@@ -20,18 +20,18 @@ class UserRead(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class UserCreateRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9._-]+$")
+    password: str = Field(min_length=8, max_length=128)
     role: UserRole = UserRole.user
 
 
 class PasswordResetRequest(BaseModel):
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
 class PdfRead(BaseModel):
@@ -64,7 +64,7 @@ class UploadResponse(BaseModel):
 
 
 class Sha256ExistsRequest(BaseModel):
-    sha256: list[str]
+    sha256: list[str] = Field(max_length=500)
 
 
 class Sha256ExistsResponse(BaseModel):

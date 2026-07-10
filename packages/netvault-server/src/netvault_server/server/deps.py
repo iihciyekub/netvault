@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from netvault_server.server.database import get_db
 from netvault_server.server.models import User, UserRole
-from netvault_server.server.security import decode_access_token
+from netvault_server.server.security import decode_access_token_claims
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -18,11 +18,12 @@ def get_current_user(
 ) -> User:
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
-    username = decode_access_token(credentials.credentials)
-    if not username:
+    claims = decode_access_token_claims(credentials.credentials)
+    if not claims:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
+    username, token_version = claims
     user = db.scalar(select(User).where(User.username == username))
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.token_version != token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
     return user
 

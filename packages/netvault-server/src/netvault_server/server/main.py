@@ -1,18 +1,22 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect, or_, select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
+from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import Base, engine, get_db
 from netvault_server.server.deps import get_current_user, require_admin
 from netvault_server.server.doi import normalize_doi
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
+from netvault_server.server.migrations import run_migrations
 from netvault_server.server.models import DownloadRecord, Pdf, User, UserRole, utc_now
 from netvault_server.server.schemas import (
     LoginRequest,
@@ -26,7 +30,16 @@ from netvault_server.server.schemas import (
     UserCreateRequest,
     UserRead,
 )
-from netvault_server.server.security import create_access_token, hash_password, verify_password
+from netvault_server.server.security import (
+    DUMMY_PASSWORD_HASH,
+    clear_login_failures,
+    create_access_token,
+    hash_password,
+    login_is_allowed,
+    password_needs_rehash,
+    record_login_failure,
+    verify_password,
+)
 from netvault_server.server.storage import ensure_storage_dirs, object_path
 from netvault_server.server.stats import invalidate_stats_cache, router as stats_router
 from netvault_server.server.web import router as web_router
@@ -44,7 +57,7 @@ def pdf_to_detail(pdf: Pdf) -> PdfDetail:
 def initialize_app() -> None:
     ensure_storage_dirs()
     Base.metadata.create_all(bind=engine)
-    ensure_pdf_columns()
+    run_migrations(engine)
     settings = get_settings()
     if settings.bootstrap_admin and settings.bootstrap_admin_password:
         with Session(engine) as db:
@@ -60,38 +73,13 @@ def initialize_app() -> None:
                 db.commit()
 
 
-def ensure_pdf_columns() -> None:
-    inspector = inspect(engine)
-    if "pdfs" not in inspector.get_table_names():
-        return
-    column_names = {column["name"] for column in inspector.get_columns("pdfs")}
-    with engine.begin() as connection:
-        columns = {
-            "doi": "VARCHAR(255)",
-            "doi_source": "VARCHAR(32)",
-            "doi_evidence": "TEXT",
-            "title": "TEXT",
-            "authors": "TEXT",
-            "container_title": "TEXT",
-            "publisher": "VARCHAR(255)",
-            "published_year": "INTEGER",
-            "crossref_status": "VARCHAR(32) DEFAULT 'pending'",
-            "crossref_url": "TEXT",
-            "crossref_fetched_at": "TIMESTAMP",
-        }
-        for name, sql_type in columns.items():
-            if name not in column_names:
-                connection.execute(text(f"ALTER TABLE pdfs ADD COLUMN {name} {sql_type}"))
-        connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pdfs_doi ON pdfs (doi)"))
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     initialize_app()
     yield
 
 
-app = FastAPI(title="NetVault", version="0.5.29", lifespan=lifespan)
+app = FastAPI(title="NetVault", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(stats_router)
 app.include_router(web_router)
@@ -102,6 +90,16 @@ async def add_static_cache_headers(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    )
     return response
 
 
@@ -110,16 +108,48 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    storage_root = get_settings().storage_root
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database is unavailable",
+        ) from exc
+    if not storage_root.exists() or not os.access(storage_root, os.W_OK):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Storage is unavailable",
+        )
+    return {"status": "ready"}
+
+
 @app.post("/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    client_host = request.client.host if request.client else "unknown"
+    login_key = f"{client_host}:{payload.username.casefold()}"
+    if not login_is_allowed(login_key):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
     user = db.scalar(select(User).where(User.username == payload.username))
-    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+    candidate_hash = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
+    password_valid = verify_password(payload.password, candidate_hash)
+    if user is None or not user.is_active or not password_valid:
+        record_login_failure(login_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    return TokenResponse(access_token=create_access_token(user.username))
+    clear_login_failures(login_key)
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(payload.password)
+        db.commit()
+    return TokenResponse(access_token=create_access_token(user.username, user.token_version))
 
 
 @app.post("/auth/logout")
-def logout(_: User = Depends(get_current_user)) -> dict[str, str]:
+def logout(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, str]:
+    user.token_version += 1
+    db.commit()
     return {"status": "ok"}
 
 
@@ -141,6 +171,8 @@ async def upload_pdf(
 
 @app.get("/pdfs", response_model=list[PdfRead])
 def list_pdfs(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Sequence[PdfRead]:
@@ -149,6 +181,8 @@ def list_pdfs(
         select(Pdf)
         .where(Pdf.is_deleted.is_(False), Pdf.doi.is_not(None))
         .order_by(Pdf.uploaded_at.desc())
+        .offset(offset)
+        .limit(limit)
     ).all()
     return [pdf_to_read(pdf) for pdf in pdfs]
 
@@ -160,7 +194,13 @@ def existing_pdfs_by_sha256(
     db: Session = Depends(get_db),
 ) -> Sha256ExistsResponse:
     _ = user
-    hashes = sorted({sha256 for sha256 in payload.sha256 if len(sha256) == 64})
+    hashes = sorted(
+        {
+            sha256.lower()
+            for sha256 in payload.sha256
+            if len(sha256) == 64 and all(char in "0123456789abcdefABCDEF" for char in sha256)
+        }
+    )
     if not hashes:
         return Sha256ExistsResponse(existing={})
     pdfs = db.scalars(select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))).all()
@@ -170,6 +210,8 @@ def existing_pdfs_by_sha256(
 @app.get("/pdfs/search", response_model=list[PdfRead])
 def search_pdfs(
     q: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Sequence[PdfRead]:
@@ -191,6 +233,8 @@ def search_pdfs(
             )
         )
         .order_by(Pdf.uploaded_at.desc())
+        .offset(offset)
+        .limit(limit)
     ).all()
     return [pdf_to_read(pdf) for pdf in pdfs]
 
@@ -301,6 +345,7 @@ def reset_password(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.password_hash = hash_password(payload.password)
+    user.token_version += 1
     db.commit()
     db.refresh(user)
     return user

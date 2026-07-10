@@ -17,8 +17,11 @@ HASH_CACHE_PATH = APP_DIR / "hash-cache.json"
 def load_credentials() -> dict[str, Any]:
     if not CREDENTIALS_PATH.exists():
         return {}
-    with CREDENTIALS_PATH.open("rb") as handle:
-        return tomllib.load(handle)
+    try:
+        with CREDENTIALS_PATH.open("rb") as handle:
+            return tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
 
 
 def save_credentials(server_url: str, token: str) -> None:

@@ -3,6 +3,7 @@ import importlib
 import sys
 from pathlib import Path
 
+import bcrypt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -81,6 +82,55 @@ def test_admin_can_create_user_and_user_can_login(client: TestClient) -> None:
     assert me.status_code == 200
     assert me.json()["role"] == "user"
 
+    reset = client.post(
+        "/admin/users/alice/reset-password",
+        headers=admin_headers,
+        json={"password": "alice-new-pass"},
+    )
+    assert reset.status_code == 200
+    assert client.get("/me", headers=user_headers).status_code == 401
+    assert login(client, "alice", "alice-new-pass")
+
+
+def test_logout_revokes_the_presented_token(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+    assert client.post("/auth/logout", headers=headers).status_code == 200
+    assert client.get("/me", headers=headers).status_code == 401
+
+
+def test_legacy_bcrypt_password_is_upgraded_on_login(client: TestClient) -> None:
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    legacy_hash = bcrypt.hashpw(b"legacy-pass", bcrypt.gensalt()).decode()
+    with database.SessionLocal() as db:
+        db.add(
+            models.User(
+                username="legacy",
+                password_hash=legacy_hash,
+                role=models.UserRole.user,
+            )
+        )
+        db.commit()
+
+    assert login(client, "legacy", "legacy-pass")
+    with database.SessionLocal() as db:
+        upgraded = db.query(models.User).filter_by(username="legacy").one()
+        assert upgraded.password_hash.startswith("$argon2id$")
+
+
+def test_login_rate_limit_and_security_headers(client: TestClient) -> None:
+    for _ in range(5):
+        assert client.post(
+            "/auth/login", json={"username": "unknown", "password": "wrong"}
+        ).status_code == 401
+    limited = client.post("/auth/login", json={"username": "unknown", "password": "wrong"})
+    assert limited.status_code == 429
+
+    ready = client.get("/ready")
+    assert ready.status_code == 200
+    assert ready.headers["x-content-type-options"] == "nosniff"
+    assert "frame-ancestors 'none'" in ready.headers["content-security-policy"]
+
 
 def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path: Path) -> None:
     admin_headers = login(client, "admin", "admin-pass")
@@ -109,6 +159,7 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     listed = client.get("/pdfs", headers=admin_headers)
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+    assert client.get("/pdfs", headers=admin_headers, params={"offset": 1}).json() == []
 
     searched = client.get("/pdfs/search", headers=admin_headers, params={"q": "paper"})
     assert searched.status_code == 200
@@ -127,7 +178,11 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     assert len(stored_objects) == 1
 
 
-def test_duplicate_upload_by_sha_returns_before_doi_extraction(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_duplicate_upload_by_sha_returns_before_doi_extraction(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     admin_headers = login(client, "admin", "admin-pass")
     first = upload(client, admin_headers, "paper.pdf")
     assert first.status_code == 200
@@ -138,14 +193,17 @@ def test_duplicate_upload_by_sha_returns_before_doi_extraction(client: TestClien
         raise AssertionError("DOI extraction should not run for an existing sha256")
 
     monkeypatch.setattr(main_helpers, "extract_doi_evidence", fail_extract)
+    stored_object = next((tmp_path / "storage" / "objects").rglob("*.pdf"))
+    stored_object.unlink()
     second = upload(client, admin_headers, "paper-copy.pdf")
 
     assert second.status_code == 200
     assert second.json()["deduplicated"] is True
     assert second.json()["pdf"]["id"] == first.json()["pdf"]["id"]
+    assert stored_object.exists()
 
 
-def test_rejects_missing_doi_and_conflicting_doi(client: TestClient) -> None:
+def test_rejects_missing_doi_and_conflicting_doi(client: TestClient, tmp_path: Path) -> None:
     admin_headers = login(client, "admin", "admin-pass")
 
     missing = upload(
@@ -155,6 +213,7 @@ def test_rejects_missing_doi_and_conflicting_doi(client: TestClient) -> None:
         content=b"%PDF-1.4\nno doi here\n%%EOF\n",
     )
     assert missing.status_code == 400
+    assert not list((tmp_path / "storage" / "objects").rglob("*.pdf"))
 
     first = upload(client, admin_headers, doi="https://doi.org/10.5555/manual")
     assert first.status_code == 200

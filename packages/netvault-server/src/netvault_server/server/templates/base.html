@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}?v={{ asset_version }}">
   </head>
   <body class="{% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#app-main">Skip to content</a>
     <div class="top-loader" aria-hidden="true"></div>
     <header class="topbar">
       <a class="brand" href="{{ path_for('/web') }}">
@@ -16,10 +17,10 @@
       </a>
       {% if user %}
       <nav class="primary-nav" aria-label="Primary">
-        <a class="{% if request.url.path == '/web' %}active{% endif %}" href="{{ path_for('/web') }}">Home</a>
-        <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" href="{{ path_for('/web/pdfs') }}">Search</a>
-        <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" href="{{ path_for('/web/upload') }}">Upload</a>
-        <a class="{% if request.url.path == '/web/download' %}active{% endif %}" href="{{ path_for('/web/download') }}">Download</a>
+        <a class="{% if request.url.path == '/web' %}active{% endif %}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} href="{{ path_for('/web') }}">Home</a>
+        <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} href="{{ path_for('/web/pdfs') }}">Search</a>
+        <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" {% if request.url.path == '/web/upload' %}aria-current="page"{% endif %} href="{{ path_for('/web/upload') }}">Upload</a>
+        <a class="{% if request.url.path == '/web/download' %}active{% endif %}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} href="{{ path_for('/web/download') }}">Download</a>
       </nav>
       <div class="topbar-right">
         <nav class="utility-nav" aria-label="Utilities">
@@ -36,7 +37,8 @@
       </div>
       {% endif %}
     </header>
-    <main class="page" id="app-main">
+    <main class="page" id="app-main" tabindex="-1">
+      <h1 class="sr-only">{% block heading %}NetVault{% endblock %}</h1>
       {% block content %}{% endblock %}
     </main>
     <script src="{{ path_for('/static/app.js') }}?v={{ asset_version }}" defer></script>

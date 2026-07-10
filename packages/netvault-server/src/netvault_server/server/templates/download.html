@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Download - NetVault{% endblock %}
+{% block heading %}Download PDFs{% endblock %}
 {% block content %}
+{% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
 <form method="post" action="{{ path_for('/web/download') }}" class="form wide">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>DOI text <textarea name="doi_text" rows="8" placeholder="10.1016/j.ijpe.2018.04.006">{{ doi_text }}</textarea></label>

@@ -49,6 +49,7 @@ NETVAULT_SECRET_KEY=change-this
 NETVAULT_BOOTSTRAP_ADMIN=admin
 NETVAULT_BOOTSTRAP_ADMIN_PASSWORD=change-this
 NETVAULT_BASE_PATH=/nv
+NETVAULT_SECURE_COOKIES=true
 ```
 
 Before real use, change these values in `docker-compose.yml` or an environment-specific
@@ -204,7 +205,8 @@ nv logout
 
 `nv download --file` extracts DOI values from any text file using the same DOI
 regex as upload metadata parsing. Downloads use 8 parallel workers by default
-and automatically resume incomplete `.part` files. Upload and download both use
+and automatically resume incomplete `.part` files. Completed downloads are verified
+against the server SHA-256 digest. Upload and download both use
 a single-line progress bar.
 
 ## Admin CLI

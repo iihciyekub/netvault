@@ -97,6 +97,7 @@
     if (push && url !== window.location.href) history.pushState({}, "", url);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setLoading(false);
+    currentMain.focus({ preventScroll: true });
   };
 
   const updateFromHtml = (html, url, push, cache = false) => {

@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import requests
 import typer
@@ -25,8 +26,11 @@ console = Console()
 def load_credentials() -> dict[str, Any]:
     if not CREDENTIALS_PATH.exists():
         return {}
-    with CREDENTIALS_PATH.open("rb") as handle:
-        return tomllib.load(handle)
+    try:
+        with CREDENTIALS_PATH.open("rb") as handle:
+            return tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
 
 
 def require_credentials() -> tuple[str, str]:
@@ -86,13 +90,13 @@ def reset_password(
     username: str,
     password: str = typer.Option(..., prompt=True, hide_input=True, confirmation_prompt=True),
 ) -> None:
-    api_post(f"/admin/users/{username}/reset-password", {"password": password})
+    api_post(f"/admin/users/{quote(username, safe='')}/reset-password", {"password": password})
     console.print(f"Reset password for {username}.")
 
 
 @app.command("deactivate-user")
 def deactivate_user(username: str) -> None:
-    api_post(f"/admin/users/{username}/deactivate")
+    api_post(f"/admin/users/{quote(username, safe='')}/deactivate")
     console.print(f"Deactivated {username}.")
 
 
@@ -112,5 +116,13 @@ def delete_pdf(identifier: str) -> None:
     console.print(f"Deleted PDF #{pdf['id']} ({pdf['original_name']}).")
 
 
+def run() -> None:
+    try:
+        app()
+    except (RuntimeError, OSError, requests.RequestException) as exc:
+        console.print(f"error: {exc}", style="red", highlight=False)
+        raise SystemExit(1) from None
+
+
 if __name__ == "__main__":
-    app()
+    run()

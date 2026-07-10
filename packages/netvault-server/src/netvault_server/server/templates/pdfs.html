@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Search - NetVault{% endblock %}
+{% block heading %}Search PDFs{% endblock %}
 {% block content %}
 <form method="get" action="{{ path_for('/web/pdfs') }}" class="searchbar">
-  <input name="q" value="{{ q }}" placeholder="DOI, title, journal, filename, sha256" autofocus>
+  <label class="sr-only" for="pdf-search">Search by DOI or metadata</label>
+  <input id="pdf-search" name="q" value="{{ q }}" placeholder="DOI, title, journal, filename, sha256" autofocus>
   <button class="primary" type="submit">Search</button>
   {% if q %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}">Clear</a>{% endif %}
 </form>
 {% if searched %}
+<p class="result-count">{{ total }} result{% if total != 1 %}s{% endif %}</p>
 <div class="table-scroll">
   <table class="results">
     <thead><tr><th>DOI</th><th>Year</th><th>Title</th><th>Journal</th><th>Size</th><th></th></tr></thead>
@@ -26,6 +29,13 @@
     </tbody>
   </table>
 </div>
+{% if total_pages > 1 %}
+<nav class="pagination" aria-label="Search result pages">
+  {% if page > 1 %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page - 1 }}">Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ total_pages }}</span>
+  {% if page < total_pages %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page + 1 }}">Next</a>{% endif %}
+</nav>
+{% endif %}
 {% else %}
 <div class="empty-state">Search by DOI or metadata.</div>
 {% endif %}

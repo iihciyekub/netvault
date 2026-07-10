@@ -1,5 +1,7 @@
 from pathlib import Path
 import logging
+import hashlib
+import json
 
 from netvault.cli.user import (
     cached_file_sha256,
@@ -15,6 +17,8 @@ from netvault.cli.user import (
     unique_destination,
 )
 from netvault.cli.update import build_update_command
+from typer.testing import CliRunner
+import netvault.cli.user as user_cli
 import netvault.doi
 from netvault.doi import extract_doi_evidence
 
@@ -74,6 +78,16 @@ def test_update_command_falls_back_to_current_python_pip(monkeypatch) -> None:
         "--force-reinstall",
         "git+https://github.com/iihciyekub/netvault.git",
     ]
+
+
+def test_list_command_json_output(monkeypatch) -> None:
+    rows = [{"id": 1, "doi": "10.1234/test"}]
+    monkeypatch.setattr(user_cli, "api_get", lambda *args, **kwargs: rows)
+
+    result = CliRunner().invoke(user_cli.app, ["list", "--json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == rows
 
 
 def test_collect_pdf_paths_recurses_and_deduplicates(tmp_path: Path) -> None:
@@ -162,6 +176,25 @@ def test_download_plan_restarts_oversized_part_file(tmp_path: Path) -> None:
     assert offset == 0
     assert complete is False
     assert not part.exists()
+
+
+def test_download_plan_does_not_skip_same_size_corrupt_file(tmp_path: Path) -> None:
+    existing = tmp_path / "paper.pdf"
+    expected = b"good"
+    existing.write_bytes(b"evil")
+    used: set[Path] = set()
+
+    destination, _, offset, complete = plan_download_destination(
+        tmp_path,
+        "paper.pdf",
+        len(expected),
+        used,
+        expected_sha256=hashlib.sha256(expected).hexdigest(),
+    )
+
+    assert destination == tmp_path / "paper-2.pdf"
+    assert offset == 0
+    assert complete is False
 
 
 def test_hash_cache_reuses_unchanged_file(tmp_path: Path, monkeypatch) -> None:

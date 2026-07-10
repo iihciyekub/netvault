@@ -234,7 +234,7 @@ def test_dashboard_stats_cache_can_be_invalidated(client: TestClient) -> None:
 
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
     login_page = client.get("/web/login")
-    assert "<h1" not in login_page.text
+    assert '<h1 class="sr-only">Log in to NetVault</h1>' in login_page.text
     assert "app.js" in login_page.text
     assert "clipboard.js" not in login_page.text
     assert "upload.js" not in login_page.text
@@ -253,7 +253,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert response.status_code == 200
     dashboard = client.get("/web")
     assert dashboard.status_code == 200
-    assert "<h1" not in dashboard.text
+    assert '<h1 class="sr-only">NetVault dashboard</h1>' in dashboard.text
     assert "No journal-year data." in dashboard.text
     assert "UTD24" in dashboard.text
     assert "ABS 4*" in dashboard.text
@@ -273,20 +273,20 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     csrf = client.cookies["netvault_csrf"]
     upload_page = client.get("/web/upload")
     assert upload_page.status_code == 200
-    assert "<h1" not in upload_page.text
+    assert '<h1 class="sr-only">Upload PDFs</h1>' in upload_page.text
     assert "raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh" not in upload_page.text
     assert "data-upload-form" in upload_page.text
     assert "data-precheck-url=\"/web/pdfs/exists\"" in upload_page.text
     assert "upload-progress" in upload_page.text
     download_page = client.get("/web/download")
     assert download_page.status_code == 200
-    assert "<h1" not in download_page.text
+    assert '<h1 class="sr-only">Download PDFs</h1>' in download_page.text
     assert "nv download --file ./dois.txt --to ./downloads" not in download_page.text
     assert "app.js" in download_page.text
     assert "clipboard.js" not in download_page.text
     cli_page = client.get("/web/cli")
     assert cli_page.status_code == 200
-    assert "<h1" not in cli_page.text
+    assert '<h1 class="sr-only">NetVault command-line interface</h1>' in cli_page.text
     assert "Install / Update" in cli_page.text
     assert "nv update" in cli_page.text
     assert "nv login https://iiaide.com/nv --username polyu --password '!1@2#3Qwe'" in cli_page.text
@@ -295,9 +295,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "data-copy" in cli_page.text
     info_page = client.get("/web/info")
     assert info_page.status_code == 200
-    assert "<h1" not in info_page.text
+    assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.5.29" in info_page.text
+    assert "0.6.0" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert "yongjian.li@polyu.ed.hk" in info_page.text
 
@@ -344,7 +344,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
 
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200
-    assert "<h1" not in pdfs_without_query.text
+    assert '<h1 class="sr-only">Search PDFs</h1>' in pdfs_without_query.text
     assert "Search by DOI or metadata." in pdfs_without_query.text
     assert "10.1234/web.test" not in pdfs_without_query.text
 

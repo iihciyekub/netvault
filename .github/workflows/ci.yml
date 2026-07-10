@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip build uv
+      - run: uv lock --check && uv lock --project packages/netvault-server --check
+      - run: python -m pip install -e ".[dev]" -e packages/netvault-server
+      - run: ruff check src packages tests
+      - run: pytest --cov=src/netvault --cov=packages/netvault-server/src/netvault_server --cov-fail-under=60
+      - run: python -m build .
+      - run: python -m build packages/netvault-server

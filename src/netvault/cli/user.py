@@ -39,6 +39,7 @@ class DownloadPlan:
     size: int
     destination: Path
     part_path: Path
+    sha256: str
     resume_offset: int = 0
 
 app = typer.Typer(
@@ -216,7 +217,7 @@ def get_existing_pdfs_by_sha256(hashes: Iterable[str]) -> dict[str, dict]:
             if isinstance(existing_payload, dict):
                 existing.update(existing_payload)
         return existing
-    except RuntimeError:
+    except (RuntimeError, requests.RequestException):
         for sha256 in unique_hashes:
             pdf = get_existing_pdf_by_sha256(sha256)
             if pdf:
@@ -279,6 +280,7 @@ def plan_download_destination(
     filename: str,
     size: int,
     used_destinations: set[Path],
+    expected_sha256: str | None = None,
 ) -> tuple[Path, Path, int, bool]:
     safe_name = Path(filename).name
     base = directory / safe_name
@@ -293,17 +295,21 @@ def plan_download_destination(
             continue
         if destination.exists():
             if destination.stat().st_size == size:
-                part_path.unlink(missing_ok=True)
-                used_destinations.add(destination)
-                return destination, part_path, size, True
+                if expected_sha256 is None or file_sha256(destination) == expected_sha256:
+                    part_path.unlink(missing_ok=True)
+                    used_destinations.add(destination)
+                    return destination, part_path, size, True
             counter += 1
             continue
         if part_path.exists():
             part_size = part_path.stat().st_size
             if part_size == size:
-                part_path.replace(destination)
-                used_destinations.add(destination)
-                return destination, part_path, size, True
+                if expected_sha256 is None or file_sha256(part_path) == expected_sha256:
+                    part_path.replace(destination)
+                    used_destinations.add(destination)
+                    return destination, part_path, size, True
+                part_path.unlink(missing_ok=True)
+                part_size = 0
             if part_size > size:
                 part_path.unlink(missing_ok=True)
                 part_size = 0
@@ -606,7 +612,7 @@ def upload_command(
                     deduped += 1
                 else:
                     uploaded += 1
-            except RuntimeError as exc:
+            except (RuntimeError, OSError, requests.RequestException) as exc:
                 failed.append((pdf_path, str(exc)))
             finally:
                 progress.advance(task, 1)
@@ -627,6 +633,8 @@ def upload_command(
     console.print("; ".join(parts))
     for pdf_path, error in failed:
         console.print(f"failed: {pdf_path}: {error}")
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command(
@@ -660,8 +668,16 @@ Examples:
   nv list
 """,
 )
-def list_command() -> None:
-    render_pdf_table(api_get("/pdfs"))
+def list_command(
+    limit: int = typer.Option(100, min=1, max=500, help="Maximum PDFs to show."),
+    offset: int = typer.Option(0, min=0, help="Number of PDFs to skip."),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    rows = api_get("/pdfs", limit=limit, offset=offset)
+    if json_output:
+        typer.echo(json.dumps(rows, ensure_ascii=False))
+    else:
+        render_pdf_table(rows)
 
 
 @app.command(
@@ -671,8 +687,17 @@ Examples:
   nv search 10.1016
 """,
 )
-def search(query: str = typer.Argument(...)) -> None:
-    render_pdf_table(api_get("/pdfs/search", q=query))
+def search(
+    query: str = typer.Argument(...),
+    limit: int = typer.Option(100, min=1, max=500, help="Maximum PDFs to show."),
+    offset: int = typer.Option(0, min=0, help="Number of PDFs to skip."),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    rows = api_get("/pdfs/search", q=query, limit=limit, offset=offset)
+    if json_output:
+        typer.echo(json.dumps(rows, ensure_ascii=False))
+    else:
+        render_pdf_table(rows)
 
 
 def fetch_pdf_detail_for_download(doi: str) -> tuple[str, dict | None, str | None]:
@@ -746,7 +771,7 @@ def download(
             console.print(f"done: 0/{len(requested_dois)} downloaded; {len(failed)} failed")
             for doi, error in failed:
                 console.print(f"failed: {doi}: {error}")
-            return
+            raise typer.Exit(1)
 
         to.mkdir(parents=True, exist_ok=True)
         downloaded = 0
@@ -761,6 +786,7 @@ def download(
                 detail["original_name"],
                 size,
                 used_destinations,
+                expected_sha256=detail["sha256"],
             )
             if complete:
                 skipped += 1
@@ -772,6 +798,7 @@ def download(
                     size=size,
                     destination=destination,
                     part_path=part_path,
+                    sha256=detail["sha256"],
                     resume_offset=resume_offset,
                 )
             )
@@ -787,6 +814,8 @@ def download(
             console.print("; ".join(parts))
             for doi, error in failed:
                 console.print(f"failed: {doi}: {error}")
+            if failed:
+                raise typer.Exit(1)
             return
 
         base_url = server_url()
@@ -809,6 +838,9 @@ def download(
             )
             raise_for_api_error(response)
             if plan.resume_offset > 0 and response.status_code == 206:
+                content_range = response.headers.get("Content-Range", "")
+                if not content_range.startswith(f"bytes {plan.resume_offset}-"):
+                    raise RuntimeError("server returned an invalid Content-Range")
                 mode = "ab"
                 did_resume = True
             elif plan.resume_offset > 0:
@@ -820,6 +852,11 @@ def download(
             actual_size = plan.part_path.stat().st_size
             if actual_size != plan.size:
                 raise RuntimeError(f"incomplete download: expected {plan.size} bytes, got {actual_size}")
+            actual_sha256 = file_sha256(plan.part_path)
+            if actual_sha256 != plan.sha256:
+                raise RuntimeError(
+                    f"checksum mismatch: expected {plan.sha256}, got {actual_sha256}"
+                )
             plan.part_path.replace(plan.destination)
             return plan.doi, "resumed" if did_resume else "downloaded", plan.destination
 
@@ -852,6 +889,8 @@ def download(
     console.print("; ".join(parts))
     for doi, error in failed:
         console.print(f"failed: {doi}: {error}")
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command(
@@ -862,8 +901,7 @@ Examples:
 )
 def status() -> None:
     me = api_get("/me")
-    pdfs = api_get("/pdfs")
-    total_size = sum(row["size"] for row in pdfs)
+    summary = api_get("/stats/summary")
     credentials = load_credentials()
     token = credentials.get("token", "")
     expires_at, remaining = format_token_expiry(token) if isinstance(token, str) else ("-", "-")
@@ -880,31 +918,21 @@ def status() -> None:
     account_table.add_row("Token Expires", expires_at)
     account_table.add_row("Token Remaining", remaining)
 
-    years = [row["published_year"] for row in pdfs if row.get("published_year")]
-    uploaders = sorted({row["uploaded_by"] for row in pdfs if row.get("uploaded_by")})
     summary_table = Table(title="Library", box=box.SIMPLE_HEAVY, show_header=True, header_style="bold")
     summary_table.add_column("Metric")
     summary_table.add_column("Value", justify="right")
-    summary_table.add_row("Active PDFs", f"{len(pdfs):,}")
-    summary_table.add_row("Total Size", format_bytes(total_size))
-    summary_table.add_row("Uploaders", f"{len(uploaders):,}")
-    summary_table.add_row("Year Range", f"{min(years)}-{max(years)}" if years else "-")
-
-    status_counts: dict[str, int] = {}
-    for row in pdfs:
-        crossref_status = row.get("crossref_status") or "unknown"
-        status_counts[crossref_status] = status_counts.get(crossref_status, 0) + 1
-    crossref_table = Table(title="Metadata", box=box.SIMPLE_HEAVY, show_header=True, header_style="bold")
-    crossref_table.add_column("Crossref Status")
-    crossref_table.add_column("PDFs", justify="right")
-    for crossref_status, count in sorted(status_counts.items()):
-        crossref_table.add_row(crossref_status, f"{count:,}")
-    if not status_counts:
-        crossref_table.add_row("-", "0")
+    summary_table.add_row("Active PDFs", f"{summary['active_pdfs']:,}")
+    summary_table.add_row("Total Size", format_bytes(summary["total_size"]))
+    summary_table.add_row("Uploaders", f"{summary['uploaders']:,}")
+    year_range = (
+        f"{summary['min_year']}-{summary['max_year']}"
+        if summary.get("min_year") is not None
+        else "-"
+    )
+    summary_table.add_row("Year Range", year_range)
 
     console.print(account_table)
     console.print(summary_table)
-    console.print(crossref_table)
 
 
 @app.command(
@@ -924,5 +952,13 @@ def update(
     update_from_github(repo_url)
 
 
+def run() -> None:
+    try:
+        app()
+    except (RuntimeError, OSError, requests.RequestException) as exc:
+        console.print(f"error: {exc}", style="red", highlight=False)
+        raise SystemExit(1) from None
+
+
 if __name__ == "__main__":
-    app()
+    run()

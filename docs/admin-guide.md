@@ -78,6 +78,7 @@ Health check:
 
 ```bash
 curl -fsS https://iiaide.com/nv/health
+curl -fsS https://iiaide.com/nv/ready
 ```
 
 Web UI:
@@ -100,6 +101,11 @@ NETVAULT_SECRET_KEY=...
 NETVAULT_BOOTSTRAP_ADMIN=admin
 NETVAULT_BOOTSTRAP_ADMIN_PASSWORD=...
 NETVAULT_CROSSREF_MAILTO=admin@iiaide.com
+NETVAULT_SECURE_COOKIES=true
+NETVAULT_MAX_UPLOAD_FILES=25
+NETVAULT_MAX_BATCH_BYTES=524288000
+NETVAULT_MAX_ZIP_FILES=100
+NETVAULT_MAX_ZIP_BYTES=1073741824
 ```
 
 `NETVAULT_CROSSREF_MAILTO` is used for Crossref polite API access.
@@ -257,6 +263,7 @@ nv update
 
 ## Known Admin Gaps
 
-- No Alembic migration system yet; startup adds missing columns directly.
+- Schema changes use versioned startup migrations; take a database backup before
+  upgrading when downgrade support may be needed.
 - No one-command backup/restore script yet.
 - Soft-deleted PDF objects are not garbage-collected yet.
