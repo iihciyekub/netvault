@@ -2,6 +2,8 @@ from collections.abc import Callable
 
 from sqlalchemy import Engine, inspect, text
 
+from netvault_server.server.journal_filters import normalize_journal_name
+
 
 Migration = Callable[[Engine], None]
 
@@ -43,7 +45,87 @@ def _add_user_token_version(engine: Engine) -> None:
             )
 
 
-MIGRATIONS: tuple[Migration, ...] = (_add_pdf_metadata_columns, _add_user_token_version)
+def _add_query_indexes_and_journal_keys(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "pdfs" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("pdfs")}
+    upload_columns = {
+        column["name"] for column in inspector.get_columns("upload_records")
+    }
+    with engine.begin() as connection:
+        if "journal_key" not in existing:
+            connection.execute(text("ALTER TABLE pdfs ADD COLUMN journal_key VARCHAR(255)"))
+        if "idempotency_key" not in upload_columns:
+            connection.execute(
+                text("ALTER TABLE upload_records ADD COLUMN idempotency_key VARCHAR(160)")
+            )
+        rows = connection.execute(
+            text("SELECT id, container_title FROM pdfs WHERE journal_key IS NULL")
+        ).mappings()
+        updates = [
+            {
+                "id": row["id"],
+                "journal_key": normalize_journal_name(row["container_title"]) or None,
+            }
+            for row in rows
+        ]
+        if updates:
+            connection.execute(
+                text("UPDATE pdfs SET journal_key = :journal_key WHERE id = :id"),
+                updates,
+            )
+
+        active_predicate = "is_deleted IS FALSE" if engine.dialect.name == "postgresql" else "is_deleted = 0"
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_pdfs_active_uploaded_at "
+                f"ON pdfs (uploaded_at DESC, id DESC) WHERE {active_predicate}"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_pdfs_journal_year "
+                "ON pdfs (journal_key, published_year)"
+            )
+        )
+        for table, column, index in (
+            ("upload_records", "pdf_id", "ix_upload_records_pdf_id"),
+            ("upload_records", "user_id", "ix_upload_records_user_id"),
+            ("upload_records", "uploaded_at DESC", "ix_upload_records_uploaded_at"),
+            ("download_records", "pdf_id", "ix_download_records_pdf_id"),
+            ("download_records", "user_id", "ix_download_records_user_id"),
+            ("download_records", "downloaded_at DESC", "ix_download_records_downloaded_at"),
+        ):
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS {index} ON {table} ({column})"))
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_upload_records_idempotency_key "
+                "ON upload_records (idempotency_key) WHERE idempotency_key IS NOT NULL"
+            )
+        )
+
+        if engine.dialect.name == "postgresql":
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_pdfs_search_trgm ON pdfs USING gin "
+                    "((lower(coalesce(doi, '') || ' ' || coalesce(title, '') || ' ' || "
+                    "coalesce(authors, '') || ' ' || coalesce(container_title, '') || ' ' || "
+                    "coalesce(publisher, '') || ' ' || coalesce(original_name, '') || ' ' || "
+                    "coalesce(sha256, ''))) gin_trgm_ops) WHERE is_deleted IS FALSE"
+                )
+            )
+            connection.execute(text("ANALYZE pdfs"))
+            connection.execute(text("ANALYZE upload_records"))
+            connection.execute(text("ANALYZE download_records"))
+
+
+MIGRATIONS: tuple[Migration, ...] = (
+    _add_pdf_metadata_columns,
+    _add_user_token_version,
+    _add_query_indexes_and_journal_keys,
+)
 
 
 def run_migrations(engine: Engine) -> None:

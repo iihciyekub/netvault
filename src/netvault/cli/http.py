@@ -86,6 +86,7 @@ def upload_pdf(
     doi: str | None = None,
     no_crossref: bool = False,
     progress_callback: Any | None = None,
+    sha256: str | None = None,
 ) -> Any:
     with path.open("rb") as handle:
         fields: dict[str, Any] = {}
@@ -104,6 +105,8 @@ def upload_pdf(
         monitor = MultipartEncoderMonitor(encoder, notify_upload_progress)
         headers = auth_headers()
         headers["Content-Type"] = monitor.content_type
+        if sha256:
+            headers["Idempotency-Key"] = sha256
         response = http_session().post(
             f"{server_url()}/pdfs/upload",
             headers=headers,

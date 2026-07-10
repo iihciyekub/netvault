@@ -1,23 +1,26 @@
 from pathlib import Path
+import logging
 import secrets
-import tempfile
 from typing import Any
-import zipfile
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
-from sqlalchemy import func, or_, select
+from zipstream import ZIP_STORED, ZipStream
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
+from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
 from netvault_server.server.journal_filters import normalize_filter_key
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
-from netvault_server.server.models import DownloadRecord, Pdf, User, UserRole
+from netvault_server.server.models import Pdf, User, UserRole
+from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.security import (
     DUMMY_PASSWORD_HASH,
     clear_login_failures,
@@ -28,6 +31,7 @@ from netvault_server.server.security import (
     password_needs_rehash,
     record_login_failure,
     verify_password,
+    activity_is_allowed,
 )
 from netvault_server.server.stats import (
     get_dashboard_stats,
@@ -38,6 +42,7 @@ TOKEN_COOKIE = "netvault_token"
 CSRF_COOKIE = "netvault_csrf"
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def format_bytes(size: int) -> str:
@@ -110,7 +115,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui2",
+        "asset_version": f"{__version__}-ui1",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -227,11 +232,17 @@ def logout_submit(
 
 
 @router.get("/web", response_class=HTMLResponse, include_in_schema=False)
-def dashboard(request: Request, filter: str = "all", db: Session = Depends(get_db)) -> Any:
+def dashboard(
+    request: Request,
+    filter: str = "all",
+    pin: list[str] = Query(default=[]),
+    db: Session = Depends(get_db),
+) -> Any:
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    stats = get_dashboard_stats(db, normalize_filter_key(filter))
+    pins = [name.strip() for name in pin[:10] if name.strip() and len(name.strip()) <= 255]
+    stats = get_dashboard_stats(db, normalize_filter_key(filter), pins)
     return render(
         request,
         "dashboard.html",
@@ -263,31 +274,33 @@ def pdfs_page(
     q = q.strip()
     pdfs = []
     total = 0
-    page_size = 50
+    settings = get_settings()
+    page_size = settings.web_page_size
+    error = None
+    if len(q) > settings.search_query_max_chars:
+        q = q[: settings.search_query_max_chars]
+        error = f"Search queries are limited to {settings.search_query_max_chars} characters."
     if q:
-        pattern = f"%{q}%"
-        conditions = (
+        conditions = [
             Pdf.is_deleted.is_(False),
             Pdf.doi.is_not(None),
-            or_(
-                Pdf.doi.ilike(pattern),
-                Pdf.title.ilike(pattern),
-                Pdf.authors.ilike(pattern),
-                Pdf.container_title.ilike(pattern),
-                Pdf.publisher.ilike(pattern),
-                Pdf.original_name.ilike(pattern),
-                Pdf.sha256.ilike(pattern),
-            ),
-        )
-        total = int(db.scalar(select(func.count(Pdf.id)).where(*conditions)) or 0)
+        ]
+        try:
+            exact_doi = normalize_doi(q)
+        except ValueError:
+            exact_doi = None
+        conditions.append(Pdf.doi == exact_doi if exact_doi else pdf_contains_query(q))
         query = (
-            select(Pdf)
+            select(Pdf, func.count(Pdf.id).over().label("total_count"))
+            .options(*pdf_read_options())
             .where(*conditions)
-            .order_by(Pdf.uploaded_at.desc())
+            .order_by(Pdf.uploaded_at.desc(), Pdf.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        pdfs = db.scalars(query).all()
+        rows = db.execute(query).unique().all()
+        pdfs = [row[0] for row in rows]
+        total = int(rows[0].total_count) if rows else 0
     total_pages = max(1, (total + page_size - 1) // page_size)
     return render(
         request,
@@ -300,6 +313,7 @@ def pdfs_page(
             "page": page,
             "total": total,
             "total_pages": total_pages,
+            "error": error,
         },
     )
 
@@ -427,6 +441,14 @@ async def upload_submit(
         return user
     manual_doi = doi.strip() or None
     settings = get_settings()
+    if not activity_is_allowed(
+        f"upload:{user.id}", settings.upload_rate_per_hour, amount=len(files)
+    ):
+        return render(
+            request,
+            "upload.html",
+            {"user": user, "results": [], "error": "Upload rate limit exceeded. Try again later."},
+        )
     if len(files) > settings.max_upload_files:
         return render(
             request,
@@ -453,7 +475,47 @@ async def upload_submit(
             results.append({"filename": upload_file.filename, "ok": True, "result": result})
         except HTTPException as exc:
             results.append({"filename": upload_file.filename, "ok": False, "error": exc.detail})
+        except Exception:
+            db.rollback()
+            logger.exception("Unexpected upload failure for %s", upload_file.filename)
+            results.append(
+                {
+                    "filename": upload_file.filename,
+                    "ok": False,
+                    "error": "Unexpected server error. The file was not added.",
+                }
+            )
     return render(request, "upload.html", {"user": user, "results": results, "error": None})
+
+
+@router.post("/web/upload/file", include_in_schema=False)
+async def upload_single_file(
+    request: Request,
+    file: UploadFile = File(...),
+    doi: str = Form(""),
+    no_crossref: bool = Form(False),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    validate_csrf(request, csrf_token_value)
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    settings = get_settings()
+    if not activity_is_allowed(f"upload:{user.id}", settings.upload_rate_per_hour):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload rate limit exceeded")
+    idempotency_key = request.headers.get("idempotency-key")
+    if idempotency_key and len(idempotency_key) > 128:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency key is too long")
+    result = await process_upload(
+        file, doi.strip() or None, no_crossref, user, db, idempotency_key
+    )
+    return {
+        "filename": file.filename,
+        "ok": True,
+        "status": "existing" if result.deduplicated else "uploaded",
+        "doi": result.pdf.doi,
+    }
 
 
 @router.post("/web/pdfs/exists", include_in_schema=False)
@@ -554,9 +616,15 @@ def web_pdf_download(
     path = object_path(pdf.sha256)
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Stored PDF missing")
-    db.add(DownloadRecord(pdf_id=pdf.id, user_id=user.id))
-    db.commit()
-    return FileResponse(path, media_type="application/pdf", filename=Path(pdf.original_name).name)
+    if not activity_is_allowed(f"download:{user.id}", get_settings().download_rate_per_hour):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=Path(pdf.original_name).name,
+        background=BackgroundTask(record_completed_downloads, [pdf.id], user.id),
+        headers={"ETag": f'"{pdf.sha256}"'},
+    )
 
 
 @router.post("/web/pdfs/download-all", include_in_schema=False)
@@ -579,6 +647,10 @@ def web_pdf_download_all(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Select at most {settings.max_zip_files} PDFs",
         )
+    if not activity_is_allowed(
+        f"download:{user.id}", settings.download_rate_per_hour, amount=len(ids)
+    ):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")
     pdfs = db.scalars(select(Pdf).where(Pdf.id.in_(ids), Pdf.is_deleted.is_(False))).all()
     positions = {pdf_id: index for index, pdf_id in enumerate(ids)}
     ordered = sorted(pdfs, key=lambda pdf: positions[pdf.id])
@@ -590,25 +662,28 @@ def web_pdf_download_all(
             detail="Selected PDFs exceed the ZIP size limit",
         )
 
-    handle = tempfile.NamedTemporaryFile(prefix="netvault-download-", suffix=".zip", delete=False)
-    zip_path = Path(handle.name)
-    handle.close()
     used_names: set[str] = set()
-    try:
-        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-            for pdf in ordered:
-                path = object_path(pdf.sha256)
-                if not path.exists():
-                    continue
-                archive.write(path, arcname=safe_zip_name(pdf, used_names))
-                db.add(DownloadRecord(pdf_id=pdf.id, user_id=user.id))
-        db.commit()
-    except Exception:
-        zip_path.unlink(missing_ok=True)
-        raise
-    return FileResponse(
-        zip_path,
+    paths = [(pdf, object_path(pdf.sha256)) for pdf in ordered]
+    missing = [pdf.doi for pdf, path in paths if not path.exists()]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"{len(missing)} stored PDF files are missing; no partial ZIP was created",
+        )
+    archive = ZipStream(compress_type=ZIP_STORED, sized=True)
+    manifest_lines = ["doi\tfilename\tsha256\tsize"]
+    for pdf, path in paths:
+        archive_name = safe_zip_name(pdf, used_names)
+        archive.add_path(path, archive_name)
+        manifest_lines.append(f"{pdf.doi}\t{archive_name}\t{pdf.sha256}\t{pdf.size}")
+    archive.add("\n".join(manifest_lines) + "\n", "netvault-manifest.tsv")
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote('netvault-pdfs.zip')}",
+        "Content-Length": str(len(archive)),
+    }
+    return StreamingResponse(
+        archive,
         media_type="application/zip",
-        filename="netvault-pdfs.zip",
-        background=BackgroundTask(zip_path.unlink, missing_ok=True),
+        headers=headers,
+        background=BackgroundTask(record_completed_downloads, [pdf.id for pdf in ordered], user.id),
     )

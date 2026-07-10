@@ -232,6 +232,43 @@ def test_dashboard_stats_cache_can_be_invalidated(client: TestClient) -> None:
         assert stats.get_dashboard_stats(db)["summary"]["active_pdfs"] == 2
 
 
+def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestClient) -> None:
+    web_login(client)
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    stats = importlib.import_module("netvault_server.server.stats")
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        for index in range(21):
+            journal = f"Journal {index:02d}"
+            for paper in range(21 - index):
+                db.add(
+                    models.Pdf(
+                        doi=f"10.7777/{index}.{paper}",
+                        doi_source="manual",
+                        sha256=f"{index * 100 + paper + 1:064x}",
+                        original_name=f"{index}-{paper}.pdf",
+                        title=f"Paper {index}-{paper}",
+                        authors="Test Author",
+                        container_title=journal,
+                        publisher="Test",
+                        published_year=2026,
+                        crossref_status="ok",
+                        size=10,
+                        storage_path=f"objects/aa/{index}-{paper}.pdf",
+                        uploaded_by_id=admin.id,
+                    )
+                )
+        db.commit()
+    stats.invalidate_stats_cache()
+
+    normal = client.get("/web")
+    pinned = client.get("/web", params={"pin": "Journal 20"})
+    assert 'data-journal-name="Journal 20"' not in normal.text
+    assert 'data-journal-name="Journal 20"' in pinned.text
+    assert '<option value="Journal 20"></option>' in normal.text
+
+
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
     login_page = client.get("/web/login")
     assert '<h1 class="sr-only">Log in to NetVault</h1>' in login_page.text
@@ -273,6 +310,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "fa-cloud-arrow-down" in dashboard.text
     assert "fa-quote-left" in dashboard.text
     assert "fa-box-archive" not in dashboard.text
+    assert "data-utility-toggle" in dashboard.text
+    assert 'id="utility-nav"' in dashboard.text
     assert '<h2 id="journal-year-title" class="sr-only">Journal by Year</h2>' in dashboard.text
     assert "Publication density across matching journals." not in dashboard.text
     assert "By Year" not in dashboard.text
@@ -299,7 +338,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">NetVault command-line interface</h1>' in cli_page.text
     assert "Install / Update" in cli_page.text
     assert "nv update" in cli_page.text
-    assert "nv login https://iiaide.com/nv --username polyu --password '!1@2#3Qwe'" in cli_page.text
+    assert "nv login https://iiaide.com/nv --username polyu" in cli_page.text
+    assert "--password" not in cli_page.text
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
     assert "data-copy" in cli_page.text
@@ -317,7 +357,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.6.2" in info_page.text
+    assert "0.7.0" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert 'class="author-email"' in info_page.text
     assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text
@@ -386,6 +426,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "0 PDFs" not in dashboard.text
     assert "heatmap-tooltip.js" not in dashboard.text
     assert "heat-cell level-4" in dashboard.text
+    assert '<button\n              type="button"\n              class="heat-cell level-4"' in dashboard.text
 
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200
@@ -450,8 +491,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert zipped.headers["content-type"] == "application/zip"
     with zipfile.ZipFile(io.BytesIO(zipped.content)) as archive:
         names = archive.namelist()
-        assert names == ["10.1234_web.test.pdf"]
+        assert names == ["10.1234_web.test.pdf", "netvault-manifest.tsv"]
         assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
+        assert b"10.1234/web.test" in archive.read("netvault-manifest.tsv")
 
 
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:
@@ -539,19 +581,23 @@ def test_search_pagination_shows_crossref_metadata_cards(client: TestClient) -> 
 
     first = client.get("/web/pdfs", params={"q": "Paged Publisher"})
     second = client.get("/web/pdfs", params={"q": "Paged Publisher", "page": 2})
+    third = client.get("/web/pdfs", params={"q": "Paged Publisher", "page": 3})
 
     assert first.status_code == 200
-    assert first.text.count('class="paper-result"') == 50
-    assert "Page 1 of 2" in first.text
+    assert first.text.count('class="paper-result"') == 25
+    assert "Page 1 of 3" in first.text
     assert "page=2" in first.text
     assert "fa-chevron-right" in first.text
     assert "Ada Lovelace; Alan Turing" in first.text
     assert "crossref-badge is-verified" in first.text
     assert second.status_code == 200
-    assert second.text.count('class="paper-result"') == 1
-    assert "Page 2 of 2" in second.text
+    assert second.text.count('class="paper-result"') == 25
+    assert "Page 2 of 3" in second.text
     assert "page=1" in second.text
     assert "fa-chevron-left" in second.text
+    assert third.status_code == 200
+    assert third.text.count('class="paper-result"') == 1
+    assert "Page 3 of 3" in third.text
 
 
 def test_static_assets_are_long_cached(client: TestClient) -> None:

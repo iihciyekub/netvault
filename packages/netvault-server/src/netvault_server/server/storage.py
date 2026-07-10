@@ -3,6 +3,7 @@ import fcntl
 import os
 from pathlib import Path
 from typing import BinaryIO
+from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 
@@ -35,10 +36,11 @@ async def store_pdf(upload: UploadFile) -> tuple[str, int, str, bool, Path | Non
     if not filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF files are allowed")
 
-    tmp_path = settings.storage_root / "tmp" / f"upload-{os.getpid()}-{id(upload)}.tmp"
+    tmp_path = settings.storage_root / "tmp" / f"upload-{os.getpid()}-{uuid4().hex}.tmp"
     digest = hashlib.sha256()
     size = 0
     saw_header = False
+    tail = b""
 
     try:
         with tmp_path.open("wb") as tmp_file:
@@ -58,9 +60,15 @@ async def store_pdf(upload: UploadFile) -> tuple[str, int, str, bool, Path | Non
                     )
                 digest.update(chunk)
                 tmp_file.write(chunk)
+                tail = (tail + chunk)[-65536:]
 
         if not saw_header:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty upload")
+        if b"%%EOF" not in tail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded PDF is incomplete: missing %%EOF marker",
+            )
 
         sha256 = digest.hexdigest()
         final_path = object_path(sha256)

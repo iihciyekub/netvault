@@ -1,0 +1,8 @@
+/var/log/netvault-maintenance.log {
+    weekly
+    rotate 8
+    compress
+    missingok
+    notifempty
+    create 0600 root root
+}

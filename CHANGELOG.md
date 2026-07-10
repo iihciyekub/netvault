@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0 - 2026-07-10
+
+- Add PostgreSQL trigram search, active-list, journal-year, upload-log, and
+  download-log indexes with normalized journal keys.
+- Route exact DOI searches through the unique DOI index and collapse web count
+  plus result retrieval into one query.
+- Upload web files independently with bounded client hashing, two-file
+  concurrency, cancellation, DOI batch preflight, PDF completeness validation,
+  and idempotent audit records.
+- Add resilient Crossref connection pooling, polite-pool identification,
+  transient retries, and metadata retry for previously unavailable PDFs.
+- Stream stored ZIP archives directly to clients and record download audits
+  after response completion.
+- Add full-journal pin restoration, keyboard-accessible heatmap cells, mobile
+  utility navigation, and short-lived PJAX caching.
+- Remove the shared password from web/CLI examples and add authenticated action
+  limits, request IDs, timing headers, HSTS, private response caching, storage
+  free-space readiness, Docker resource limits, and log rotation.
+- Add incremental backup, guarded restore, and storage-consistency scripts.
+
 ## 0.6.2 - 2026-07-10
 
 - Add a persistent local journal pin list for focused heatmap views.

@@ -25,7 +25,10 @@
         <a class="{% if request.url.path == '/web/download' %}active{% endif %}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} href="{{ path_for('/web/download') }}"><i class="fa-solid fa-cloud-arrow-down fa-fw" aria-hidden="true"></i><span>Download</span></a>
       </nav>
       <div class="topbar-right">
-        <nav class="utility-nav" aria-label="Utilities">
+        <button class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="utility-nav" data-utility-toggle>
+          <i class="fa-solid fa-bars" aria-hidden="true"></i><span class="sr-only">Open utility menu</span>
+        </button>
+        <nav class="utility-nav" id="utility-nav" aria-label="Utilities">
           <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" {% if request.url.path == '/web/cli' %}aria-current="page"{% endif %} href="{{ path_for('/web/cli') }}"><i class="fa-solid fa-terminal fa-fw" aria-hidden="true"></i><span>CLI</span></a>
           {% if user.role.value == "admin" %}
           <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" {% if request.url.path == '/web/admin' %}aria-current="page"{% endif %} href="{{ path_for('/web/admin') }}"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i><span>Admin</span></a>

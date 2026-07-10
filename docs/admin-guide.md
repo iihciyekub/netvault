@@ -265,5 +265,11 @@ nv update
 
 - Schema changes use versioned startup migrations; take a database backup before
   upgrading when downgrade support may be needed.
-- No one-command backup/restore script yet.
+- `scripts/backup-server.sh` creates a PostgreSQL dump plus a hard-link incremental
+  snapshot of immutable PDF objects. Schedule it daily and copy the backup root to
+  another machine or storage account.
+- `scripts/restore-server.sh BACKUP --force` restores a verified backup during a
+  maintenance window.
+- `scripts/verify-storage.sh` reports database/file drift. Use
+  `--quarantine-orphans` to move unreferenced objects aside without deleting them.
 - Soft-deleted PDF objects are not garbage-collected yet.

@@ -22,7 +22,15 @@ from rich.table import Table
 
 from netvault import __version__
 from netvault.cli.config import HASH_CACHE_PATH, clear_credentials, load_credentials, save_credentials
-from netvault.cli.http import api_get, api_post, auth_headers, raise_for_api_error, server_url, upload_pdf
+from netvault.cli.http import (
+    api_get,
+    api_post,
+    auth_headers,
+    http_session,
+    raise_for_api_error,
+    server_url,
+    upload_pdf,
+)
 from netvault.cli.update import update_from_github
 from netvault.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
 
@@ -196,7 +204,7 @@ def existing_pdf_from_response(response: requests.Response) -> dict | None:
 
 
 def get_existing_pdf_by_sha256(sha256: str) -> dict | None:
-    response = requests.get(
+    response = http_session().get(
         f"{server_url()}/pdfs/{sha256}",
         headers=auth_headers(),
         timeout=30,
@@ -225,8 +233,32 @@ def get_existing_pdfs_by_sha256(hashes: Iterable[str]) -> dict[str, dict]:
         return existing
 
 
+def get_existing_pdfs_by_doi(dois: Iterable[str]) -> dict[str, dict]:
+    unique_dois = sorted({doi for doi in dois if doi})
+    if not unique_dois:
+        return {}
+    existing: dict[str, dict] = {}
+    chunk_size = 500
+    try:
+        for index in range(0, len(unique_dois), chunk_size):
+            response = api_post(
+                "/pdfs/exists",
+                json={"doi": unique_dois[index : index + chunk_size]},
+            )
+            payload = response.get("existing_doi", {})
+            if isinstance(payload, dict):
+                existing.update(payload)
+        return existing
+    except (RuntimeError, requests.RequestException):
+        for doi in unique_dois:
+            pdf = get_existing_pdf_by_doi(doi)
+            if pdf:
+                existing[doi] = pdf
+        return existing
+
+
 def get_existing_pdf_by_doi(doi: str) -> dict | None:
-    response = requests.get(
+    response = http_session().get(
         f"{server_url()}/pdfs/by-doi",
         headers=auth_headers(),
         params={"doi": doi},
@@ -434,7 +466,7 @@ def find_existing_pdf_before_upload(
 
 
 def save_login(server: str, username: str, password: str) -> None:
-    response = requests.post(
+    response = http_session().post(
         f"{server.rstrip('/')}/auth/login",
         json={"username": username, "password": password},
         timeout=30,
@@ -449,7 +481,7 @@ def credentials_valid() -> bool:
     token = credentials.get("token")
     if not isinstance(saved_server, str) or not isinstance(token, str):
         return False
-    response = requests.get(
+    response = http_session().get(
         f"{saved_server}/me",
         headers={"Authorization": f"Bearer {token}"},
         timeout=30,
@@ -496,7 +528,7 @@ Examples:
 )
 def logout() -> None:
     try:
-        response = requests.post(f"{server_url()}/auth/logout", headers=auth_headers(), timeout=30)
+        response = http_session().post(f"{server_url()}/auth/logout", headers=auth_headers(), timeout=30)
         raise_for_api_error(response)
     finally:
         clear_credentials()
@@ -583,6 +615,28 @@ def upload_command(
             else:
                 new_pdfs.append(pdf_path)
 
+        dois_by_path: dict[Path, str] = {}
+        upload_candidates: list[Path] = []
+        for pdf_path in new_pdfs:
+            try:
+                extracted = extract_local_doi(pdf_path, doi)
+                if not extracted:
+                    failed.append((pdf_path, "No DOI found. Pass --doi DOI when uploading."))
+                    continue
+                dois_by_path[pdf_path] = extracted
+                upload_candidates.append(pdf_path)
+            except (RuntimeError, OSError) as exc:
+                failed.append((pdf_path, str(exc)))
+        existing_by_doi = get_existing_pdfs_by_doi(dois_by_path.values())
+        new_pdfs = []
+        for pdf_path in upload_candidates:
+            existing_pdf = existing_by_doi.get(dois_by_path[pdf_path])
+            if existing_pdf:
+                latest_pdf = existing_pdf
+                skipped += 1
+            else:
+                new_pdfs.append(pdf_path)
+
         if not new_pdfs:
             progress.update(task, description="Done", completed=len(pdfs), total=len(pdfs))
         else:
@@ -591,21 +645,11 @@ def upload_command(
         for pdf_path in new_pdfs:
             try:
                 sha256 = hashes_by_path[pdf_path]
-                existing_pdf = find_existing_pdf_before_upload(
-                    pdf_path,
-                    doi,
-                    sha256,
-                    existing_by_sha,
-                )
-                if existing_pdf:
-                    latest_pdf = existing_pdf
-                    skipped += 1
-                    continue
-
                 result = upload_pdf(
                     pdf_path,
                     doi=doi,
                     no_crossref=no_crossref,
+                    sha256=sha256,
                 )
                 latest_pdf = result["pdf"]
                 if result["deduplicated"]:
@@ -829,26 +873,26 @@ def download(
             did_resume = False
             if plan.resume_offset > 0:
                 request_headers["Range"] = f"bytes={plan.resume_offset}-"
-            response = requests.get(
+            with http_session().get(
                 f"{base_url}/pdfs/by-doi/download",
                 headers=request_headers,
                 params={"doi": plan.doi},
                 timeout=300,
                 stream=True,
-            )
-            raise_for_api_error(response)
-            if plan.resume_offset > 0 and response.status_code == 206:
-                content_range = response.headers.get("Content-Range", "")
-                if not content_range.startswith(f"bytes {plan.resume_offset}-"):
-                    raise RuntimeError("server returned an invalid Content-Range")
-                mode = "ab"
-                did_resume = True
-            elif plan.resume_offset > 0:
-                plan.part_path.unlink(missing_ok=True)
-            with plan.part_path.open(mode) as handle:
-                for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
-                    if chunk:
-                        handle.write(chunk)
+            ) as response:
+                raise_for_api_error(response)
+                if plan.resume_offset > 0 and response.status_code == 206:
+                    content_range = response.headers.get("Content-Range", "")
+                    if not content_range.startswith(f"bytes {plan.resume_offset}-"):
+                        raise RuntimeError("server returned an invalid Content-Range")
+                    mode = "ab"
+                    did_resume = True
+                elif plan.resume_offset > 0:
+                    plan.part_path.unlink(missing_ok=True)
+                with plan.part_path.open(mode) as handle:
+                    for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
+                        if chunk:
+                            handle.write(chunk)
             actual_size = plan.part_path.stat().st_size
             if actual_size != plan.size:
                 raise RuntimeError(f"incomplete download: expected {plan.size} bytes, got {actual_size}")

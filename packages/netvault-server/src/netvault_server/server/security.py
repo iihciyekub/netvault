@@ -14,6 +14,8 @@ password_hasher = PasswordHasher()
 DUMMY_PASSWORD_HASH = password_hasher.hash("netvault-login-timing-placeholder")
 _login_failures: dict[str, list[float]] = {}
 _login_lock = Lock()
+_activity_events: dict[str, list[float]] = {}
+_activity_lock = Lock()
 LOGIN_WINDOW_SECONDS = 60.0
 LOGIN_MAX_FAILURES = 5
 
@@ -71,6 +73,34 @@ def record_login_failure(key: str) -> None:
 def clear_login_failures(key: str) -> None:
     with _login_lock:
         _login_failures.pop(key, None)
+
+
+def activity_is_allowed(
+    key: str,
+    limit: int,
+    *,
+    window_seconds: float = 3600.0,
+    amount: int = 1,
+) -> bool:
+    """Apply a bounded per-process rate limit for authenticated expensive actions."""
+    now = monotonic()
+    cutoff = now - window_seconds
+    with _activity_lock:
+        if len(_activity_events) > 20_000:
+            expired = [
+                candidate
+                for candidate, timestamps in _activity_events.items()
+                if not timestamps or timestamps[-1] < cutoff
+            ]
+            for candidate in expired:
+                _activity_events.pop(candidate, None)
+        recent = [timestamp for timestamp in _activity_events.get(key, []) if timestamp >= cutoff]
+        if len(recent) + amount > limit:
+            _activity_events[key] = recent
+            return False
+        recent.extend([now] * amount)
+        _activity_events[key] = recent
+        return True
 
 
 def create_access_token(username: str, token_version: int = 0) -> str:

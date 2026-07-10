@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netvault_server.server.database import Base
@@ -42,6 +42,7 @@ class Pdf(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     authors: Mapped[str | None] = mapped_column(Text, nullable=True)
     container_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(255), nullable=True)
     published_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     crossref_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
@@ -67,6 +68,7 @@ class UploadRecord(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     pdf: Mapped[Pdf] = relationship(back_populates="uploads")
@@ -80,3 +82,11 @@ class DownloadRecord(Base):
     pdf_id: Mapped[int] = mapped_column(ForeignKey("pdfs.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+@event.listens_for(Pdf, "before_insert")
+@event.listens_for(Pdf, "before_update")
+def set_pdf_journal_key(_mapper, _connection, target: Pdf) -> None:
+    from netvault_server.server.journal_filters import normalize_journal_name
+
+    target.journal_key = normalize_journal_name(target.container_title) or None

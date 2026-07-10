@@ -2,9 +2,10 @@
 {% block title %}Search - NetVault{% endblock %}
 {% block heading %}Search PDFs{% endblock %}
 {% block content %}
+{% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
 <form method="get" action="{{ path_for('/web/pdfs') }}" class="searchbar">
   <label class="sr-only" for="pdf-search">Search by DOI or metadata</label>
-  <input id="pdf-search" name="q" value="{{ q }}" placeholder="DOI, title, author, journal, publisher, filename" autofocus>
+  <input id="pdf-search" name="q" value="{{ q }}" placeholder="DOI, title, author, journal, publisher, filename">
   <button class="primary" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span data-button-label>Search</span></button>
   {% if q %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear</span></a>{% endif %}
 </form>

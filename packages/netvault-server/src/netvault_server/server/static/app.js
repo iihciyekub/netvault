@@ -9,6 +9,9 @@
   const journalRowsCache = new WeakMap();
   const journalPinsStorageKey = "netvault:pinned-journals:v1";
   const maxCachedPages = 10;
+  const pageCacheTtlMs = 30000;
+  const clientHashMaxBytes = 32 * 1024 * 1024;
+  const activeUploadRequests = new Set();
   let journalFilterTimer = null;
 
   const qs = (selector, root = document) => root.querySelector(selector);
@@ -62,7 +65,7 @@
     if (!state) return;
     const key = cacheKey(url);
     pageCache.delete(key);
-    pageCache.set(key, state);
+    pageCache.set(key, { ...state, cachedAt: Date.now() });
     while (pageCache.size > maxCachedPages) pageCache.delete(pageCache.keys().next().value);
   };
 
@@ -124,8 +127,12 @@
     const useCache = shouldCachePage(options);
     const key = cacheKey(url);
     if (useCache && pageCache.has(key)) {
-      applyPageState(pageCache.get(key), url, push);
-      return;
+      const cached = pageCache.get(key);
+      if (Date.now() - cached.cachedAt <= pageCacheTtlMs) {
+        applyPageState(cached, url, push);
+        return;
+      }
+      pageCache.delete(key);
     }
 
     setLoading(true);
@@ -230,10 +237,13 @@
     if (!tooltip) return;
     const offset = 12;
     const rect = tooltip.getBoundingClientRect();
-    let left = event.clientX + offset;
-    let top = event.clientY + offset;
-    if (left + rect.width + 8 > window.innerWidth) left = event.clientX - rect.width - offset;
-    if (top + rect.height + 8 > window.innerHeight) top = event.clientY - rect.height - offset;
+    const targetRect = activeTooltipTarget.getBoundingClientRect();
+    const clientX = Number.isFinite(event.clientX) ? event.clientX : targetRect.left + targetRect.width / 2;
+    const clientY = Number.isFinite(event.clientY) ? event.clientY : targetRect.bottom;
+    let left = clientX + offset;
+    let top = clientY + offset;
+    if (left + rect.width + 8 > window.innerWidth) left = clientX - rect.width - offset;
+    if (top + rect.height + 8 > window.innerHeight) top = clientY - rect.height - offset;
     tooltip.style.transform = `translate(${Math.max(8, left)}px, ${Math.max(8, top)}px)`;
   };
 
@@ -286,6 +296,24 @@
     if (clearButton) clearButton.hidden = pins.length === 0;
   };
 
+  const availableJournalNames = (panel) =>
+    qsa("#journal-pin-options option", panel).map((option) => ({
+      label: option.value,
+      name: normalizedJournalText(option.value),
+    }));
+
+  const reloadDashboardForPins = (panel, push = false) => {
+    const url = sameOriginUrl(window.location.href);
+    if (!url || !/\/web$/.test(url.pathname)) return;
+    const pins = loadJournalPins();
+    const desired = pins.map(normalizedJournalText).sort();
+    const current = url.searchParams.getAll("pin").map(normalizedJournalText).sort();
+    if (desired.length === current.length && desired.every((name, index) => name === current[index])) return;
+    url.searchParams.delete("pin");
+    pins.forEach((name) => url.searchParams.append("pin", name));
+    fetchPage(url.href, {}, push);
+  };
+
   const applyJournalFilters = (panel) => {
     if (!panel || !panel.isConnected) return;
     const heatmap = qs(".journal-heatmap", panel);
@@ -336,8 +364,16 @@
       if (partialMatches.length === 1) match = partialMatches[0];
     }
     if (!match) {
-      if (feedback) feedback.textContent = "Choose an exact journal name from the list.";
-      return;
+      const available = availableJournalNames(panel);
+      match = available.find((row) => row.name === requested);
+      if (!match) {
+        const partialMatches = available.filter((row) => row.name.includes(requested));
+        if (partialMatches.length === 1) match = partialMatches[0];
+      }
+      if (!match) {
+        if (feedback) feedback.textContent = "Choose an exact journal name from the list.";
+        return;
+      }
     }
     const pins = loadJournalPins();
     if (!pins.some((name) => normalizedJournalText(name) === match.name)) pins.push(match.label);
@@ -345,7 +381,9 @@
     input.value = "";
     if (feedback) feedback.textContent = "Journal pinned.";
     renderJournalPins(panel);
-    applyJournalFilters(panel);
+    const rowExists = rows.some((row) => row.name === match.name);
+    if (rowExists) applyJournalFilters(panel);
+    else reloadDashboardForPins(panel, true);
   };
 
   const initJournalPins = (root = document) => {
@@ -353,6 +391,11 @@
       const panel = pinPanel.closest(".heatmap-panel");
       renderJournalPins(panel);
       applyJournalFilters(panel);
+      const rowNames = new Set(journalRows(qs(".journal-heatmap", panel)).map((row) => row.name));
+      const missingPin = loadJournalPins().some(
+        (name) => !rowNames.has(normalizedJournalText(name))
+      );
+      if (missingPin) reloadDashboardForPins(panel);
     });
   };
 
@@ -371,6 +414,7 @@
       .join("");
 
   const fileSha256 = async (file) => {
+    if (file.size > clientHashMaxBytes) return null;
     const buffer = await file.arrayBuffer();
     return toHex(await crypto.subtle.digest("SHA-256", buffer));
   };
@@ -436,8 +480,46 @@
     return payload.existing || {};
   };
 
+  const uploadOneFile = (url, file, values, onProgress) =>
+    new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      const body = new FormData();
+      body.append("csrf_token", values.csrfToken);
+      body.append("doi", values.manualDoi);
+      if (values.noCrossref) body.append("no_crossref", "true");
+      body.append("file", file, file.name);
+      let settled = false;
+      const finish = (row) => {
+        if (settled) return;
+        settled = true;
+        activeUploadRequests.delete(xhr);
+        resolve(row);
+      };
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) onProgress(event.loaded, event.total);
+      });
+      xhr.addEventListener("load", () => {
+        let payload = {};
+        try {
+          payload = JSON.parse(xhr.responseText || "{}");
+        } catch {
+          payload = {};
+        }
+        if (xhr.status >= 200 && xhr.status < 300) finish(payload);
+        else finish({ filename: file.name, ok: false, error: payload.detail || `HTTP ${xhr.status}` });
+      });
+      xhr.addEventListener("error", () => finish({ filename: file.name, ok: false, error: "Network error" }));
+      xhr.addEventListener("abort", () => finish({ filename: file.name, ok: false, error: "Cancelled" }));
+      xhr.open("POST", url);
+      xhr.setRequestHeader("X-Requested-With", "fetch");
+      if (values.sha256) xhr.setRequestHeader("Idempotency-Key", values.sha256);
+      xhr.withCredentials = true;
+      activeUploadRequests.add(xhr);
+      xhr.send(body);
+    });
+
   const uploadWithProgress = async (form) => {
-    const xhr = new XMLHttpRequest();
+    delete form.dataset.uploadCancelled;
     const progress = qs(".upload-progress", form);
     const progressBar = qs(".upload-progress-bar span", form);
     const progressText = qs(".upload-progress p", form);
@@ -446,9 +528,16 @@
     const originalBody = new FormData(form);
     const csrfToken = originalBody.get("csrf_token") || "";
     const manualDoi = String(originalBody.get("doi") || "").trim();
+    const noCrossref = Boolean(originalBody.get("no_crossref"));
+    const uploadUrl = form.getAttribute("data-file-upload-url");
+    const cancelButton = qs("[data-upload-cancel]", form);
     const preRows = [];
 
     setFormBusy(form, true, "Checking...");
+    if (cancelButton) {
+      cancelButton.hidden = false;
+      cancelButton.disabled = false;
+    }
     if (progress) progress.hidden = false;
     if (progressBar) progressBar.style.width = "0%";
     if (progressText) progressText.textContent = "Hashing PDFs...";
@@ -475,16 +564,16 @@
     if (progressText) progressText.textContent = "Checking server...";
     const existing = await checkExistingPdfs(
       form,
-      hashedFiles.map((entry) => entry.sha256),
+      hashedFiles.map((entry) => entry.sha256).filter(Boolean),
       csrfToken
     );
     const newFiles = [];
     hashedFiles.forEach((entry) => {
-      const pdf = existing[entry.sha256];
+      const pdf = entry.sha256 ? existing[entry.sha256] : null;
       if (pdf) {
         preRows.push({ filename: entry.file.name, ok: true, status: "existing", doi: pdf.doi });
       } else {
-        newFiles.push(entry.file);
+        newFiles.push(entry);
       }
     });
 
@@ -493,48 +582,67 @@
       if (progressText) progressText.textContent = "Done";
       renderUploadRows(preRows);
       setFormBusy(form, false, "Upload");
+      if (cancelButton) cancelButton.hidden = true;
       return;
     }
-
-    const body = new FormData();
-    body.append("csrf_token", csrfToken);
-    body.append("doi", manualDoi);
-    if (originalBody.get("no_crossref")) body.append("no_crossref", originalBody.get("no_crossref"));
-    newFiles.forEach((file) => body.append("files", file, file.name));
-    if (progressText) progressText.textContent = `Uploading ${newFiles.length} new PDF${newFiles.length === 1 ? "" : "s"}...`;
-
-    xhr.upload.addEventListener("progress", (event) => {
-      if (!event.lengthComputable) return;
-      const percent = Math.round((event.loaded / event.total) * 100);
+    if (!uploadUrl) throw new Error("Upload endpoint is unavailable");
+    if (progressText) progressText.textContent = `Uploading ${newFiles.length} PDF${newFiles.length === 1 ? "" : "s"}...`;
+    const transfers = new Map(newFiles.map((entry) => [entry.file, { loaded: 0, total: entry.file.size || 1 }]));
+    const results = new Array(newFiles.length);
+    let nextIndex = 0;
+    const reportProgress = (file, loaded, total) => {
+      transfers.set(file, { loaded, total });
+      const totals = Array.from(transfers.values()).reduce(
+        (sum, item) => ({ loaded: sum.loaded + item.loaded, total: sum.total + item.total }),
+        { loaded: 0, total: 0 }
+      );
+      const percent = totals.total ? Math.round((totals.loaded / totals.total) * 100) : 0;
       if (progressBar) progressBar.style.width = `${35 + Math.round(percent * 0.65)}%`;
-      if (progressText) progressText.textContent = percent >= 100 ? "Processing PDFs..." : `Uploading ${percent}%`;
-    });
-
-    xhr.addEventListener("load", () => {
-    if (xhr.status >= 200 && xhr.status < 400) {
-        if (progressBar) progressBar.style.width = "100%";
-        if (progressText) progressText.textContent = "Done";
-        pageCache.clear();
-        updateFromHtml(xhr.responseText, xhr.responseURL || form.action, true);
-        renderUploadRows(preRows);
-      } else {
-        if (progressText) progressText.textContent = "Upload failed";
-        setFormBusy(form, false, "Upload");
+      if (progressText) progressText.textContent = percent >= 100 ? "Processing metadata..." : `Uploading ${percent}%`;
+    };
+    const worker = async () => {
+      while (nextIndex < newFiles.length && form.dataset.uploadCancelled !== "true") {
+        const index = nextIndex++;
+        const entry = newFiles[index];
+        const file = entry.file;
+        results[index] = await uploadOneFile(
+          uploadUrl,
+          file,
+          { csrfToken, manualDoi, noCrossref, sha256: entry.sha256 },
+          (loaded, total) => reportProgress(file, loaded, total)
+        );
       }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, newFiles.length) }, () => worker()));
+    newFiles.forEach((entry, index) => {
+      if (!results[index]) results[index] = { filename: entry.file.name, ok: false, error: "Cancelled" };
     });
-
-    xhr.addEventListener("error", () => {
-      if (progressText) progressText.textContent = "Network error";
-      setFormBusy(form, false, "Upload");
-    });
-
-    xhr.open(form.method || "POST", form.action);
-    xhr.setRequestHeader("X-Requested-With", "fetch");
-    xhr.withCredentials = true;
-    xhr.send(body);
+    if (progressBar) progressBar.style.width = "100%";
+    if (progressText) progressText.textContent = results.some((row) => !row.ok) ? "Completed with errors" : "Done";
+    pageCache.clear();
+    renderUploadRows([...preRows, ...results]);
+    setFormBusy(form, false, "Upload");
+    if (cancelButton) cancelButton.hidden = true;
   };
 
   document.addEventListener("click", (event) => {
+    const utilityToggle = event.target.closest("[data-utility-toggle]");
+    if (utilityToggle) {
+      const nav = qs(`#${utilityToggle.getAttribute("aria-controls")}`);
+      const expanded = utilityToggle.getAttribute("aria-expanded") === "true";
+      utilityToggle.setAttribute("aria-expanded", String(!expanded));
+      if (nav) nav.classList.toggle("is-open", !expanded);
+      return;
+    }
+
+    const cancelUpload = event.target.closest("[data-upload-cancel]");
+    if (cancelUpload) {
+      const form = cancelUpload.closest("form");
+      if (form) form.dataset.uploadCancelled = "true";
+      activeUploadRequests.forEach((xhr) => xhr.abort());
+      return;
+    }
+
     const pinAdd = event.target.closest("[data-journal-pin-add]");
     if (pinAdd) {
       const input = qs("[data-journal-pin-input]", pinAdd.closest(".heatmap-panel"));
@@ -550,6 +658,7 @@
       if (feedback) feedback.textContent = "Pins cleared.";
       renderJournalPins(panel);
       applyJournalFilters(panel);
+      reloadDashboardForPins(panel, true);
       return;
     }
 
@@ -568,6 +677,14 @@
     event.preventDefault();
     markLinkActive(link);
     fetchPage(url.href);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".topbar-right")) return;
+    const toggle = qs("[data-utility-toggle]");
+    const nav = qs(".utility-nav");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    if (nav) nav.classList.remove("is-open");
   });
 
   document.addEventListener("pointerover", (event) => {
@@ -589,6 +706,8 @@
         const progressText = qs(".upload-progress p", form);
         if (progressText) progressText.textContent = "Upload check failed";
         setFormBusy(form, false, "Upload");
+        const cancelButton = qs("[data-upload-cancel]", form);
+        if (cancelButton) cancelButton.hidden = true;
       });
       return;
     }
@@ -639,7 +758,10 @@
 
   document.addEventListener("dragover", (event) => {
     const dropzone = event.target.closest("#dropzone");
-    if (dropzone) dropzone.classList.add("is-dragging");
+    if (dropzone) {
+      event.preventDefault();
+      dropzone.classList.add("is-dragging");
+    }
   });
 
   document.addEventListener("dragleave", (event) => {
@@ -649,7 +771,15 @@
 
   document.addEventListener("drop", (event) => {
     const dropzone = event.target.closest("#dropzone");
-    if (dropzone) dropzone.classList.remove("is-dragging");
+    if (dropzone) {
+      event.preventDefault();
+      dropzone.classList.remove("is-dragging");
+      const input = qs("input[type='file']", dropzone);
+      if (input && event.dataTransfer && event.dataTransfer.files.length) {
+        input.files = event.dataTransfer.files;
+        updateFileSummary(input);
+      }
+    }
   });
 
   document.addEventListener("pointerover", (event) => {
@@ -665,6 +795,15 @@
     const next = event.relatedTarget;
     if (next && activeTooltipTarget.contains(next)) return;
     hideTooltip();
+  });
+
+  document.addEventListener("focusin", (event) => {
+    const target = event.target.closest(".journal-heatmap [data-tip]");
+    if (target) showTooltip(target, event);
+  });
+
+  document.addEventListener("focusout", (event) => {
+    if (event.target.closest(".journal-heatmap [data-tip]")) hideTooltip();
   });
 
   window.addEventListener("popstate", () => {

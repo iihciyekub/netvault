@@ -64,8 +64,10 @@ class UploadResponse(BaseModel):
 
 
 class Sha256ExistsRequest(BaseModel):
-    sha256: list[str] = Field(max_length=500)
+    sha256: list[str] = Field(default_factory=list, max_length=500)
+    doi: list[str] = Field(default_factory=list, max_length=500)
 
 
 class Sha256ExistsResponse(BaseModel):
     existing: dict[str, PdfRead]
+    existing_doi: dict[str, PdfRead] = Field(default_factory=dict)

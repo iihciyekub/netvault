@@ -1,0 +1,5 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+17 3 * * * root NETVAULT_REPO_DIR=/root/iiaide/netvault /root/iiaide/netvault/scripts/backup-server.sh >> /var/log/netvault-maintenance.log 2>&1
+45 4 * * 0 root NETVAULT_REPO_DIR=/root/iiaide/netvault /root/iiaide/netvault/scripts/verify-storage.sh >> /var/log/netvault-maintenance.log 2>&1

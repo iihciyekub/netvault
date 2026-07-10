@@ -2,10 +2,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
+import threading
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from netvault_server.server.config import get_settings
+
+_local = threading.local()
 
 
 @dataclass(frozen=True)
@@ -47,26 +52,47 @@ def _authors(message: dict[str, Any]) -> str | None:
     return "; ".join(authors) if authors else None
 
 
+def _session() -> requests.Session:
+    session = getattr(_local, "session", None)
+    if session is None:
+        retry = Retry(
+            total=3,
+            connect=3,
+            read=2,
+            status=3,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET"}),
+            respect_retry_after_header=True,
+        )
+        session = requests.Session()
+        adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=4)
+        session.mount("https://", adapter)
+        _local.session = session
+    return session
+
+
 def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
     settings = get_settings()
     url = f"https://api.crossref.org/works/{quote(doi, safe='')}"
     params = {"mailto": settings.crossref_mailto} if settings.crossref_mailto else None
     headers = {"User-Agent": settings.crossref_user_agent}
 
+    fetched_at = datetime.now(timezone.utc)
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = _session().get(url, params=params, headers=headers, timeout=(3.05, 10))
     except requests.RequestException:
-        return CrossrefMetadata(status="unavailable")
+        return CrossrefMetadata(status="unavailable", fetched_at=fetched_at)
 
     if response.status_code == 404:
-        return CrossrefMetadata(status="not_found")
+        return CrossrefMetadata(status="not_found", fetched_at=fetched_at)
     if not response.ok:
-        return CrossrefMetadata(status="unavailable")
+        return CrossrefMetadata(status="unavailable", fetched_at=fetched_at)
 
     try:
         message = response.json()["message"]
     except (KeyError, TypeError, ValueError):
-        return CrossrefMetadata(status="unavailable")
+        return CrossrefMetadata(status="unavailable", fetched_at=fetched_at)
 
     return CrossrefMetadata(
         status="ok",
@@ -76,5 +102,5 @@ def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
         publisher=message.get("publisher"),
         published_year=_published_year(message),
         resource_url=message.get("URL"),
-        fetched_at=datetime.now(timezone.utc),
+        fetched_at=fetched_at,
     )

@@ -40,6 +40,7 @@ def pdf_to_read(pdf: Pdf) -> PdfRead:
 
 def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata) -> None:
     pdf.crossref_status = metadata.status
+    pdf.crossref_fetched_at = metadata.fetched_at or pdf.crossref_fetched_at
     if metadata.status != "ok":
         return
     pdf.title = metadata.title or pdf.title
@@ -48,7 +49,6 @@ def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata) -> None:
     pdf.publisher = metadata.publisher or pdf.publisher
     pdf.published_year = metadata.published_year or pdf.published_year
     pdf.crossref_url = metadata.resource_url or pdf.crossref_url
-    pdf.crossref_fetched_at = metadata.fetched_at or pdf.crossref_fetched_at
 
 
 def doi_evidence_json(evidence) -> str:
@@ -70,13 +70,26 @@ def doi_evidence_json(evidence) -> str:
     )
 
 
-def add_upload_record(pdf: Pdf, file: UploadFile, size: int, user: User, db: Session) -> None:
+def add_upload_record(
+    pdf: Pdf,
+    file: UploadFile,
+    size: int,
+    user: User,
+    db: Session,
+    idempotency_key: str | None = None,
+) -> None:
+    scoped_key = f"{user.id}:{idempotency_key}" if idempotency_key else None
+    if scoped_key and db.scalar(
+        select(UploadRecord.id).where(UploadRecord.idempotency_key == scoped_key)
+    ):
+        return
     db.add(
         UploadRecord(
             pdf_id=pdf.id,
             user_id=user.id,
             original_name=file.filename or pdf.original_name,
             size=size,
+            idempotency_key=scoped_key,
         )
     )
 
@@ -87,6 +100,7 @@ async def process_upload(
     no_crossref: bool,
     user: User,
     db: Session,
+    idempotency_key: str | None = None,
 ) -> UploadResponse:
     sha256, size, relative_path, object_deduplicated, staged_path = await store_pdf(file)
     promoted_new_object = False
@@ -111,7 +125,12 @@ async def process_upload(
                 pdf_by_sha.is_deleted = False
                 pdf_by_sha.deleted_at = None
                 pdf_by_sha.deleted_by_id = None
-            add_upload_record(pdf_by_sha, file, size, user, db)
+            if not no_crossref and (
+                not pdf_by_sha.title or pdf_by_sha.crossref_status in (None, "pending", "unavailable", "skipped")
+            ):
+                metadata = await run_in_threadpool(fetch_crossref_metadata, pdf_by_sha.doi)
+                apply_crossref_metadata(pdf_by_sha, metadata)
+            add_upload_record(pdf_by_sha, file, size, user, db, idempotency_key)
             db.commit()
             from netvault_server.server.stats import invalidate_stats_cache
 
@@ -175,7 +194,7 @@ async def process_upload(
         storage_deduplicated = promote_staged_pdf(staged_path, sha256)
         promoted_new_object = staged_path is not None and not storage_deduplicated
         staged_path = None
-        add_upload_record(pdf, file, size, user, db)
+        add_upload_record(pdf, file, size, user, db, idempotency_key)
         db.commit()
         from netvault_server.server.stats import invalidate_stats_cache
 

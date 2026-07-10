@@ -102,12 +102,15 @@ html.is-loading .top-loader {
 }
 
 .topbar-right {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-self: end;
   gap: 10px;
   min-width: 0;
 }
+
+.mobile-menu-toggle { display: none; }
 
 .brand {
   display: inline-flex;
@@ -939,6 +942,17 @@ tr:last-child td { border-bottom: 0; }
   border-color: rgba(0, 0, 0, 0.18);
 }
 
+.journal-heatmap button.heat-cell {
+  min-height: 0;
+  padding: 0;
+  appearance: none;
+}
+
+.journal-heatmap button.heat-cell:focus-visible {
+  outline: 2px solid #000000;
+  outline-offset: 2px;
+}
+
 .heat-cell.level-0 { background: #ebedf0; }
 .heat-cell.level-1 { background: #9be9a8; }
 .heat-cell.level-2 { background: #40c463; }
@@ -1011,11 +1025,16 @@ textarea {
 }
 
 textarea { resize: vertical; }
-input:focus,
-select:focus,
-textarea:focus {
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   border-color: #000000;
-  box-shadow: 0 0 0 3px var(--focus);
+  box-shadow: 0 0 0 2px var(--focus);
+}
+
+.upload-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .searchbar {
@@ -1501,6 +1520,33 @@ ul {
 
   .utility-nav {
     display: none;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    width: 40px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .utility-nav.is-open {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 20;
+    display: grid;
+    min-width: 150px;
+    padding: 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: #ffffff;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  }
+
+  .utility-nav.is-open a {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .logout {

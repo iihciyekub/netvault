@@ -71,6 +71,9 @@ https://iiaide.com/nv/web
 It uses the same users and passwords as the CLI. Browser sessions are stored in
 an HttpOnly JWT cookie.
 
+Passwords are always entered interactively. Do not place passwords in command
+arguments, documentation, shell history, or copied examples.
+
 ## SSH Tunnel
 
 From a user's local machine:
@@ -208,6 +211,11 @@ regex as upload metadata parsing. Downloads use 8 parallel workers by default
 and automatically resume incomplete `.part` files. Completed downloads are verified
 against the server SHA-256 digest. Upload and download both use
 a single-line progress bar.
+
+Web uploads send each PDF in its own request with at most two concurrent files,
+so one failure can be retried without repeating the whole batch. Files larger
+than 32 MB skip browser-side hashing to keep page memory bounded; the server
+still computes and verifies SHA-256 for every upload.
 
 ## Admin CLI
 

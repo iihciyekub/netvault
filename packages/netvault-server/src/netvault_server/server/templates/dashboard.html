@@ -64,7 +64,7 @@
         <button type="button" class="journal-pin-add" data-journal-pin-add><i class="fa-solid fa-thumbtack" aria-hidden="true"></i><span>Pin</span></button>
       </div>
       <datalist id="journal-pin-options">
-        {% for row in journal_year.rows %}<option value="{{ row.journal }}"></option>{% endfor %}
+        {% for journal in journal_options %}<option value="{{ journal }}"></option>{% endfor %}
       </datalist>
       <button type="button" class="journal-pin-clear" data-journal-pin-clear hidden><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear pins</span></button>
       <span id="journal-pin-feedback" class="journal-pin-feedback" data-journal-pin-feedback aria-live="polite"></span>
@@ -81,12 +81,13 @@
           <div class="heat-journal" data-journal-row="{{ journal_row }}" data-journal-name="{{ row.journal }}" data-tip="{{ row.journal }}">{{ row.journal }}</div>
           {% for cell in row.cells %}
             {% if cell.count > 0 %}
-            <span
+            <button
+              type="button"
               class="heat-cell level-{{ cell.level }}"
               data-journal-row="{{ journal_row }}"
               data-tip="{{ cell.year }} · {{ cell.count }} PDF{% if cell.count != 1 %}s{% endif %}"
               aria-label="{{ row.journal }} {{ cell.year }} {{ cell.count }} PDFs"
-            ></span>
+            ></button>
             {% else %}
             <span class="heat-cell level-0" data-journal-row="{{ journal_row }}" aria-hidden="true"></span>
             {% endif %}

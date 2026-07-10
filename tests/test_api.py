@@ -130,6 +130,9 @@ def test_login_rate_limit_and_security_headers(client: TestClient) -> None:
     assert ready.status_code == 200
     assert ready.headers["x-content-type-options"] == "nosniff"
     assert "frame-ancestors 'none'" in ready.headers["content-security-policy"]
+    assert ready.headers["cache-control"] == "private, no-store"
+    assert ready.headers["cross-origin-opener-policy"] == "same-origin"
+    assert "static.cloudflareinsights.com" in ready.headers["content-security-policy"]
 
 
 def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path: Path) -> None:
@@ -155,6 +158,12 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     )
     assert exists.status_code == 200
     assert list(exists.json()["existing"]) == [hashlib.sha256(PDF_BYTES).hexdigest()]
+    doi_exists = client.post(
+        "/pdfs/exists",
+        headers=admin_headers,
+        json={"doi": [f"https://doi.org/{DOI}", "not-a-doi"]},
+    )
+    assert list(doi_exists.json()["existing_doi"]) == [DOI]
 
     listed = client.get("/pdfs", headers=admin_headers)
     assert listed.status_code == 200
@@ -183,6 +192,36 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
 
     stored_objects = list((tmp_path / "storage" / "objects").rglob("*.pdf"))
     assert len(stored_objects) == 1
+
+
+def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+    idempotent_headers = {**headers, "Idempotency-Key": hashlib.sha256(PDF_BYTES).hexdigest()}
+    first = upload(client, idempotent_headers, "first.pdf")
+    second = upload(client, idempotent_headers, "retry.pdf")
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        assert db.query(models.UploadRecord).count() == 1
+        from sqlalchemy import inspect
+
+        pdf_indexes = {index["name"] for index in inspect(db.bind).get_indexes("pdfs")}
+        upload_indexes = {index["name"] for index in inspect(db.bind).get_indexes("upload_records")}
+        assert "ix_pdfs_active_uploaded_at" in pdf_indexes
+        assert "ix_pdfs_journal_year" in pdf_indexes
+        assert "ix_upload_records_idempotency_key" in upload_indexes
+
+    incomplete = upload(
+        client,
+        headers,
+        name="truncated.pdf",
+        content=b"%PDF-1.4\nDOI: 10.1234/truncated",
+    )
+    assert incomplete.status_code == 400
+    assert "missing %%EOF" in incomplete.json()["detail"]
 
 
 def test_duplicate_upload_by_sha_returns_before_doi_extraction(

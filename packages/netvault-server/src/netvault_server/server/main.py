@@ -2,11 +2,16 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 import os
 from pathlib import Path
+import logging
+from time import perf_counter
+from uuid import uuid4
+import shutil
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -14,10 +19,12 @@ from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import Base, engine, get_db
 from netvault_server.server.deps import get_current_user, require_admin
+from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.doi import normalize_doi
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.migrations import run_migrations
-from netvault_server.server.models import DownloadRecord, Pdf, User, UserRole, utc_now
+from netvault_server.server.models import Pdf, UploadRecord, User, UserRole, utc_now
+from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.schemas import (
     LoginRequest,
     PasswordResetRequest,
@@ -39,17 +46,23 @@ from netvault_server.server.security import (
     password_needs_rehash,
     record_login_failure,
     verify_password,
+    activity_is_allowed,
 )
 from netvault_server.server.storage import ensure_storage_dirs, object_path
 from netvault_server.server.stats import invalidate_stats_cache, router as stats_router
 from netvault_server.server.web import router as web_router
 
+logger = logging.getLogger("netvault.requests")
 
-def pdf_to_detail(pdf: Pdf) -> PdfDetail:
+
+def pdf_to_detail(pdf: Pdf, db: Session) -> PdfDetail:
     return PdfDetail(
         **pdf_to_read(pdf).model_dump(),
         storage_path=pdf.storage_path,
-        upload_count=len(pdf.uploads),
+        upload_count=int(
+            db.scalar(select(func.count()).select_from(UploadRecord).where(UploadRecord.pdf_id == pdf.id))
+            or 0
+        ),
         doi_evidence=pdf.doi_evidence,
     )
 
@@ -87,18 +100,45 @@ app.include_router(web_router)
 
 @app.middleware("http")
 async def add_static_cache_headers(request: Request, call_next):
+    started = perf_counter()
+    supplied_request_id = request.headers.get("x-request-id", "")
+    request_id = (
+        supplied_request_id
+        if 0 < len(supplied_request_id) <= 128
+        and all(char.isalnum() or char in "-_." for char in supplied_request_id)
+        else uuid4().hex
+    )
     response = await call_next(request)
+    duration_ms = (perf_counter() - started) * 1000
+    response.headers.setdefault("X-Request-ID", request_id)
+    response.headers.setdefault("Server-Timing", f"app;dur={duration_ms:.1f}")
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        response.headers.setdefault("Cache-Control", "private, no-store")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if get_settings().secure_cookies:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; script-src 'self'; "
-        "style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; "
+        "default-src 'self'; img-src 'self' data:; "
+        "script-src 'self' https://static.cloudflareinsights.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self' https://cloudflareinsights.com; object-src 'none'; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    )
+    logger.info(
+        "request method=%s path=%s status=%s duration_ms=%.1f request_id=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        request_id,
     )
     return response
 
@@ -123,6 +163,11 @@ def ready() -> dict[str, str]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Storage is unavailable",
+        )
+    if shutil.disk_usage(storage_root).free < get_settings().min_storage_free_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Storage free space is below the safety threshold",
         )
     return {"status": "ready"}
 
@@ -160,13 +205,21 @@ def me(user: User = Depends(get_current_user)) -> User:
 
 @app.post("/pdfs/upload", response_model=UploadResponse)
 async def upload_pdf(
+    request: Request,
     file: UploadFile = File(...),
     doi: str | None = Form(default=None),
     no_crossref: bool = Form(default=False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
-    return await process_upload(file, doi, no_crossref, user, db)
+    if not activity_is_allowed(
+        f"upload:{user.id}", get_settings().upload_rate_per_hour
+    ):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Upload rate limit exceeded")
+    idempotency_key = request.headers.get("idempotency-key")
+    if idempotency_key and len(idempotency_key) > 128:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency key is too long")
+    return await process_upload(file, doi, no_crossref, user, db, idempotency_key)
 
 
 @app.get("/pdfs", response_model=list[PdfRead])
@@ -179,6 +232,7 @@ def list_pdfs(
     _ = user
     pdfs = db.scalars(
         select(Pdf)
+        .options(*pdf_read_options())
         .where(Pdf.is_deleted.is_(False), Pdf.doi.is_not(None))
         .order_by(Pdf.uploaded_at.desc())
         .offset(offset)
@@ -201,10 +255,36 @@ def existing_pdfs_by_sha256(
             if len(sha256) == 64 and all(char in "0123456789abcdefABCDEF" for char in sha256)
         }
     )
-    if not hashes:
-        return Sha256ExistsResponse(existing={})
-    pdfs = db.scalars(select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))).all()
-    return Sha256ExistsResponse(existing={pdf.sha256: pdf_to_read(pdf) for pdf in pdfs})
+    dois: list[str] = []
+    for raw_doi in payload.doi:
+        try:
+            normalized = normalize_doi(raw_doi)
+        except ValueError:
+            continue
+        if normalized not in dois:
+            dois.append(normalized)
+    hash_pdfs = (
+        db.scalars(
+            select(Pdf)
+            .options(*pdf_read_options())
+            .where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))
+        ).all()
+        if hashes
+        else []
+    )
+    doi_pdfs = (
+        db.scalars(
+            select(Pdf)
+            .options(*pdf_read_options())
+            .where(Pdf.is_deleted.is_(False), Pdf.doi.in_(dois))
+        ).all()
+        if dois
+        else []
+    )
+    return Sha256ExistsResponse(
+        existing={pdf.sha256: pdf_to_read(pdf) for pdf in hash_pdfs},
+        existing_doi={pdf.doi: pdf_to_read(pdf) for pdf in doi_pdfs},
+    )
 
 
 @app.get("/pdfs/search", response_model=list[PdfRead])
@@ -216,26 +296,24 @@ def search_pdfs(
     db: Session = Depends(get_db),
 ) -> Sequence[PdfRead]:
     _ = user
-    pattern = f"%{q}%"
+    if len(q.strip()) > get_settings().search_query_max_chars:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Search query is too long")
+    cleaned_query = q.strip()
+    if not cleaned_query:
+        return []
+    try:
+        exact_doi = normalize_doi(cleaned_query)
+    except ValueError:
+        exact_doi = None
+    query = select(Pdf).options(*pdf_read_options()).where(
+        Pdf.is_deleted.is_(False), Pdf.doi.is_not(None)
+    )
+    if exact_doi:
+        query = query.where(Pdf.doi == exact_doi)
+    else:
+        query = query.where(pdf_contains_query(cleaned_query))
     pdfs = db.scalars(
-        select(Pdf)
-        .join(User, Pdf.uploaded_by_id == User.id)
-        .where(Pdf.is_deleted.is_(False), Pdf.doi.is_not(None))
-        .where(
-            or_(
-                Pdf.doi.ilike(pattern),
-                Pdf.title.ilike(pattern),
-                Pdf.authors.ilike(pattern),
-                Pdf.container_title.ilike(pattern),
-                Pdf.publisher.ilike(pattern),
-                Pdf.original_name.ilike(pattern),
-                Pdf.sha256.ilike(pattern),
-                User.username.ilike(pattern),
-            )
-        )
-        .order_by(Pdf.uploaded_at.desc())
-        .offset(offset)
-        .limit(limit)
+        query.order_by(Pdf.uploaded_at.desc(), Pdf.id.desc()).offset(offset).limit(limit)
     ).all()
     return [pdf_to_read(pdf) for pdf in pdfs]
 
@@ -269,7 +347,7 @@ def get_pdf_by_doi(
     db: Session = Depends(get_db),
 ) -> PdfDetail:
     _ = user
-    return pdf_to_detail(find_pdf_by_doi(doi, db))
+    return pdf_to_detail(find_pdf_by_doi(doi, db), db)
 
 
 @app.get("/pdfs/by-doi/download")
@@ -289,7 +367,7 @@ def get_pdf(
     db: Session = Depends(get_db),
 ) -> PdfDetail:
     _ = user
-    return pdf_to_detail(find_pdf(identifier, db))
+    return pdf_to_detail(find_pdf(identifier, db), db)
 
 
 @app.get("/pdfs/{identifier}/download")
@@ -303,15 +381,19 @@ def download_pdf(
 
 
 def send_pdf_file(pdf: Pdf, user: User, db: Session) -> FileResponse:
+    if not activity_is_allowed(
+        f"download:{user.id}", get_settings().download_rate_per_hour
+    ):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")
     path = object_path(pdf.sha256)
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Stored PDF missing")
-    db.add(DownloadRecord(pdf_id=pdf.id, user_id=user.id))
-    db.commit()
     return FileResponse(
         path,
         media_type="application/pdf",
         filename=Path(pdf.original_name).name,
+        background=BackgroundTask(record_completed_downloads, [pdf.id], user.id),
+        headers={"ETag": f'"{pdf.sha256}"'},
     )
 
 
