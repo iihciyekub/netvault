@@ -120,7 +120,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui2",
+        "asset_version": f"{__version__}-ui3",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
