@@ -340,6 +340,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv update" in cli_page.text
     assert "nv login https://iiaide.com/nv --username polyu" in cli_page.text
     assert "--password" in cli_page.text
+    assert "--password &#39;!1@2#3Qwe&#39;" in cli_page.text
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
     assert "data-copy" in cli_page.text
@@ -357,7 +358,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.3" in info_page.text
+    assert "0.7.4" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert 'class="author-email"' in info_page.text
     assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text

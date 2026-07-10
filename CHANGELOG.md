@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.4 - 2026-07-10
+
+- Correct the published shared CLI credentials and keep the password
+  shell-safe in the complete copyable login command.
+
 ## 0.7.3 - 2026-07-10
 
 - Show the shared username and password directly in the CLI login command and
