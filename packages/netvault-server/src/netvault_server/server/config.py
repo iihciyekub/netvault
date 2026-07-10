@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     )
     search_query_max_chars: int = Field(default=200, validation_alias="NETVAULT_SEARCH_QUERY_MAX_CHARS")
     web_page_size: int = Field(default=25, validation_alias="NETVAULT_WEB_PAGE_SIZE")
-    upload_rate_per_hour: int = Field(default=240, validation_alias="NETVAULT_UPLOAD_RATE_PER_HOUR")
+    upload_rate_per_hour: int = Field(default=5000, validation_alias="NETVAULT_UPLOAD_RATE_PER_HOUR")
     download_rate_per_hour: int = Field(default=1200, validation_alias="NETVAULT_DOWNLOAD_RATE_PER_HOUR")
     min_storage_free_bytes: int = Field(
         default=5 * 1024 * 1024 * 1024,
