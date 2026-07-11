@@ -23,11 +23,13 @@ from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.doi import normalize_doi
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.migrations import run_migrations
-from netvault_server.server.models import Pdf, UploadRecord, User, UserRole, utc_now
+from netvault_server.server.models import Pdf, PdfFileAlias, UploadRecord, User, UserRole, utc_now
 from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.schemas import (
     LoginRequest,
     PasswordResetRequest,
+    PdfAliasCreateRequest,
+    PdfAliasCreateResponse,
     PdfDetail,
     PdfRead,
     Sha256ExistsRequest,
@@ -272,6 +274,16 @@ def existing_pdfs_by_sha256(
         if hashes
         else []
     )
+    alias_rows = (
+        db.execute(
+            select(PdfFileAlias.sha256, Pdf)
+            .join(Pdf, Pdf.id == PdfFileAlias.pdf_id)
+            .options(*pdf_read_options())
+            .where(Pdf.is_deleted.is_(False), PdfFileAlias.sha256.in_(hashes))
+        ).all()
+        if hashes
+        else []
+    )
     doi_pdfs = (
         db.scalars(
             select(Pdf)
@@ -281,10 +293,80 @@ def existing_pdfs_by_sha256(
         if dois
         else []
     )
+    existing = {pdf.sha256: pdf_to_read(pdf) for pdf in hash_pdfs}
+    existing.update({sha256: pdf_to_read(pdf) for sha256, pdf in alias_rows})
     return Sha256ExistsResponse(
-        existing={pdf.sha256: pdf_to_read(pdf) for pdf in hash_pdfs},
+        existing=existing,
         existing_doi={pdf.doi: pdf_to_read(pdf) for pdf in doi_pdfs},
     )
+
+
+@app.post("/pdfs/aliases", response_model=PdfAliasCreateResponse)
+def register_pdf_file_aliases(
+    payload: PdfAliasCreateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PdfAliasCreateResponse:
+    claims: dict[str, str] = {}
+    for claim in payload.aliases:
+        sha256 = claim.sha256.lower()
+        try:
+            doi = normalize_doi(claim.doi)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        previous = claims.get(sha256)
+        if previous is not None and previous != doi:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"SHA-256 {sha256} was assigned conflicting DOIs",
+            )
+        claims[sha256] = doi
+
+    pdfs = db.scalars(
+        select(Pdf)
+        .options(*pdf_read_options())
+        .where(
+            Pdf.is_deleted.is_(False),
+            (Pdf.doi.in_(set(claims.values()))) | (Pdf.sha256.in_(set(claims))),
+        )
+    ).all()
+    pdf_by_doi = {pdf.doi: pdf for pdf in pdfs}
+    canonical_by_sha = {pdf.sha256: pdf for pdf in pdfs}
+    aliases = db.scalars(select(PdfFileAlias).where(PdfFileAlias.sha256.in_(set(claims)))).all()
+    alias_by_sha = {alias.sha256: alias for alias in aliases}
+
+    registered: dict[str, PdfRead] = {}
+    for sha256, doi in claims.items():
+        pdf = pdf_by_doi.get(doi)
+        if pdf is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active PDF found for DOI {doi}",
+            )
+        canonical = canonical_by_sha.get(sha256)
+        if canonical is not None and canonical.id != pdf.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"SHA-256 {sha256} belongs to another PDF",
+            )
+        alias = alias_by_sha.get(sha256)
+        if alias is not None and alias.pdf_id != pdf.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"SHA-256 alias {sha256} belongs to another PDF",
+            )
+        if canonical is None and alias is None:
+            db.add(
+                PdfFileAlias(
+                    sha256=sha256,
+                    pdf_id=pdf.id,
+                    source="client-doi-confirmed",
+                    asserted_by_id=user.id,
+                )
+            )
+        registered[sha256] = pdf_to_read(pdf)
+    db.commit()
+    return PdfAliasCreateResponse(registered=registered)
 
 
 @app.get("/pdfs/search", response_model=list[PdfRead])

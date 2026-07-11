@@ -71,3 +71,16 @@ class Sha256ExistsRequest(BaseModel):
 class Sha256ExistsResponse(BaseModel):
     existing: dict[str, PdfRead]
     existing_doi: dict[str, PdfRead] = Field(default_factory=dict)
+
+
+class PdfAliasClaim(BaseModel):
+    sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
+    doi: str = Field(min_length=1, max_length=255)
+
+
+class PdfAliasCreateRequest(BaseModel):
+    aliases: list[PdfAliasClaim] = Field(min_length=1, max_length=500)
+
+
+class PdfAliasCreateResponse(BaseModel):
+    registered: dict[str, PdfRead]

@@ -160,10 +160,44 @@ Before uploading bytes, the CLI checks the local PDF's DOI and sha256 against
 the server. If the PDF is already in the vault, it is reported as `skipped`
 without re-uploading the file.
 
+The CLI caches file hashes by path, size, and modification time in
+`~/.config/netvault/hash-cache.json`. DOI identity results are cached separately
+by SHA-256 in `~/.config/netvault/identity-cache.json`, so unchanged files do
+not need to be parsed again even after they are renamed. Automatic `no-doi` and
+conflict results are cached too; use `--refresh-doi` to rerun automatic DOI
+resolution. User-confirmed identities are never invalidated automatically.
+When a local file has the DOI of an existing vault item but a different SHA-256,
+the CLI also registers that digest as a server-side alias. Later uploads from
+this or another machine can then skip the file during the initial SHA-256 check.
+
+Recursive uploads skip common technical directories such as `.git`, `.venv`,
+`node_modules`, `Library`, `dist`, `build`, and `output`. An explicitly supplied
+directory is still scanned even when its own name is normally excluded. Add
+project-specific exclusions by repeating `--exclude-dir`:
+
+```bash
+nv upload . --exclude-dir archive --exclude-dir generated
+```
+
 If a scanned or unusually encoded PDF cannot be parsed, provide the DOI explicitly:
 
 ```bash
 nv upload ./paper.pdf --doi 10.1234/example.doi
+```
+
+Save a user-confirmed identity when the PDF itself does not contain a DOI:
+
+```bash
+nv doi ./paper.pdf --set 10.1234/example.doi
+nv doi ./paper.pdf --show-cache
+nv upload ./paper.pdf
+```
+
+Remove an incorrect cached identity or force a fresh automatic resolution:
+
+```bash
+nv doi ./paper.pdf --remove
+nv upload ./paper.pdf --refresh-doi
 ```
 
 If you only want DOI indexing and PDF storage, skip Crossref:
@@ -187,6 +221,9 @@ Inspect DOI resolution before upload:
 ```bash
 nv doi ./paper.pdf
 nv doi ./paper.pdf --verbose
+nv doi ./paper.pdf --set 10.1234/example.doi
+nv doi ./paper.pdf --show-cache
+nv doi ./paper.pdf --remove
 ```
 
 Check a directory recursively for PDF files that cannot be opened, and move only
@@ -259,6 +296,8 @@ netvault-admin delete-pdf 1
 - `POST /auth/logout`
 - `GET /me`
 - `POST /pdfs/upload`
+- `POST /pdfs/exists`
+- `POST /pdfs/aliases`
 - `GET /pdfs`
 - `GET /pdfs/search?q=...`
 - `GET /pdfs/by-doi?doi=...`

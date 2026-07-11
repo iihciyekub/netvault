@@ -88,10 +88,42 @@ NetVault only accepts PDF files. On upload it:
 7. Stores the PDF by sha256.
 8. Stores DOI and metadata in PostgreSQL.
 
+NetVault caches SHA-256 values in `~/.config/netvault/hash-cache.json` and DOI
+identity results in `~/.config/netvault/identity-cache.json`. The identity cache
+is keyed by SHA-256 rather than path, so moving or renaming an unchanged PDF
+does not trigger another DOI scan. Automatic missing/conflict results are also
+cached; pass `--refresh-doi` when you want to retry them.
+
+If an existing DOI is confirmed for a PDF with different bytes, NetVault records
+the new SHA-256 as a server-side alias of the canonical item. This handles
+publisher copies, repository copies, and regenerated PDFs across devices without
+repeating DOI extraction on subsequent uploads.
+
+Recursive uploads prune common technical directories (`.git`, `.venv`,
+`node_modules`, `Library`, `dist`, `build`, and `output`). Use repeated
+`--exclude-dir NAME` options for additional project-specific directories. If
+you explicitly pass an excluded directory as an upload path, NetVault scans it.
+
 If DOI extraction fails, provide the DOI manually:
 
 ```bash
 nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+```
+
+For a PDF that has no embedded DOI but whose identity you have verified, save a
+user-confirmed mapping before upload:
+
+```bash
+nv doi ~/Downloads/paper.pdf --set 10.1016/j.ijpe.2018.04.006
+nv doi ~/Downloads/paper.pdf --show-cache
+nv upload ~/Downloads/paper.pdf
+```
+
+The confirmation is bound to the PDF SHA-256, survives renames, and takes
+precedence over automatic extraction. If an assertion is wrong, remove it with:
+
+```bash
+nv doi ~/Downloads/paper.pdf --remove
 ```
 
 If Crossref should be skipped:
@@ -142,6 +174,7 @@ Inspect how NetVault will resolve a DOI before upload:
 ```bash
 nv doi ~/Downloads/paper.pdf
 nv doi ~/Downloads/paper.pdf --verbose
+nv doi ~/Downloads/paper.pdf --show-cache
 ```
 
 If the resolver is still wrong or ambiguous, override it:

@@ -58,6 +58,21 @@ class Pdf(Base):
 
     uploaded_by: Mapped[User] = relationship(foreign_keys=[uploaded_by_id])
     uploads: Mapped[list["UploadRecord"]] = relationship(back_populates="pdf")
+    file_aliases: Mapped[list["PdfFileAlias"]] = relationship(back_populates="pdf")
+
+
+class PdfFileAlias(Base):
+    __tablename__ = "pdf_file_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    pdf_id: Mapped[int] = mapped_column(ForeignKey("pdfs.id"), index=True, nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    asserted_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    asserted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    pdf: Mapped[Pdf] = relationship(back_populates="file_aliases")
+    asserted_by: Mapped[User] = relationship()
 
 
 class UploadRecord(Base):

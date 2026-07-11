@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 from typing import Iterable
@@ -24,7 +25,13 @@ from rich.progress import (
 from rich.table import Table
 
 from netvault import __version__
-from netvault.cli.config import HASH_CACHE_PATH, clear_credentials, load_credentials, save_credentials
+from netvault.cli.config import (
+    HASH_CACHE_PATH,
+    IDENTITY_CACHE_PATH,
+    clear_credentials,
+    load_credentials,
+    save_credentials,
+)
 from netvault.cli.http import (
     api_get,
     api_post,
@@ -35,12 +42,31 @@ from netvault.cli.http import (
     upload_pdf,
 )
 from netvault.cli.update import update_from_github
-from netvault.doi import extract_doi_evidence, find_dois_in_text, normalize_doi
+from netvault.doi import (
+    DOI_RESOLVER_VERSION,
+    DoiEvidence,
+    extract_doi_evidence,
+    find_dois_in_text,
+    normalize_doi,
+)
 
 DEFAULT_SERVER_URL = "https://iiaide.com/nv"
 HASH_CACHE_VERSION = 1
+IDENTITY_CACHE_VERSION = 1
 PDF_MAGIC = b"%PDF-"
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+DEFAULT_UPLOAD_EXCLUDED_DIRS = {
+    ".cache",
+    ".git",
+    ".Trash",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "Library",
+    "node_modules",
+    "output",
+}
 
 
 @dataclass(frozen=True)
@@ -110,25 +136,34 @@ def render_pdf_table(rows: list[dict]) -> None:
     console.print(table)
 
 
-def iter_pdf_paths(path: Path) -> list[Path]:
+def iter_pdf_paths(path: Path, excluded_dir_names: set[str] | None = None) -> list[Path]:
     if path.is_file():
         if path.suffix.lower() != ".pdf":
             raise typer.BadParameter(f"{path} is not a PDF file")
         return [path]
     if path.is_dir():
-        return sorted(
-            candidate
-            for candidate in path.rglob("*")
-            if candidate.is_file() and candidate.suffix.lower() == ".pdf"
-        )
+        excluded = excluded_dir_names or set()
+        pdfs: list[Path] = []
+        for root, directory_names, file_names in os.walk(path):
+            directory_names[:] = sorted(name for name in directory_names if name not in excluded)
+            root_path = Path(root)
+            pdfs.extend(
+                root_path / name
+                for name in file_names
+                if Path(name).suffix.lower() == ".pdf"
+            )
+        return sorted(pdfs)
     raise typer.BadParameter(f"{path} does not exist")
 
 
-def collect_pdf_paths(paths: Iterable[Path]) -> list[Path]:
+def collect_pdf_paths(
+    paths: Iterable[Path],
+    excluded_dir_names: set[str] | None = None,
+) -> list[Path]:
     pdfs: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
-        for pdf_path in iter_pdf_paths(path):
+        for pdf_path in iter_pdf_paths(path, excluded_dir_names=excluded_dir_names):
             resolved = pdf_path.resolve()
             if resolved in seen:
                 continue
@@ -225,6 +260,69 @@ def cached_file_sha256(path: Path, cache: dict[str, dict], progress_callback=Non
     return sha256, False
 
 
+def load_identity_cache() -> dict[str, dict]:
+    if not IDENTITY_CACHE_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(IDENTITY_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if payload.get("version") != IDENTITY_CACHE_VERSION:
+        return {}
+    identities = payload.get("identities")
+    return identities if isinstance(identities, dict) else {}
+
+
+def save_identity_cache(identities: dict[str, dict]) -> None:
+    IDENTITY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = IDENTITY_CACHE_PATH.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(
+            {"version": IDENTITY_CACHE_VERSION, "identities": identities},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    temporary.chmod(0o600)
+    temporary.replace(IDENTITY_CACHE_PATH)
+
+
+def cached_identity(identities: dict[str, dict], sha256: str) -> dict | None:
+    identity = identities.get(sha256)
+    if not isinstance(identity, dict):
+        return None
+    if identity.get("source") == "user" and identity.get("status") == "confirmed":
+        return identity
+    if identity.get("resolver_version") == DOI_RESOLVER_VERSION:
+        return identity
+    return None
+
+
+def identity_from_evidence(evidence: DoiEvidence, *, manual: bool = False) -> dict:
+    if manual:
+        status = "confirmed"
+        source = "user"
+        resolver_version = None
+    else:
+        status = evidence.status
+        source = evidence.source
+        resolver_version = DOI_RESOLVER_VERSION
+    return {
+        "doi": evidence.doi,
+        "status": status,
+        "source": source,
+        "reason": evidence.reason,
+        "resolver_version": resolver_version,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def manual_identity(doi: str) -> dict:
+    normalized = normalize_doi(doi)
+    evidence = DoiEvidence("ok", normalized, "explicit", [], None)
+    return identity_from_evidence(evidence, manual=True)
+
+
 def existing_pdf_from_response(response: requests.Response) -> dict | None:
     if response.status_code == 404:
         return None
@@ -294,6 +392,27 @@ def get_existing_pdfs_by_doi(dois: Iterable[str], progress_callback=None) -> dic
             if progress_callback:
                 progress_callback(index)
         return existing
+
+
+def register_pdf_aliases(aliases: Iterable[tuple[str, str]]) -> dict[str, dict]:
+    unique = {(sha256.lower(), doi) for sha256, doi in aliases if sha256 and doi}
+    registered: dict[str, dict] = {}
+    chunk_size = 500
+    ordered = sorted(unique)
+    for index in range(0, len(ordered), chunk_size):
+        response = api_post(
+            "/pdfs/aliases",
+            json={
+                "aliases": [
+                    {"sha256": sha256, "doi": doi}
+                    for sha256, doi in ordered[index : index + chunk_size]
+                ]
+            },
+        )
+        payload = response.get("registered", {})
+        if isinstance(payload, dict):
+            registered.update(payload)
+    return registered
 
 
 def get_existing_pdf_by_doi(doi: str) -> dict | None:
@@ -681,9 +800,20 @@ def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
+    refresh_doi: bool = typer.Option(
+        False,
+        "--refresh-doi",
+        help="Re-run automatic DOI resolution, but keep user-confirmed identities.",
+    ),
+    exclude_dir: list[str] | None = typer.Option(
+        None,
+        "--exclude-dir",
+        help="Additional directory name to skip during recursive scans; repeat as needed.",
+    ),
 ) -> None:
     ensure_logged_in()
-    pdfs = collect_pdf_paths(paths)
+    excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
+    pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
     if not pdfs:
         console.print("No PDF files found.")
         return
@@ -697,7 +827,11 @@ def upload_command(
     failed: list[tuple[Path, str]] = []
     latest_pdf: dict | None = None
     hash_cache = load_hash_cache()
+    identity_cache = load_identity_cache()
     cache_changed = False
+    identity_cache_pending = 0
+    doi_cache_hits = 0
+    doi_scans = 0
     hashes_by_path: dict[Path, str] = {}
     existing_by_sha: dict[str, dict] = {}
 
@@ -758,16 +892,46 @@ def upload_command(
         )
         for pdf_path in new_pdfs:
             try:
-                extracted = extract_local_doi(pdf_path, doi)
-                if not extracted:
-                    failed.append((pdf_path, "No DOI found. Pass --doi DOI when uploading."))
+                sha256 = hashes_by_path[pdf_path]
+                identity = cached_identity(identity_cache, sha256)
+                if refresh_doi and identity and identity.get("source") != "user":
+                    identity = None
+
+                if doi:
+                    identity = manual_identity(doi)
+                    identity_cache[sha256] = identity
+                    identity_cache_pending += 1
+                elif identity:
+                    doi_cache_hits += 1
+                else:
+                    evidence = extract_doi_evidence(pdf_path)
+                    identity = identity_from_evidence(evidence)
+                    identity_cache[sha256] = identity
+                    identity_cache_pending += 1
+                    doi_scans += 1
+
+                extracted = identity.get("doi")
+                if identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
+                    reason = identity.get("reason") or "No DOI found"
+                    failed.append(
+                        (
+                            pdf_path,
+                            f"{reason}. Confirm with: nv doi {pdf_path} --set DOI",
+                        )
+                    )
                     continue
                 dois_by_path[pdf_path] = extracted
                 upload_candidates.append(pdf_path)
-            except (RuntimeError, OSError) as exc:
+            except (RuntimeError, OSError, ValueError) as exc:
                 failed.append((pdf_path, str(exc)))
             finally:
+                if identity_cache_pending >= 25:
+                    save_identity_cache(identity_cache)
+                    identity_cache_pending = 0
                 progress.advance(task, 1)
+        if identity_cache_pending:
+            save_identity_cache(identity_cache)
+            identity_cache_pending = 0
         progress.reset(
             task,
             total=len(dois_by_path),
@@ -779,13 +943,25 @@ def upload_command(
             progress_callback=lambda completed: progress.update(task, completed=completed),
         )
         new_pdfs = []
+        aliases_to_register: list[tuple[str, str]] = []
         for pdf_path in upload_candidates:
             existing_pdf = existing_by_doi.get(dois_by_path[pdf_path])
             if existing_pdf:
                 latest_pdf = existing_pdf
                 skipped += 1
+                sha256 = hashes_by_path[pdf_path]
+                if existing_pdf.get("sha256") != sha256:
+                    aliases_to_register.append((sha256, dois_by_path[pdf_path]))
             else:
                 new_pdfs.append(pdf_path)
+        if aliases_to_register:
+            try:
+                register_pdf_aliases(aliases_to_register)
+            except (RuntimeError, requests.RequestException) as exc:
+                # Alias persistence is an optimization. The DOI duplicate has
+                # already been safely identified, so a legacy server or transient
+                # failure must not turn a successful skip into an upload failure.
+                console.print(f"warning: could not register PDF aliases: {exc}")
 
         if not new_pdfs:
             progress.update(task, description="Done", completed=len(pdfs), total=len(pdfs))
@@ -819,6 +995,10 @@ def upload_command(
         parts.append(f"{deduped} deduped")
     if skipped:
         parts.append(f"{skipped} skipped")
+    if doi_cache_hits:
+        parts.append(f"{doi_cache_hits} DOI cache hits")
+    if doi_scans:
+        parts.append(f"{doi_scans} DOI scans")
     if failed:
         parts.append(f"{len(failed)} failed")
     if latest_pdf:
@@ -838,20 +1018,80 @@ Examples:
   nv doi ./paper.pdf
   nv doi ./paper.pdf --verbose
   nv doi ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+  nv doi ./paper.pdf --set 10.1016/j.ijpe.2018.04.006
+  nv doi ./paper.pdf --show-cache
+  nv doi ./paper.pdf --remove
 
 \b
 Notes:
   This runs the same smart DOI resolver used by upload.
   Use --verbose to inspect candidate DOI values and why one was selected.
+  --set saves a user-confirmed SHA-to-DOI identity that survives file renames.
 """,
 )
 def doi_command(
     path: Path = typer.Argument(..., exists=True, readable=True, help="PDF file to inspect."),
     doi: str | None = typer.Option(None, "--doi", help="Explicit DOI to validate and display."),
+    set_doi: str | None = typer.Option(
+        None,
+        "--set",
+        help="Save a user-confirmed DOI identity for this PDF's SHA-256.",
+    ),
+    remove: bool = typer.Option(False, "--remove", help="Remove the cached identity for this PDF."),
+    show_cache: bool = typer.Option(
+        False,
+        "--show-cache",
+        help="Show the cached identity without parsing the PDF.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show context for each DOI candidate."),
 ) -> None:
     if path.suffix.lower() != ".pdf":
         raise typer.BadParameter(f"{path} is not a PDF file")
+    actions = int(set_doi is not None) + int(remove) + int(show_cache)
+    if actions > 1 or (doi and actions):
+        raise typer.BadParameter("Use only one of --doi, --set, --remove, or --show-cache")
+
+    if set_doi is not None or remove or show_cache:
+        hash_cache = load_hash_cache()
+        sha256, from_cache = cached_file_sha256(path, hash_cache)
+        if not from_cache:
+            save_hash_cache(hash_cache)
+        identities = load_identity_cache()
+
+        if set_doi is not None:
+            identity = manual_identity(set_doi)
+            identities[sha256] = identity
+            save_identity_cache(identities)
+            console.print(
+                f"saved: {path} -> {identity['doi']} "
+                f"(source=user, sha256={sha256})"
+            )
+            return
+        if remove:
+            removed = identities.pop(sha256, None)
+            if removed is not None:
+                save_identity_cache(identities)
+                console.print(f"removed: {path} (sha256={sha256})")
+            else:
+                console.print(f"no cached identity: {path} (sha256={sha256})")
+            return
+
+        identity = identities.get(sha256)
+        if not isinstance(identity, dict):
+            console.print(f"no cached identity: {path} (sha256={sha256})")
+            return
+        console.print(
+            Panel.fit(
+                f"[bold]File[/bold] {path.name}\n"
+                f"[bold]SHA-256[/bold] {sha256}\n"
+                f"[bold]DOI[/bold] {identity.get('doi') or '-'}\n"
+                f"[bold]Status[/bold] {identity.get('status') or '-'}\n"
+                f"[bold]Source[/bold] {identity.get('source') or '-'}\n"
+                f"[bold]Reason[/bold] {identity.get('reason') or '-'}",
+                title="Cached DOI Identity",
+            )
+        )
+        return
     render_doi_evidence(path, explicit_doi=doi, verbose=verbose)
 
 

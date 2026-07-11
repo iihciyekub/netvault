@@ -121,10 +121,27 @@ def _add_query_indexes_and_journal_keys(engine: Engine) -> None:
             connection.execute(text("ANALYZE download_records"))
 
 
+def _add_pdf_file_aliases(engine: Engine) -> None:
+    # Use SQLAlchemy's table definition so this migration remains portable across
+    # SQLite and PostgreSQL. create_all normally creates it first; checkfirst also
+    # supports databases upgraded through the migration runner directly.
+    from netvault_server.server.models import PdfFileAlias
+
+    PdfFileAlias.__table__.create(bind=engine, checkfirst=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pdf_file_aliases_sha256 ON pdf_file_aliases (sha256)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_pdf_file_aliases_pdf_id ON pdf_file_aliases (pdf_id)")
+        )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _add_pdf_metadata_columns,
     _add_user_token_version,
     _add_query_indexes_and_journal_keys,
+    _add_pdf_file_aliases,
 )
 
 

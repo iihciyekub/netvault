@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.8 - 2026-07-11
+
+- Cache DOI identity results by PDF SHA-256, including user-confirmed identities
+  and automatic missing/conflict results, with explicit inspection and refresh controls.
+- Skip common technical directories during recursive uploads and avoid expensive PDF
+  text extraction when a filename provides unambiguous DOI evidence.
+- Register DOI-confirmed alternate PDF digests as server-side aliases so equivalent
+  publisher, repository, and regenerated copies are recognized across devices.
+
 ## 0.7.7 - 2026-07-11
 
 - Add a local `nv check-pdfs` command that recursively finds PDFs that cannot

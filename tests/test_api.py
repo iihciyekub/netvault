@@ -165,6 +165,26 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     )
     assert list(doi_exists.json()["existing_doi"]) == [DOI]
 
+    alternate_sha = hashlib.sha256(b"alternate rendering of the same article").hexdigest()
+    alias = client.post(
+        "/pdfs/aliases",
+        headers=admin_headers,
+        json={"aliases": [{"sha256": alternate_sha, "doi": f"https://doi.org/{DOI}"}]},
+    )
+    assert alias.status_code == 200
+    assert alias.json()["registered"][alternate_sha]["id"] == pdf_id
+    assert client.post(
+        "/pdfs/aliases",
+        headers=admin_headers,
+        json={"aliases": [{"sha256": alternate_sha.upper(), "doi": DOI}]},
+    ).status_code == 200
+    alias_exists = client.post(
+        "/pdfs/exists",
+        headers=admin_headers,
+        json={"sha256": [alternate_sha]},
+    )
+    assert alias_exists.json()["existing"][alternate_sha]["id"] == pdf_id
+
     listed = client.get("/pdfs", headers=admin_headers)
     assert listed.status_code == 200
     assert len(listed.json()) == 1
@@ -210,9 +230,14 @@ def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) ->
 
         pdf_indexes = {index["name"] for index in inspect(db.bind).get_indexes("pdfs")}
         upload_indexes = {index["name"] for index in inspect(db.bind).get_indexes("upload_records")}
+        alias_indexes = {
+            index["name"] for index in inspect(db.bind).get_indexes("pdf_file_aliases")
+        }
         assert "ix_pdfs_active_uploaded_at" in pdf_indexes
         assert "ix_pdfs_journal_year" in pdf_indexes
         assert "ix_upload_records_idempotency_key" in upload_indexes
+        assert "ix_pdf_file_aliases_sha256" in alias_indexes
+        assert "ix_pdf_file_aliases_pdf_id" in alias_indexes
 
     incomplete = upload(
         client,
@@ -271,6 +296,33 @@ def test_rejects_missing_doi_and_conflicting_doi(client: TestClient, tmp_path: P
         name="other.pdf",
         content=OTHER_PDF_BYTES,
         doi="10.5555/manual",
+    )
+    assert conflict.status_code == 409
+
+
+def test_pdf_alias_cannot_be_reassigned_to_another_doi(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+    first = upload(client, headers, doi="10.5555/first")
+    second = upload(
+        client,
+        headers,
+        name="second.pdf",
+        content=OTHER_PDF_BYTES,
+        doi="10.5555/second",
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    alias_sha = hashlib.sha256(b"another rendering").hexdigest()
+    assert client.post(
+        "/pdfs/aliases",
+        headers=headers,
+        json={"aliases": [{"sha256": alias_sha, "doi": "10.5555/first"}]},
+    ).status_code == 200
+
+    conflict = client.post(
+        "/pdfs/aliases",
+        headers=headers,
+        json={"aliases": [{"sha256": alias_sha, "doi": "10.5555/second"}]},
     )
     assert conflict.status_code == 409
 

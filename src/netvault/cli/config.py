@@ -12,6 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover
 APP_DIR = Path.home() / ".config" / "netvault"
 CREDENTIALS_PATH = APP_DIR / "credentials.toml"
 HASH_CACHE_PATH = APP_DIR / "hash-cache.json"
+IDENTITY_CACHE_PATH = APP_DIR / "identity-cache.json"
 
 
 def load_credentials() -> dict[str, Any]:

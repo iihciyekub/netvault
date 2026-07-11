@@ -5,6 +5,7 @@ import json
 
 from pypdf import PdfWriter
 from netvault.cli.user import (
+    cached_identity,
     cached_file_sha256,
     download_part_path,
     file_sha256,
@@ -12,9 +13,12 @@ from netvault.cli.user import (
     get_existing_pdfs_by_sha256,
     has_pdf_header,
     load_hash_cache,
+    load_identity_cache,
+    manual_identity,
     plan_download_destination,
     pdf_open_error,
     save_hash_cache,
+    save_identity_cache,
     collect_dois,
     collect_pdf_paths,
     unique_destination,
@@ -23,7 +27,7 @@ from netvault.cli.update import build_update_command
 from typer.testing import CliRunner
 import netvault.cli.user as user_cli
 import netvault.doi
-from netvault.doi import extract_doi_evidence
+from netvault.doi import DoiEvidence, extract_doi_evidence
 
 
 def test_pypdf_logs_are_quiet_for_cli_upload() -> None:
@@ -105,6 +109,19 @@ def test_collect_pdf_paths_recurses_and_deduplicates(tmp_path: Path) -> None:
     ignored.write_text("not a pdf", encoding="utf-8")
 
     assert collect_pdf_paths([papers, first]) == [first, second]
+
+
+def test_collect_pdf_paths_prunes_excluded_directories(tmp_path: Path) -> None:
+    papers = tmp_path / "papers"
+    ignored_directory = papers / "node_modules" / "fixture"
+    ignored_directory.mkdir(parents=True)
+    included = papers / "included.pdf"
+    ignored = ignored_directory / "ignored.pdf"
+    included.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    ignored.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    assert collect_pdf_paths([papers], excluded_dir_names={"node_modules"}) == [included]
+    assert collect_pdf_paths([ignored_directory], excluded_dir_names={"node_modules"}) == [ignored]
 
 
 def test_has_pdf_header_rejects_html_saved_as_pdf(tmp_path: Path) -> None:
@@ -295,6 +312,138 @@ def test_hash_cache_reuses_unchanged_file(tmp_path: Path, monkeypatch) -> None:
     assert cached_sha256 == sha256
 
 
+def test_manual_identity_cache_survives_file_rename(tmp_path: Path, monkeypatch) -> None:
+    hash_cache_path = tmp_path / "hash-cache.json"
+    identity_cache_path = tmp_path / "identity-cache.json"
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", hash_cache_path)
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", identity_cache_path)
+    original = tmp_path / "original.pdf"
+    renamed = tmp_path / "renamed.pdf"
+    original.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+
+    sha256, _ = cached_file_sha256(original, {})
+    save_identity_cache({sha256: manual_identity("10.1234/user.confirmed")})
+    original.rename(renamed)
+    renamed_sha256, _ = cached_file_sha256(renamed, {})
+    identity = cached_identity(load_identity_cache(), renamed_sha256)
+
+    assert renamed_sha256 == sha256
+    assert identity is not None
+    assert identity["doi"] == "10.1234/user.confirmed"
+    assert identity["status"] == "confirmed"
+    assert identity["source"] == "user"
+
+
+def test_automatic_identity_expires_but_manual_identity_does_not(monkeypatch) -> None:
+    sha256 = "a" * 64
+    automatic = {
+        "doi": "10.1234/automatic",
+        "status": "ok",
+        "source": "pdf-metadata",
+        "resolver_version": 1,
+    }
+    confirmed = manual_identity("10.1234/confirmed")
+
+    monkeypatch.setattr(user_cli, "DOI_RESOLVER_VERSION", 2)
+
+    assert cached_identity({sha256: automatic}, sha256) is None
+    assert cached_identity({sha256: confirmed}, sha256) == confirmed
+
+
+def test_doi_set_show_and_remove_manage_sha_identity(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    runner = CliRunner()
+
+    saved = runner.invoke(user_cli.app, ["doi", str(pdf), "--set", "10.1234/manual"])
+    shown = runner.invoke(user_cli.app, ["doi", str(pdf), "--show-cache"])
+    removed = runner.invoke(user_cli.app, ["doi", str(pdf), "--remove"])
+    missing = runner.invoke(user_cli.app, ["doi", str(pdf), "--show-cache"])
+
+    assert saved.exit_code == 0, saved.output
+    assert "source=user" in saved.output
+    assert shown.exit_code == 0, shown.output
+    assert "10.1234/manual" in shown.output
+    assert "confirmed" in shown.output
+    assert removed.exit_code == 0, removed.output
+    assert missing.exit_code == 0, missing.output
+    assert "no cached identity" in missing.output
+
+
+def test_upload_reuses_manual_identity_without_parsing_pdf(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
+    existing = {
+        "doi": "10.1234/manual",
+        "sha256": "b" * 64,
+        "original_name": "existing.pdf",
+        "title": "Existing",
+    }
+    monkeypatch.setattr(
+        user_cli,
+        "get_existing_pdfs_by_doi",
+        lambda *args, **kwargs: {"10.1234/manual": existing},
+    )
+    registered: list[tuple[str, str]] = []
+
+    def capture_aliases(aliases):
+        registered.extend(aliases)
+        return {}
+
+    monkeypatch.setattr(user_cli, "register_pdf_aliases", capture_aliases)
+
+    def fail_extract(*args, **kwargs):
+        raise AssertionError("manual identity should skip DOI extraction")
+
+    monkeypatch.setattr(user_cli, "extract_doi_evidence", fail_extract)
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    sha256 = file_sha256(pdf)
+    save_identity_cache({sha256: manual_identity("10.1234/manual")})
+
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+
+    assert result.exit_code == 0, result.output
+    assert "1 skipped" in result.output
+    assert "1 DOI cache hits" in result.output
+    assert "DOI scans" not in result.output
+    assert registered == [(sha256, "10.1234/manual")]
+
+
+def test_upload_caches_no_doi_result_until_refresh(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    monkeypatch.setattr(
+        user_cli,
+        "extract_doi_evidence",
+        lambda *args, **kwargs: DoiEvidence("no-doi", None, None, [], "No DOI found"),
+    )
+
+    first = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+
+    assert first.exit_code == 1, first.output
+    assert "1 DOI scans" in first.output
+
+    def fail_extract(*args, **kwargs):
+        raise AssertionError("cached no-doi result should skip DOI extraction")
+
+    monkeypatch.setattr(user_cli, "extract_doi_evidence", fail_extract)
+    second = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+
+    assert second.exit_code == 1, second.output
+    assert "1 DOI cache hits" in second.output
+    assert "DOI scans" not in second.output
+
+
 def test_existing_sha_skips_doi_extraction(monkeypatch) -> None:
     def fail_extract(*args, **kwargs):
         raise AssertionError("DOI extraction should not run for an existing sha256")
@@ -343,6 +492,26 @@ def test_smart_doi_prefers_filename_over_content_noise(tmp_path: Path) -> None:
 
     assert evidence.status == "ok"
     assert evidence.doi == "10.1016/j.chb.2015.03.041"
+    assert evidence.source == "filename"
+
+
+def test_filename_doi_fast_path_skips_text_extractors(tmp_path: Path, monkeypatch) -> None:
+    pdf = tmp_path / "10.1234_fast-path.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded metadata\n%%EOF\n")
+
+    def fail_scan(*args, **kwargs):
+        raise AssertionError("filename DOI fast path should not run pdftotext")
+
+    def fail_reader(*args, **kwargs):
+        raise AssertionError("filename DOI fast path should not run pypdf")
+
+    monkeypatch.setattr(netvault.doi, "scan_with_pdftotext", fail_scan)
+    monkeypatch.setattr(netvault.doi, "PdfReader", fail_reader)
+
+    evidence = extract_doi_evidence(pdf)
+
+    assert evidence.status == "ok"
+    assert evidence.doi == "10.1234/fast-path"
     assert evidence.source == "filename"
 
 
