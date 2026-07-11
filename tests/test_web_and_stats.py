@@ -364,8 +364,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.5" in info_page.text
-    assert "app.js?v=0.7.5-ui4" in info_page.text
+    assert "0.7.7" in info_page.text
+    assert "app.js?v=0.7.7-ui5" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert 'class="author-email"' in info_page.text
     assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text
@@ -454,6 +454,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "fa-check" in pdfs_with_query.text
     assert "Metadata retrieved from Crossref" in pdfs_with_query.text
     assert "https://doi.org/10.1234/web.test" in pdfs_with_query.text
+    assert "/web/pdfs/preview?pdf_id=" in pdfs_with_query.text
+    assert 'target="_blank"' in pdfs_with_query.text
+    assert "fa-eye" in pdfs_with_query.text
     assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
     assert "data-no-pjax" in pdfs_with_query.text
 
@@ -474,13 +477,30 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Download All ZIP" in lookup.text
     assert "results-header" in lookup.text
     assert "data-native-submit" in lookup.text
+    assert "/web/pdfs/preview?pdf_id=" in lookup.text
+    assert "row-actions" in lookup.text
     assert "/web/pdfs/download?pdf_id=" in lookup.text
     assert "data-no-pjax" in lookup.text
+
+    pdf_id = int(lookup.text.split("/web/pdfs/download?pdf_id=", 1)[1].split('"', 1)[0])
+    previewed = client.get(
+        "/web/pdfs/preview",
+        params={"pdf_id": pdf_id},
+        headers={"Range": "bytes=0-9"},
+    )
+    assert previewed.status_code == 206
+    assert previewed.content == PDF_BYTES[:10]
+    assert previewed.headers["accept-ranges"] == "bytes"
+    assert previewed.headers["content-range"] == f"bytes 0-9/{len(PDF_BYTES)}"
+    assert previewed.headers["content-disposition"] == 'inline; filename="web.pdf"'
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        assert db.query(models.DownloadRecord).count() == 0
 
     downloaded = client.get("/web/pdfs/download", params={"doi": "10.1234/web.test"})
     assert downloaded.status_code == 200
     assert hashlib.sha256(downloaded.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
-    pdf_id = int(lookup.text.split("/web/pdfs/download?pdf_id=", 1)[1].split("\"", 1)[0])
     downloaded_by_id = client.get("/web/pdfs/download", params={"pdf_id": pdf_id})
     assert downloaded_by_id.status_code == 200
     assert hashlib.sha256(downloaded_by_id.content).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()

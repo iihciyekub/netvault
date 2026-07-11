@@ -189,6 +189,17 @@ nv doi ./paper.pdf
 nv doi ./paper.pdf --verbose
 ```
 
+Check a directory recursively for PDF files that cannot be opened, and move only
+those damaged files into `./error` under the directory where the command is run:
+
+```bash
+nv check-pdfs ~/Downloads/papers
+nv check-pdfs ~/Downloads/papers --dry-run
+```
+
+The check is local, does not require login, ignores non-PDF files, and keeps
+encrypted PDFs because encryption by itself does not indicate file damage.
+
 If a PDF is scanned, mislabeled, or still ambiguous, provide the DOI explicitly:
 
 ```bash

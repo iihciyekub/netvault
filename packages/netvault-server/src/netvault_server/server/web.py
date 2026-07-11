@@ -120,7 +120,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui4",
+        "asset_version": f"{__version__}-ui5",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -596,16 +596,12 @@ def download_lookup(
     )
 
 
-@router.get("/web/pdfs/download", include_in_schema=False)
-def web_pdf_download(
-    request: Request,
-    doi: str | None = None,
-    pdf_id: int | None = Query(default=None),
-    db: Session = Depends(get_db),
-) -> Any:
-    user = require_web_user(request, db)
-    if isinstance(user, RedirectResponse):
-        return user
+def _resolve_web_pdf_file(
+    db: Session,
+    *,
+    doi: str | None,
+    pdf_id: int | None,
+) -> tuple[Pdf, Path]:
     if pdf_id is not None:
         pdf = db.scalar(select(Pdf).where(Pdf.id == pdf_id, Pdf.is_deleted.is_(False)))
     elif doi:
@@ -621,6 +617,42 @@ def web_pdf_download(
     path = object_path(pdf.sha256)
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Stored PDF missing")
+    return pdf, path
+
+
+@router.get("/web/pdfs/preview", include_in_schema=False)
+def web_pdf_preview(
+    request: Request,
+    doi: str | None = None,
+    pdf_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    pdf, path = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
+    if not activity_is_allowed(f"preview:{user.id}", get_settings().download_rate_per_hour):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Preview rate limit exceeded")
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=Path(pdf.original_name).name,
+        content_disposition_type="inline",
+        headers={"ETag": f'"{pdf.sha256}"'},
+    )
+
+
+@router.get("/web/pdfs/download", include_in_schema=False)
+def web_pdf_download(
+    request: Request,
+    doi: str | None = None,
+    pdf_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    pdf, path = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
     if not activity_is_allowed(f"download:{user.id}", get_settings().download_rate_per_hour):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")
     return FileResponse(

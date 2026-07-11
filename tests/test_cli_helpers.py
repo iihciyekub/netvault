@@ -3,6 +3,7 @@ import logging
 import hashlib
 import json
 
+from pypdf import PdfWriter
 from netvault.cli.user import (
     cached_file_sha256,
     download_part_path,
@@ -12,6 +13,7 @@ from netvault.cli.user import (
     has_pdf_header,
     load_hash_cache,
     plan_download_destination,
+    pdf_open_error,
     save_hash_cache,
     collect_dois,
     collect_pdf_paths,
@@ -113,6 +115,83 @@ def test_has_pdf_header_rejects_html_saved_as_pdf(tmp_path: Path) -> None:
 
     assert has_pdf_header(real_pdf) is True
     assert has_pdf_header(html_pdf) is False
+
+
+def write_valid_pdf(path: Path, *, encrypted: bool = False) -> None:
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    if encrypted:
+        writer.encrypt("secret")
+    with path.open("wb") as handle:
+        writer.write(handle)
+
+
+def test_pdf_open_error_accepts_valid_and_encrypted_pdfs(tmp_path: Path) -> None:
+    valid = tmp_path / "valid.pdf"
+    encrypted = tmp_path / "encrypted.pdf"
+    invalid = tmp_path / "invalid.pdf"
+    write_valid_pdf(valid)
+    write_valid_pdf(encrypted, encrypted=True)
+    invalid.write_bytes(b"not a PDF")
+
+    assert pdf_open_error(valid) is None
+    assert pdf_open_error(encrypted) is None
+    assert pdf_open_error(invalid) is not None
+
+
+def test_check_pdfs_moves_only_invalid_pdfs_to_cwd_error(tmp_path: Path, monkeypatch) -> None:
+    working = tmp_path / "working"
+    source = tmp_path / "source"
+    nested = source / "nested"
+    working.mkdir()
+    nested.mkdir(parents=True)
+    valid = source / "valid.pdf"
+    invalid = nested / "broken.PDF"
+    ignored = source / "notes.txt"
+    write_valid_pdf(valid)
+    invalid.write_bytes(b"%PDF-1.4\ntruncated")
+    ignored.write_text("not a PDF", encoding="utf-8")
+    monkeypatch.chdir(working)
+
+    result = CliRunner().invoke(user_cli.app, ["check-pdfs", str(source)])
+
+    assert result.exit_code == 0, result.output
+    assert valid.exists()
+    assert ignored.exists()
+    assert not invalid.exists()
+    assert (working / "error" / "broken.PDF").exists()
+    assert "1 invalid moved" in result.output
+
+
+def test_check_pdfs_avoids_collisions_and_skips_error_directory(tmp_path: Path, monkeypatch) -> None:
+    error_directory = tmp_path / "error"
+    error_directory.mkdir()
+    existing = error_directory / "broken.pdf"
+    existing.write_bytes(b"already quarantined")
+    invalid = tmp_path / "broken.pdf"
+    invalid.write_bytes(b"not a PDF")
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(user_cli.app, ["check-pdfs"])
+
+    assert result.exit_code == 0, result.output
+    assert existing.read_bytes() == b"already quarantined"
+    assert (error_directory / "broken-2.pdf").exists()
+    assert "1 PDFs checked" in result.output
+
+
+def test_check_pdfs_dry_run_does_not_move_files(tmp_path: Path, monkeypatch) -> None:
+    invalid = tmp_path / "broken.pdf"
+    invalid.write_bytes(b"not a PDF")
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(user_cli.app, ["check-pdfs", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert invalid.exists()
+    assert not (tmp_path / "error").exists()
+    assert "would move" in result.output
+    assert "dry run: 1 PDFs checked; 1 invalid" in result.output
 
 
 def test_collect_dois_from_arguments_and_file(tmp_path: Path) -> None:

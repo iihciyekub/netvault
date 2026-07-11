@@ -4,8 +4,11 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import shutil
 from typing import Iterable
 
+from pypdf import PdfReader
+from pypdf.errors import FileNotDecryptedError
 import requests
 import typer
 from rich import box
@@ -56,6 +59,7 @@ app = typer.Typer(
 Examples:
   nv login https://iiaide.com/nv
   nv upload ./paper.pdf ./papers
+  nv check-pdfs ./papers
   nv doi ./paper.pdf --verbose
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
@@ -136,6 +140,31 @@ def collect_pdf_paths(paths: Iterable[Path]) -> list[Path]:
 def has_pdf_header(path: Path) -> bool:
     with path.open("rb") as handle:
         return handle.read(len(PDF_MAGIC)) == PDF_MAGIC
+
+
+def pdf_open_error(path: Path) -> str | None:
+    """Return an error when pypdf cannot open the document structure."""
+    try:
+        with path.open("rb") as handle:
+            reader = PdfReader(handle, strict=False)
+            if reader.is_encrypted:
+                return None
+            for page in reader.pages:
+                page.get_object()
+    except FileNotDecryptedError:
+        return None
+    except Exception as exc:
+        detail = str(exc).strip()
+        return f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+    return None
+
+
+def is_within(path: Path, directory: Path) -> bool:
+    try:
+        path.resolve().relative_to(directory.resolve())
+    except ValueError:
+        return False
+    return True
 
 
 def file_sha256(path: Path, progress_callback=None) -> str:
@@ -543,6 +572,92 @@ def logout() -> None:
     finally:
         clear_credentials()
     console.print("Logged out.")
+
+
+@app.command(
+    "check-pdfs",
+    epilog="""\b
+Examples:
+  nv check-pdfs
+  nv check-pdfs ~/Downloads/papers
+  nv check-pdfs ./papers --dry-run
+
+\b
+Notes:
+  Only .pdf/.PDF files are scanned, recursively.
+  PDFs that cannot be opened are moved to ./error under the current working directory.
+  Encrypted PDFs are kept because encryption alone does not mean a file is damaged.
+""",
+)
+def check_pdfs_command(
+    directory: Path = typer.Argument(
+        Path("."),
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        help="Directory to scan recursively (default: current directory).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report invalid PDFs without moving them."),
+) -> None:
+    error_directory = Path.cwd() / "error"
+    pdfs = [
+        path
+        for path in iter_pdf_paths(directory)
+        if not is_within(path, error_directory)
+    ]
+    if not pdfs:
+        console.print("No PDF files found.")
+        return
+
+    invalid: list[tuple[Path, str]] = []
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed:.0f}/{task.total:.0f} PDFs"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Checking PDFs", total=len(pdfs))
+        for pdf_path in pdfs:
+            error = pdf_open_error(pdf_path)
+            if error:
+                invalid.append((pdf_path, error))
+            progress.advance(task)
+
+    if not invalid:
+        console.print(f"done: {len(pdfs)} PDFs checked; all files can be opened")
+        return
+
+    used_destinations: set[Path] = set()
+    failures: list[tuple[Path, str]] = []
+    moved = 0
+    for pdf_path, error in invalid:
+        destination = unique_destination(error_directory, pdf_path.name, used_destinations)
+        if dry_run:
+            console.print(f"invalid: {pdf_path}: {error}; would move to {destination}")
+            continue
+        try:
+            error_directory.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(pdf_path), str(destination))
+        except OSError as exc:
+            failures.append((pdf_path, str(exc)))
+            console.print(f"failed: {pdf_path}: {exc}")
+            continue
+        moved += 1
+        console.print(f"moved: {pdf_path} -> {destination}: {error}")
+
+    if dry_run:
+        console.print(f"dry run: {len(pdfs)} PDFs checked; {len(invalid)} invalid")
+    else:
+        console.print(
+            f"done: {len(pdfs)} PDFs checked; {moved} invalid moved to {error_directory}; "
+            f"{len(failures)} move failures"
+        )
+    if failures:
+        raise typer.Exit(1)
 
 
 @app.command(

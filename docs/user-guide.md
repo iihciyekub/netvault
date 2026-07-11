@@ -100,6 +100,28 @@ If Crossref should be skipped:
 nv upload ~/Downloads/paper.pdf --no-crossref
 ```
 
+## Check Damaged PDFs
+
+Recursively check a directory and move PDFs that cannot be opened into an
+`error` directory under the current working directory:
+
+```bash
+cd ~/Downloads
+nv check-pdfs ./papers
+```
+
+Preview the result without moving anything:
+
+```bash
+nv check-pdfs ./papers --dry-run
+```
+
+Only `.pdf`/`.PDF` files are checked. The command does not inspect DOI values,
+text, or page appearance, does not require login, and does not contact the
+server. Encrypted PDFs are kept because encryption alone does not indicate that
+a file is damaged. If files have the same name, numbered names are used in
+`error/` rather than overwriting an existing file.
+
 ## DOI Extraction
 
 NetVault uses a smart DOI resolver rather than a single PDF regex:

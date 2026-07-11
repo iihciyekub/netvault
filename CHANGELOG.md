@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.7 - 2026-07-11
+
+- Add a local `nv check-pdfs` command that recursively finds PDFs that cannot
+  be opened and moves them into a collision-safe `./error` directory.
+- Keep encrypted PDFs, ignore non-PDF files, skip the error directory itself,
+  and support a non-mutating `--dry-run` check.
+
+## 0.7.6 - 2026-07-11
+
+- Add authenticated, on-demand PDF previews to web search and DOI match results.
+- Stream previews inline with byte-range support without consuming download audit counts.
+- Keep preview traffic independently rate-limited and open documents safely in a new tab.
+
 ## 0.7.5 - 2026-07-10
 
 - Make the journal-year heatmap denser and right-align journal names.
