@@ -1,0 +1,62 @@
+{
+  "filters": [
+    {
+      "key": "all",
+      "label": "All",
+      "editable": false
+    },
+    {
+      "key": "utd24",
+      "label": "UTD24",
+      "editable": true,
+      "data_file": "utd24.json"
+    },
+    {
+      "key": "ft50",
+      "label": "FT50",
+      "editable": true,
+      "data_file": "ft50.json"
+    },
+    {
+      "key": "abs4star",
+      "label": "ABS 4*",
+      "editable": true,
+      "data_file": "abs2024.json",
+      "rating": "4*"
+    },
+    {
+      "key": "abs4",
+      "label": "ABS 4",
+      "editable": true,
+      "data_file": "abs2024.json",
+      "rating": "4"
+    },
+    {
+      "key": "abs3",
+      "label": "ABS 3",
+      "editable": true,
+      "data_file": "abs2024.json",
+      "rating": "3"
+    },
+    {
+      "key": "abs2",
+      "label": "ABS 2",
+      "editable": true,
+      "data_file": "abs2024.json",
+      "rating": "2"
+    },
+    {
+      "key": "abs1",
+      "label": "ABS 1",
+      "editable": true,
+      "data_file": "abs2024.json",
+      "rating": "1"
+    },
+    {
+      "key": "custom",
+      "label": "Custom",
+      "editable": true,
+      "custom": true
+    }
+  ]
+}

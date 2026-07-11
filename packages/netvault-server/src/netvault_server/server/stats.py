@@ -9,16 +9,16 @@ from sqlalchemy.orm import Session
 from netvault_server.server.database import get_db
 from netvault_server.server.deps import get_current_user
 from netvault_server.server.journal_filters import (
-    FILTER_OPTIONS,
     allowed_journals_for_filter,
-    normalize_journal_name,
     normalize_filter_key,
+    normalize_journal_name,
+    user_filter_options,
 )
 from netvault_server.server.models import DownloadRecord, Pdf, UploadRecord, User
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 STATS_CACHE_TTL_SECONDS = 30.0
-_dashboard_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_dashboard_cache: dict[tuple[int | None, str, int], tuple[float, dict[str, Any]]] = {}
 _dashboard_cache_expires_at = 0.0
 
 
@@ -52,31 +52,48 @@ def get_dashboard_stats(
     db: Session,
     journal_filter: str = "all",
     include_journals: list[str] | None = None,
+    user_id: int | None = None,
+    journal_limit: int = 20,
 ) -> dict[str, Any]:
     global _dashboard_cache, _dashboard_cache_expires_at
     filter_key = normalize_filter_key(journal_filter)
     now = monotonic()
     included = [name for name in (include_journals or []) if name.strip()]
-    cached = _dashboard_cache.get(filter_key) if not included else None
+    effective_limit = max(1, journal_limit)
+    cache_key = (user_id, filter_key, effective_limit)
+    cached = _dashboard_cache.get(cache_key) if not included else None
     if cached is not None and now < cached[0]:
         return cached[1]
+    filter_options = user_filter_options(db, user_id) if user_id is not None else ([], [], [])
     stats = {
-        "summary": get_summary(db, filter_key),
-        "journal_year": get_by_journal_year(db, filter_key, include_journals=included),
-        "journal_options": get_all_journal_names(db, filter_key),
+        "summary": get_summary(db, filter_key, user_id=user_id),
+        "journal_year": get_by_journal_year(
+            db,
+            filter_key,
+            limit=effective_limit,
+            include_journals=included,
+            user_id=user_id,
+        ),
+        "journal_options": get_all_journal_names(db, filter_key, user_id=user_id),
         "journal_filter": filter_key,
-        "journal_filters": FILTER_OPTIONS,
+        "journal_filters": filter_options[0],
+        "abs_journal_filters": filter_options[1],
+        "custom_journal_filters": filter_options[2],
     }
     if not included:
-        _dashboard_cache[filter_key] = (now + STATS_CACHE_TTL_SECONDS, stats)
+        _dashboard_cache[cache_key] = (now + STATS_CACHE_TTL_SECONDS, stats)
         _dashboard_cache_expires_at = now + STATS_CACHE_TTL_SECONDS
     return stats
 
 
-def get_summary(db: Session, journal_filter: str = "all") -> dict[str, Any]:
+def get_summary(
+    db: Session,
+    journal_filter: str = "all",
+    user_id: int | None = None,
+) -> dict[str, Any]:
     filter_key = normalize_filter_key(journal_filter)
     conditions = [*active_pdfs()]
-    allowed = allowed_journals_for_filter(filter_key)
+    allowed = allowed_journals_for_filter(filter_key, db, user_id)
     if allowed is not None:
         conditions.extend((*known_journal(), Pdf.journal_key.in_(allowed)))
     row = db.execute(
@@ -124,11 +141,12 @@ def get_by_journal_year(
     journal_filter: str = "all",
     limit: int = 20,
     include_journals: list[str] | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     filter_key = normalize_filter_key(journal_filter)
     journal = func.trim(Pdf.container_title)
     conditions = [*active_pdfs(), *known_journal(), Pdf.published_year.is_not(None)]
-    allowed = allowed_journals_for_filter(filter_key)
+    allowed = allowed_journals_for_filter(filter_key, db, user_id)
     if allowed is not None:
         conditions.append(Pdf.journal_key.in_(allowed))
     all_rows = db.execute(
@@ -193,10 +211,14 @@ def get_by_journal_year(
     }
 
 
-def get_all_journal_names(db: Session, journal_filter: str = "all") -> list[str]:
+def get_all_journal_names(
+    db: Session,
+    journal_filter: str = "all",
+    user_id: int | None = None,
+) -> list[str]:
     filter_key = normalize_filter_key(journal_filter)
     conditions = [*active_pdfs(), *known_journal()]
-    allowed = allowed_journals_for_filter(filter_key)
+    allowed = allowed_journals_for_filter(filter_key, db, user_id)
     if allowed is not None:
         conditions.append(Pdf.journal_key.in_(allowed))
     journal = func.trim(Pdf.container_title)
@@ -246,11 +268,11 @@ def get_recent_downloads(db: Session, limit: int = 10) -> list[dict[str, Any]]:
 
 @router.get("/summary")
 def summary(
-    _: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
     filter: str = "all",
 ) -> dict[str, Any]:
-    return get_summary(db, filter)
+    return get_summary(db, filter, user_id=user.id)
 
 
 @router.get("/by-year")
@@ -271,8 +293,8 @@ def by_journal(
 
 @router.get("/by-journal-year")
 def by_journal_year(
-    _: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
     filter: str = "all",
 ) -> dict[str, Any]:
-    return get_by_journal_year(db, filter)
+    return get_by_journal_year(db, filter, user_id=user.id)

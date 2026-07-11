@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.9 - 2026-07-11
+
+- Add the CEIBS FT50 journal list and a per-user Custom journal filter.
+- Make UTD24, FT50, and every ABS journal list privately editable from the
+  dashboard by right-click, keyboard context menu, or the touch edit control.
+- Persist user-specific journal lists in the database, support restoring
+  standard defaults, and isolate filtered statistics and caches by user.
+- Refine PDF action groups, mobile download results, and heatmap alignment.
+
 ## 0.7.8 - 2026-07-11
 
 - Cache DOI identity results by PDF SHA-256, including user-confirmed identities

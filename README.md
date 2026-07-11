@@ -12,6 +12,7 @@ a small authenticated web UI.
 - PostgreSQL metadata storage via Docker Compose.
 - Local filesystem PDF object storage under `storage/objects`.
 - Authenticated web pages for dashboard stats, PDF upload, PDF list, and DOI download.
+- Per-user editable UTD24, FT50, ABS, and Custom journal dashboard filters.
 
 The default Docker Compose setup binds the API to `127.0.0.1:8000`, so it is meant
 to be reached through SSH tunneling, VPN, or a trusted internal network.

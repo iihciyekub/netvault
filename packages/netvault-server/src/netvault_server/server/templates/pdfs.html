@@ -45,9 +45,9 @@
           <span>{{ pdf.size|bytes }}</span>
         </div>
       </div>
-      <div class="paper-result-actions">
-        <a class="button" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
-        <a class="button primary" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
+      <div class="pdf-actions paper-result-actions">
+        <a class="button pdf-action" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
+        <a class="button primary pdf-action" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
       </div>
     </article>
     {% else %}

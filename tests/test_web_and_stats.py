@@ -1,6 +1,7 @@
 import hashlib
 import importlib
 import io
+import re
 import sys
 import zipfile
 from pathlib import Path
@@ -11,10 +12,43 @@ from fastapi.testclient import TestClient
 PDF_BYTES = b"%PDF-1.4\nDOI: 10.1234/web.test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 
 
+def test_web_ui_source_contains_no_chinese_text() -> None:
+    server_root = (
+        Path(__file__).resolve().parents[1]
+        / "packages"
+        / "netvault-server"
+        / "src"
+        / "netvault_server"
+        / "server"
+    )
+    ui_files = list((server_root / "templates").glob("*.html"))
+    ui_files.extend([server_root / "static" / "app.js", server_root / "static" / "styles.css"])
+    chinese = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+
+    violations = [
+        str(path.relative_to(server_root))
+        for path in ui_files
+        if chinese.search(path.read_text(encoding="utf-8"))
+    ]
+    assert violations == [], f"Web UI text must be English-only: {violations}"
+
+
 def test_dashboard_number_format_uses_thousands_separators() -> None:
     web = importlib.import_module("netvault_server.server.web")
 
     assert web.format_number(12539) == "12,539"
+
+
+def test_ft50_default_filter_uses_ceibs_50_journal_list() -> None:
+    filters = importlib.import_module("netvault_server.server.journal_filters")
+
+    journals = filters.default_journal_names("ft50")
+    source = filters.journal_filter_source("ft50")
+
+    assert len(journals) == 50
+    assert "Harvard Business Review" in journals
+    assert "MIT Sloan Management Review" in journals
+    assert source["source_url"] == "https://ceibs.libguides.com/c.php?g=963339&p=7006421"
 
 
 @pytest.fixture()
@@ -273,6 +307,51 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert 'data-journal-name="Journal 20"' not in normal.text
     assert 'data-journal-name="Journal 20"' in pinned.text
     assert '<option value="Journal 20"></option>' in normal.text
+    assert 'class="heatmap-limit-form"' in normal.text
+    assert 'name="journal_limit" type="number" min="1" max="200" value="20"' in normal.text
+    limit_form = normal.text.split('class="heatmap-limit-form"', 1)[1].split("</form>", 1)[0]
+    assert ">journals</span>" not in limit_form
+    assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
+        'class="heatmap-limit-form"'
+    )
+
+    updated = client.post(
+        "/web/preferences/all-journal-limit",
+        data={"csrf_token": client.cookies["netvault_csrf"], "journal_limit": "21"},
+    )
+    assert updated.status_code == 200
+    assert updated.history[0].status_code == 303
+    assert updated.history[0].headers["location"].endswith("/web?filter=all")
+    assert 'data-journal-name="Journal 20"' in updated.text
+    assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in updated.text
+
+    client.post(
+        "/web/journal-filters/utd24",
+        headers={"x-csrf-token": client.cookies["netvault_csrf"]},
+        json={"journals": ["Journal 00"]},
+    )
+    filtered = client.get("/web", params={"filter": "utd24"})
+    assert 'class="heatmap-limit-form"' in filtered.text
+    assert 'name="active_filter" value="utd24"' in filtered.text
+    assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in filtered.text
+    filtered_update = client.post(
+        "/web/preferences/all-journal-limit",
+        data={
+            "csrf_token": client.cookies["netvault_csrf"],
+            "journal_limit": "22",
+            "active_filter": "utd24",
+        },
+    )
+    assert filtered_update.history[0].headers["location"].endswith("/web?filter=utd24")
+    invalid = client.post(
+        "/web/preferences/all-journal-limit",
+        data={"csrf_token": client.cookies["netvault_csrf"], "journal_limit": "201"},
+    )
+    assert invalid.status_code == 400
+
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        assert admin.dashboard_journal_limit == 22
 
 
 def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> None:
@@ -302,6 +381,15 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "No journal-year data." in dashboard.text
     assert "UTD24" in dashboard.text
     assert "ABS 4*" in dashboard.text
+    assert "FT50" in dashboard.text
+    assert "Custom" in dashboard.text
+    assert dashboard.text.index("FT50") < dashboard.text.index("ABS 4*")
+    assert dashboard.text.index("ABS 1") < dashboard.text.index("Custom")
+    assert 'data-journal-list-edit' in dashboard.text
+    assert 'data-journal-list-dialog' in dashboard.text
+    assert 'data-journal-list-form' in dashboard.text
+    assert 'data-journal-list-edit-trigger' in dashboard.text
+    assert 'title="Click to filter; right-click to edit UTD24"' in dashboard.text
     assert "summary-count" in dashboard.text
     assert ">0</span>" in dashboard.text
     assert "0 PDFs" not in dashboard.text
@@ -364,15 +452,22 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.8" in info_page.text
-    assert "app.js?v=0.7.8-ui5" in info_page.text
+    assert "0.7.9" in info_page.text
+    assert "app.js?v=0.7.9-ui20" in info_page.text
+    assert 'id="platform-overview-title"' in info_page.text
+    assert "> Platform Overview</h2>" in info_page.text
+    assert 'id="usage-policy-title"' in info_page.text
+    assert "> Usage Policy</h2>" in info_page.text
+    assert 'href="https://iiaide.com/nv/web"><strong>NetVault</strong></a>' in info_page.text
+    assert "intended exclusively for authorized members of the team" in info_page.text
     assert "github.com/iihciyekub/netvault" in info_page.text
     assert 'class="author-email"' in info_page.text
     assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text
     assert "mailto:" not in info_page.text
-    assert "Usage Declaration" in info_page.text
+    assert "Usage Declaration" not in info_page.text
     assert "must be deleted within 24 hours after use" in info_page.text
     assert "Bulk redistribution" in info_page.text
+    assert info_page.text.count("Bulk redistribution") == 1
     assert "Acknowledgement" in info_page.text
     assert "The Hong Kong Polytechnic University (PolyU)" in info_page.text
     assert "School of Fashion and Textiles (SFT)" in info_page.text
@@ -457,6 +552,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "/web/pdfs/preview?pdf_id=" in pdfs_with_query.text
     assert 'target="_blank"' in pdfs_with_query.text
     assert "fa-eye" in pdfs_with_query.text
+    assert "pdf-actions paper-result-actions" in pdfs_with_query.text
+    assert "primary pdf-action" in pdfs_with_query.text
     assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
     assert "data-no-pjax" in pdfs_with_query.text
 
@@ -478,7 +575,10 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "results-header" in lookup.text
     assert "data-native-submit" in lookup.text
     assert "/web/pdfs/preview?pdf_id=" in lookup.text
-    assert "row-actions" in lookup.text
+    assert "table-scroll download-results-scroll" in lookup.text
+    assert "results download-results" in lookup.text
+    assert "pdf-actions row-actions" in lookup.text
+    assert "primary pdf-action" in lookup.text
     assert "/web/pdfs/download?pdf_id=" in lookup.text
     assert "data-no-pjax" in lookup.text
 
@@ -522,6 +622,122 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
         assert names == ["10.1234_web.test.pdf", "netvault-manifest.tsv"]
         assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
         assert b"10.1234/web.test" in archive.read("netvault-manifest.tsv")
+
+
+def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClient) -> None:
+    admin_headers = login_headers(client)
+    uploaded = client.post(
+        "/pdfs/upload",
+        headers=admin_headers,
+        files={"file": ("custom-filter.pdf", PDF_BYTES, "application/pdf")},
+    )
+    assert uploaded.status_code == 200
+    created = client.post(
+        "/admin/users",
+        headers=admin_headers,
+        json={"username": "filter-user", "password": "filter-user-pass", "role": "user"},
+    )
+    assert created.status_code == 200
+
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    ft50 = client.get("/web/journal-filters/ft50")
+    assert ft50.status_code == 200
+    assert ft50.json()["count"] == 50
+    assert ft50.json()["is_default"] is True
+    assert "ceibs.libguides.com" in ft50.json()["source_url"]
+
+    utd24 = client.get("/web/journal-filters/utd24")
+    assert utd24.status_code == 200
+    assert utd24.json()["source_url"] == (
+        "https://jsom.utdallas.edu/the-utd-top-100-business-school-research-rankings/index.php"
+    )
+
+    custom = client.get("/web/journal-filters/custom")
+    assert custom.json()["journals"] == []
+    assert custom.json()["custom"] is True
+    assert client.post(
+        "/web/journal-filters/custom",
+        json={"journals": ["Web Journal"]},
+    ).status_code == 403
+
+    saved_custom = client.post(
+        "/web/journal-filters/custom",
+        headers={"x-csrf-token": csrf},
+        json={"journals": ["Web Journal", " web journal "]},
+    )
+    assert saved_custom.status_code == 200
+    assert saved_custom.json()["journals"] == ["Web Journal"]
+    custom_dashboard = client.get("/web", params={"filter": "custom"})
+    assert custom_dashboard.status_code == 200
+    assert 'data-journal-name="Web Journal"' in custom_dashboard.text
+    assert ">1</span>" in custom_dashboard.text
+
+    created_custom = client.post(
+        "/web/journal-filters",
+        headers={"x-csrf-token": csrf},
+        json={"name": "Marketing favorites"},
+    )
+    assert created_custom.status_code == 200
+    custom_key = created_custom.json()["key"]
+    assert custom_key.startswith("custom_")
+    assert created_custom.json()["label"] == "Marketing favorites"
+    assert created_custom.json()["can_delete"] is True
+    saved_second_custom = client.post(
+        f"/web/journal-filters/{custom_key}",
+        headers={"x-csrf-token": csrf},
+        json={"name": "Marketing shortlist", "journals": ["Web Journal"]},
+    )
+    assert saved_second_custom.json()["label"] == "Marketing shortlist"
+    multi_list_dashboard = client.get("/web", params={"filter": custom_key})
+    assert "Marketing shortlist" in multi_list_dashboard.text
+    assert 'data-journal-name="Web Journal"' in multi_list_dashboard.text
+    deleted_custom = client.delete(
+        f"/web/journal-filters/{custom_key}",
+        headers={"x-csrf-token": csrf},
+    )
+    assert deleted_custom.json() == {"deleted": True, "key": custom_key}
+
+    saved_utd = client.post(
+        "/web/journal-filters/utd24",
+        headers={"x-csrf-token": csrf},
+        json={"journals": ["Web Journal"]},
+    )
+    assert saved_utd.status_code == 200
+    assert saved_utd.json()["is_default"] is False
+    assert saved_utd.json()["can_reset"] is True
+    utd_dashboard = client.get("/web", params={"filter": "utd24"})
+    assert 'data-journal-name="Web Journal"' in utd_dashboard.text
+
+    reset_utd = client.delete(
+        "/web/journal-filters/utd24",
+        headers={"x-csrf-token": csrf},
+    )
+    assert reset_utd.status_code == 200
+    assert reset_utd.json()["is_default"] is True
+    assert reset_utd.json()["count"] == 24
+
+    client.cookies.clear()
+    login_page = client.get("/web/login")
+    user_csrf = login_page.cookies["netvault_csrf"]
+    login = client.post(
+        "/web/login",
+        data={
+            "username": "filter-user",
+            "password": "filter-user-pass",
+            "csrf_token": user_csrf,
+        },
+    )
+    assert login.status_code == 200
+    other_custom = client.get("/web/journal-filters/custom")
+    assert other_custom.status_code == 200
+    assert other_custom.json()["journals"] == []
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        overrides = db.query(models.UserJournalFilter).all()
+        assert [(row.user.username, row.filter_key) for row in overrides] == [("admin", "custom")]
 
 
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:

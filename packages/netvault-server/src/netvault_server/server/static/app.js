@@ -17,6 +17,12 @@
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
+  const closeFilterMenus = (except = null) => {
+    qsa("details.filter-menu[open]").forEach((menu) => {
+      if (menu !== except) menu.removeAttribute("open");
+    });
+  };
+
   const sameOriginUrl = (value) => {
     try {
       return new URL(value, window.location.href);
@@ -251,6 +257,206 @@
     activeTooltipTarget = null;
     const tooltip = qs(".heatmap-tooltip");
     if (tooltip) tooltip.classList.remove("is-visible");
+  };
+
+  const journalListNames = (textarea) => {
+    const seen = new Set();
+    return String(textarea ? textarea.value : "")
+      .split(/\r?\n/)
+      .map((name) => name.trim())
+      .filter((name) => {
+        const key = normalizedJournalText(name);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  const updateJournalListCount = (dialog) => {
+    const textarea = qs("[data-journal-list-textarea]", dialog);
+    const count = journalListNames(textarea).length;
+    const output = qs("[data-journal-list-count]", dialog);
+    if (output) output.textContent = `${count} journal${count === 1 ? "" : "s"}`;
+  };
+
+  const closeJournalListEditor = (dialog) => {
+    if (!dialog) return;
+    if (typeof dialog.close === "function" && dialog.open) dialog.close();
+    else dialog.removeAttribute("open");
+  };
+
+  const journalListError = async (response) => {
+    try {
+      const payload = await response.json();
+      return payload.detail || `HTTP ${response.status}`;
+    } catch {
+      return `HTTP ${response.status}`;
+    }
+  };
+
+  const populateJournalListEditor = (dialog, payload) => {
+    const title = qs("[data-journal-list-title]", dialog);
+    const textarea = qs("[data-journal-list-textarea]", dialog);
+    const source = qs("[data-journal-list-source]", dialog);
+    const reset = qs("[data-journal-list-reset]", dialog);
+    const resetLabel = qs("[data-journal-list-reset-label]", dialog);
+    const feedback = qs("[data-journal-list-feedback]", dialog);
+    const keyInput = qs("input[name='filter_key']", dialog);
+    const nameField = qs("[data-custom-list-name-field]", dialog);
+    const nameInput = qs("[data-custom-list-name]", dialog);
+    if (title) {
+      title.textContent = payload.custom
+        ? `Edit ${payload.label || "custom list"}`
+        : `${payload.label || "Journal"} list`;
+    }
+    if (textarea) textarea.value = Array.isArray(payload.journals) ? payload.journals.join("\n") : "";
+    if (keyInput) keyInput.value = payload.key || "";
+    if (source) {
+      source.hidden = !payload.source_url;
+      source.href = payload.source_url || "#";
+      source.textContent = payload.source ? `Default: ${payload.source}` : "Default source";
+    }
+    if (nameField) nameField.hidden = !payload.custom;
+    if (nameInput) nameInput.value = payload.custom ? (payload.label || "Custom list") : "";
+    if (reset) reset.hidden = !(payload.can_reset || payload.can_delete);
+    if (resetLabel) resetLabel.textContent = payload.can_delete ? "Delete list" : "Reset default";
+    if (feedback) {
+      feedback.textContent = payload.custom
+        ? "Your private custom list. An empty list matches no journals."
+        : payload.is_default
+          ? "Using the default list. Saving creates your private editable copy."
+          : "Using your private edited list.";
+    }
+    updateJournalListCount(dialog);
+  };
+
+  const openJournalListEditor = async (tab) => {
+    const dialog = qs("[data-journal-list-dialog]");
+    const endpoint = tab ? tab.getAttribute("data-journal-list-url") : "";
+    if (!dialog || !endpoint) return;
+    dialog.dataset.endpoint = endpoint;
+    const title = qs("[data-journal-list-title]", dialog);
+    const textarea = qs("[data-journal-list-textarea]", dialog);
+    const feedback = qs("[data-journal-list-feedback]", dialog);
+    if (title) title.textContent = "Loading journal list...";
+    if (textarea) {
+      textarea.value = "";
+      textarea.disabled = true;
+    }
+    if (feedback) feedback.textContent = "Loading...";
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    try {
+      const response = await fetch(endpoint, {
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch" },
+      });
+      if (!response.ok) throw new Error(await journalListError(response));
+      populateJournalListEditor(dialog, await response.json());
+      if (textarea) {
+        textarea.disabled = false;
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+        textarea.scrollTop = 0;
+      }
+    } catch (error) {
+      if (feedback) feedback.textContent = error.message || "Could not load the journal list.";
+      if (textarea) textarea.disabled = false;
+    }
+  };
+
+  const saveJournalListEditor = async (form) => {
+    const dialog = form.closest("[data-journal-list-dialog]");
+    const endpoint = dialog ? dialog.dataset.endpoint : "";
+    const textarea = qs("[data-journal-list-textarea]", form);
+    const feedback = qs("[data-journal-list-feedback]", form);
+    const csrfToken = qs("input[name='csrf_token']", form)?.value || "";
+    const nameInput = qs("[data-custom-list-name]", form);
+    if (!dialog || !endpoint || !textarea) return;
+    setFormBusy(form, true, "Saving...");
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({
+          journals: journalListNames(textarea),
+          name: nameInput && !nameInput.closest("[hidden]") ? nameInput.value.trim() : undefined,
+        }),
+      });
+      if (!response.ok) throw new Error(await journalListError(response));
+      const payload = await response.json();
+      pageCache.clear();
+      closeJournalListEditor(dialog);
+      const current = sameOriginUrl(window.location.href);
+      if (payload.deleted && current) current.searchParams.set("filter", "custom");
+      fetchPage(current ? current.href : window.location.href, {}, false);
+    } catch (error) {
+      if (feedback) feedback.textContent = error.message || "Could not save the journal list.";
+    } finally {
+      if (form.isConnected) setFormBusy(form, false, "Save list");
+    }
+  };
+
+  const createCustomJournalList = async (button) => {
+    const endpoint = button.getAttribute("data-endpoint") || "";
+    const csrfToken = qs("input[name='csrf_token']", qs("[data-journal-list-form]"))?.value || "";
+    const name = window.prompt("Name this journal list:", "Custom list");
+    if (!endpoint || name === null || !name.trim()) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!response.ok) throw new Error(await journalListError(response));
+      const payload = await response.json();
+      pageCache.clear();
+      fetchPage(`${window.location.pathname}?filter=${encodeURIComponent(payload.key)}`, {}, true);
+    } catch (error) {
+      window.alert(error.message || "Could not create the journal list.");
+      button.disabled = false;
+    }
+  };
+
+  const resetJournalListEditor = async (button) => {
+    const dialog = button.closest("[data-journal-list-dialog]");
+    const form = button.closest("form");
+    const endpoint = dialog ? dialog.dataset.endpoint : "";
+    const feedback = qs("[data-journal-list-feedback]", dialog);
+    const csrfToken = qs("input[name='csrf_token']", form)?.value || "";
+    if (!dialog || !endpoint) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(endpoint, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: {
+          "X-CSRF-Token": csrfToken,
+          "X-Requested-With": "fetch",
+        },
+      });
+      if (!response.ok) throw new Error(await journalListError(response));
+      const payload = await response.json();
+      pageCache.clear();
+      closeJournalListEditor(dialog);
+      const current = sameOriginUrl(window.location.href);
+      if (payload.deleted && current) current.searchParams.set("filter", "custom");
+      fetchPage(current ? current.href : window.location.href, {}, false);
+    } catch (error) {
+      if (feedback) feedback.textContent = error.message || "Could not reset the journal list.";
+      button.disabled = false;
+    }
   };
 
   const normalizedJournalText = (value) => value.normalize("NFKC").toLocaleLowerCase();
@@ -626,6 +832,38 @@
   };
 
   document.addEventListener("click", (event) => {
+    const filterMenu = event.target.closest("details.filter-menu");
+    const filterSummary = event.target.closest("details.filter-menu > summary");
+    if (filterSummary) closeFilterMenus(filterMenu);
+    else if (!filterMenu || event.target.closest(".filter-menu-popover a, .filter-menu-popover button")) {
+      closeFilterMenus();
+    }
+
+    const editTrigger = event.target.closest("[data-journal-list-edit-trigger]");
+    if (editTrigger) {
+      event.preventDefault();
+      openJournalListEditor(editTrigger.closest("[data-journal-list-edit]"));
+      return;
+    }
+
+    const editorClose = event.target.closest("[data-journal-list-close]");
+    if (editorClose) {
+      closeJournalListEditor(editorClose.closest("[data-journal-list-dialog]"));
+      return;
+    }
+
+    const editorReset = event.target.closest("[data-journal-list-reset]");
+    if (editorReset) {
+      resetJournalListEditor(editorReset);
+      return;
+    }
+
+    const customListCreate = event.target.closest("[data-custom-list-create]");
+    if (customListCreate) {
+      createCustomJournalList(customListCreate);
+      return;
+    }
+
     const utilityToggle = event.target.closest("[data-utility-toggle]");
     if (utilityToggle) {
       const nav = qs(`#${utilityToggle.getAttribute("aria-controls")}`);
@@ -679,6 +917,19 @@
     fetchPage(url.href);
   });
 
+  document.addEventListener("contextmenu", (event) => {
+    const tab = event.target.closest("[data-journal-list-edit]");
+    if (!tab) return;
+    event.preventDefault();
+    closeFilterMenus();
+    openJournalListEditor(tab);
+  });
+
+  document.addEventListener("toggle", (event) => {
+    const menu = event.target;
+    if (menu.matches?.("details.filter-menu") && menu.open) closeFilterMenus(menu);
+  }, true);
+
   document.addEventListener("click", (event) => {
     if (event.target.closest(".topbar-right")) return;
     const toggle = qs("[data-utility-toggle]");
@@ -696,6 +947,11 @@
 
   document.addEventListener("submit", (event) => {
     const form = event.target;
+    if (form.matches("[data-journal-list-form]")) {
+      event.preventDefault();
+      saveJournalListEditor(form);
+      return;
+    }
     const url = sameOriginUrl(form.action);
     if (form.hasAttribute("data-native-submit")) return;
     if (!url || !isWebPath(url)) return;
@@ -728,6 +984,10 @@
   });
 
   document.addEventListener("input", (event) => {
+    if (event.target.matches("[data-journal-list-textarea]")) {
+      updateJournalListCount(event.target.closest("[data-journal-list-dialog]"));
+      return;
+    }
     if (event.target.matches("[data-journal-filter]")) scheduleJournalFilter(event.target);
   });
 
@@ -736,6 +996,15 @@
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeFilterMenus();
+    if (
+      (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+      && event.target.closest("[data-journal-list-edit]")
+    ) {
+      event.preventDefault();
+      openJournalListEditor(event.target.closest("[data-journal-list-edit]"));
+      return;
+    }
     if (event.key === "Enter" && event.target.matches("[data-journal-pin-input]")) {
       event.preventDefault();
       addJournalPin(event.target);

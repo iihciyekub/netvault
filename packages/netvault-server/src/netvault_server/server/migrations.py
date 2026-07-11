@@ -137,11 +137,41 @@ def _add_pdf_file_aliases(engine: Engine) -> None:
         )
 
 
+def _add_user_journal_filters(engine: Engine) -> None:
+    from netvault_server.server.models import UserJournalFilter
+
+    UserJournalFilter.__table__.create(bind=engine, checkfirst=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_user_journal_filters_user_id "
+                "ON user_journal_filters (user_id)"
+            )
+        )
+
+
+def _add_user_dashboard_journal_limit(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("users")}
+    if "dashboard_journal_limit" not in existing:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN dashboard_journal_limit "
+                    "INTEGER DEFAULT 20 NOT NULL"
+                )
+            )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _add_pdf_metadata_columns,
     _add_user_token_version,
     _add_query_indexes_and_journal_keys,
     _add_pdf_file_aliases,
+    _add_user_journal_filters,
+    _add_user_dashboard_journal_limit,
 )
 
 

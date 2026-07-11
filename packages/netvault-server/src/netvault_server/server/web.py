@@ -17,7 +17,15 @@ from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.doi import find_dois_in_text, normalize_doi
-from netvault_server.server.journal_filters import normalize_filter_key
+from netvault_server.server.journal_filters import (
+    create_user_journal_filter,
+    delete_user_journal_filter,
+    is_custom_filter_key,
+    journal_filter_state,
+    normalize_filter_key,
+    reset_user_journal_filter,
+    save_user_journal_filter,
+)
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.models import Pdf, User, UserRole
 from netvault_server.server.queries import pdf_contains_query, pdf_read_options
@@ -120,7 +128,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui5",
+        "asset_version": f"{__version__}-ui20",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -247,15 +255,149 @@ def dashboard(
     if isinstance(user, RedirectResponse):
         return user
     pins = [name.strip() for name in pin[:10] if name.strip() and len(name.strip()) <= 255]
-    stats = get_dashboard_stats(db, normalize_filter_key(filter), pins)
+    filter_key = normalize_filter_key(filter)
+    journal_limit = user.dashboard_journal_limit
+    stats = get_dashboard_stats(
+        db,
+        filter_key,
+        pins,
+        user_id=user.id,
+        journal_limit=journal_limit,
+    )
     return render(
         request,
         "dashboard.html",
         {
             "user": user,
+            "dashboard_journal_limit": user.dashboard_journal_limit,
             **stats,
         },
     )
+
+
+@router.post("/web/preferences/all-journal-limit", include_in_schema=False)
+def update_all_journal_limit(
+    request: Request,
+    journal_limit: int = Form(...),
+    active_filter: str = Form("all"),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, csrf_token_value)
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    if not 1 <= journal_limit <= 200:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Journal display limit must be between 1 and 200",
+        )
+    user.dashboard_journal_limit = journal_limit
+    db.commit()
+    from netvault_server.server.stats import invalidate_stats_cache
+
+    invalidate_stats_cache()
+    return redirect(f"/web?filter={quote(normalize_filter_key(active_filter))}")
+
+
+@router.post("/web/journal-filters", include_in_schema=False)
+def web_create_journal_filter(
+    request: Request,
+    payload: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, request.headers.get("x-csrf-token", ""))
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    name = payload.get("name")
+    if not isinstance(name, str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide a list name")
+    try:
+        result = create_user_journal_filter(db, user.id, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    from netvault_server.server.stats import invalidate_stats_cache
+
+    invalidate_stats_cache()
+    return result
+
+
+@router.get("/web/journal-filters/{filter_key}", include_in_schema=False)
+def web_journal_filter(
+    request: Request,
+    filter_key: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    try:
+        return journal_filter_state(db, user.id, filter_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+
+@router.post("/web/journal-filters/{filter_key}", include_in_schema=False)
+def web_save_journal_filter(
+    request: Request,
+    filter_key: str,
+    payload: dict[str, Any],
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, request.headers.get("x-csrf-token", ""))
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    journals = payload.get("journals")
+    name = payload.get("name")
+    if not isinstance(journals, list) or len(journals) > 2_000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide at most 2,000 journal names",
+        )
+    if any(not isinstance(name, str) or len(name.strip()) > 255 for name in journals):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Each journal name must be text with at most 255 characters",
+        )
+    try:
+        result = save_user_journal_filter(
+            db,
+            user.id,
+            filter_key,
+            journals,
+            name if isinstance(name, str) else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    from netvault_server.server.stats import invalidate_stats_cache
+
+    invalidate_stats_cache()
+    return result
+
+
+@router.delete("/web/journal-filters/{filter_key}", include_in_schema=False)
+def web_reset_journal_filter(
+    request: Request,
+    filter_key: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, request.headers.get("x-csrf-token", ""))
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    try:
+        if is_custom_filter_key(normalize_filter_key(filter_key)):
+            result = delete_user_journal_filter(db, user.id, filter_key)
+        else:
+            result = reset_user_journal_filter(db, user.id, filter_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    from netvault_server.server.stats import invalidate_stats_cache
+
+    invalidate_stats_cache()
+    return result
 
 
 @router.get("/web/info", response_class=HTMLResponse, include_in_schema=False)

@@ -248,6 +248,22 @@ https://iiaide.com/nv/web
 The web UI uses the same username and password as the CLI. It provides dashboard
 statistics, PDF listing/search, browser upload, and DOI-based download.
 
+### Editable journal filters
+
+The dashboard includes All, UTD24, FT50, ABS 4*, ABS 4, ABS 3, ABS 2, ABS 1,
+and Custom filters. Custom is always shown last.
+
+- Click a filter to show PDF counts and the journal-year heatmap for that list.
+- Right-click any list filter to edit its journal names. On touch screens, tap
+  the ellipsis inside the filter.
+- Enter one journal per line and save. Changes are private to the signed-in user.
+- Standard lists can be reset to their bundled defaults at any time.
+- Custom starts empty and is intended for a user's own watched journals.
+
+Journal matching is case-insensitive and treats punctuation, a leading “The”,
+and “&” versus “and” as equivalent. The default FT50 list is sourced from the
+[CEIBS Library FT50 guide](https://ceibs.libguides.com/c.php?g=963339&p=7006421).
+
 ## Common Errors
 
 `Not logged in`
