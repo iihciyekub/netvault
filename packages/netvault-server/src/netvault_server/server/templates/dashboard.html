@@ -124,6 +124,15 @@
         </label>
         <button type="submit" class="heatmap-limit-apply">Apply</button>
       </form>
+      <label class="heatmap-sort-field" for="journal-heatmap-sort">
+        <span>Sort</span>
+        <select id="journal-heatmap-sort" data-journal-sort aria-controls="journal-year-heatmap">
+          <option value="name-asc">Journal A–Z</option>
+          <option value="name-desc">Journal Z–A</option>
+          <option value="total-desc" selected>Total: High to Low</option>
+          <option value="total-asc">Total: Low to High</option>
+        </select>
+      </label>
     </div>
     <div class="journal-pin-bar" data-journal-pin-panel>
       <div class="journal-pin-entry">
@@ -156,7 +165,7 @@
         <div class="heat-total-head">Total</div>
         {% for row in journal_year.rows %}
           {% set journal_row = loop.index0 %}
-          <div class="heat-journal" data-journal-row="{{ journal_row }}" data-journal-name="{{ row.journal }}" data-tip="{{ row.journal }}">{{ row.journal }}</div>
+          <div class="heat-journal" data-journal-row="{{ journal_row }}" data-journal-name="{{ row.journal }}" data-journal-total="{{ row.total }}" data-tip="{{ row.journal }}">{{ row.journal }}</div>
           {% for cell in row.cells %}
             {% if cell.count > 0 %}
             <button

@@ -472,10 +472,31 @@
     const rows = qsa(".heat-journal[data-journal-name]", heatmap).map((label) => ({
       name: normalizedJournalText(label.dataset.journalName || label.textContent || ""),
       label: label.dataset.journalName || label.textContent || "",
+      total: Number(label.dataset.journalTotal || 0),
       elements: elementsByRow.get(label.dataset.journalRow) || [label],
     }));
     journalRowsCache.set(heatmap, rows);
     return rows;
+  };
+
+  const sortJournalRows = (select) => {
+    const panel = select.closest(".heatmap-panel");
+    const heatmap = qs(".journal-heatmap", panel);
+    if (!heatmap) return;
+    const [field, direction] = select.value.split("-");
+    const multiplier = direction === "desc" ? -1 : 1;
+    const rows = [...journalRows(heatmap)];
+    rows.sort((left, right) => {
+      if (field === "total" && left.total !== right.total) {
+        return (left.total - right.total) * multiplier;
+      }
+      const nameOrder = left.label.localeCompare(right.label, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+      return field === "name" ? nameOrder * multiplier : nameOrder;
+    });
+    rows.forEach((row) => row.elements.forEach((element) => heatmap.append(element)));
   };
 
   const loadJournalPins = () => {
@@ -595,6 +616,8 @@
   const initJournalPins = (root = document) => {
     qsa("[data-journal-pin-panel]", root).forEach((pinPanel) => {
       const panel = pinPanel.closest(".heatmap-panel");
+      const sortSelect = qs("[data-journal-sort]", panel);
+      if (sortSelect) sortJournalRows(sortSelect);
       renderJournalPins(panel);
       applyJournalFilters(panel);
       const rowNames = new Set(journalRows(qs(".journal-heatmap", panel)).map((row) => row.name));
@@ -981,6 +1004,7 @@
 
   document.addEventListener("change", (event) => {
     if (event.target.matches("#file-input")) updateFileSummary(event.target);
+    if (event.target.matches("[data-journal-sort]")) sortJournalRows(event.target);
   });
 
   document.addEventListener("input", (event) => {

@@ -314,6 +314,12 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
         'class="heatmap-limit-form"'
     )
+    assert 'data-journal-sort aria-controls="journal-year-heatmap"' in normal.text
+    assert '<option value="name-asc">Journal A–Z</option>' in normal.text
+    assert '<option value="name-desc">Journal Z–A</option>' in normal.text
+    assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
+    assert '<option value="total-asc">Total: Low to High</option>' in normal.text
+    assert 'data-journal-total="21"' in normal.text
 
     updated = client.post(
         "/web/preferences/all-journal-limit",
@@ -453,7 +459,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
     assert "0.7.9" in info_page.text
-    assert "app.js?v=0.7.9-ui20" in info_page.text
+    assert "app.js?v=0.7.9-ui21" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text

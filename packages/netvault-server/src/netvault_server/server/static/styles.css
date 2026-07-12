@@ -1022,6 +1022,23 @@ tr:last-child td { border-bottom: 0; }
   font-variant-numeric: tabular-nums;
 }
 
+.heatmap-sort-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.heatmap-sort-field select {
+  width: 150px;
+  min-height: 30px;
+  padding: 4px 26px 4px 8px;
+  background: var(--soft);
+  font-size: 12px;
+}
+
 .heatmap-limit-apply {
   min-height: 30px;
   padding-inline: 9px;
