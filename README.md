@@ -186,6 +186,17 @@ If a scanned or unusually encoded PDF cannot be parsed, provide the DOI explicit
 nv upload ./paper.pdf --doi 10.1234/example.doi
 ```
 
+To replace the existing PDF for one DOI and overwrite its metadata with the
+current Crossref record, add `--force`. Any authenticated user may do this:
+
+```bash
+nv upload ./replacement.pdf --force
+```
+
+Pass `--doi DOI` as usual when the PDF does not contain a reliable DOI. The
+replacement is committed only after Crossref returns a valid record. On
+success, the old PDF and its file aliases are removed.
+
 Save a user-confirmed identity when the PDF itself does not contain a DOI:
 
 ```bash

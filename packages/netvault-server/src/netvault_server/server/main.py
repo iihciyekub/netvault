@@ -211,6 +211,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     doi: str | None = Form(default=None),
     no_crossref: bool = Form(default=False),
+    force: bool = Form(default=False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
@@ -221,7 +222,7 @@ async def upload_pdf(
     idempotency_key = request.headers.get("idempotency-key")
     if idempotency_key and len(idempotency_key) > 128:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency key is too long")
-    return await process_upload(file, doi, no_crossref, user, db, idempotency_key)
+    return await process_upload(file, doi, no_crossref, user, db, idempotency_key, force=force)
 
 
 @app.get("/pdfs", response_model=list[PdfRead])

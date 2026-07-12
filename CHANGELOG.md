@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.10 - 2026-07-12
+
+- Add authenticated `nv upload FILE --force` replacement for every user.
+- Atomically replace the canonical PDF and refresh all stored metadata from the
+  current Crossref record, while preserving the original when Crossref is unavailable.
+- Move journal selection into the custom-list editor, autosave the heatmap limit,
+  persist sorting locally, enlarge the legend, and refresh the UTD24 journal names.
+
 ## 0.7.9 - 2026-07-11
 
 - Add the CEIBS FT50 journal list and a per-user Custom journal filter.

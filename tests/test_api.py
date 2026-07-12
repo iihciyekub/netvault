@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 DOI = "10.1234/netvault.test"
 PDF_BYTES = b"%PDF-1.4\nDOI: 10.1234/netvault.test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 OTHER_PDF_BYTES = b"%PDF-1.4\nDOI: 10.1234/other.test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
+REPLACEMENT_PDF_BYTES = b"%PDF-1.4\nDOI: 10.1234/netvault.test\nreplacement\n%%EOF\n"
 
 
 @pytest.fixture()
@@ -58,11 +59,20 @@ def upload(
     name: str = "paper.pdf",
     content: bytes = PDF_BYTES,
     doi: str | None = None,
+    force: bool = False,
+    no_crossref: bool = False,
 ):
+    data = {}
+    if doi:
+        data["doi"] = doi
+    if force:
+        data["force"] = "true"
+    if no_crossref:
+        data["no_crossref"] = "true"
     return client.post(
         "/pdfs/upload",
         headers=headers,
-        data={"doi": doi} if doi else None,
+        data=data or None,
         files={"file": (name, content, "application/pdf")},
     )
 
@@ -298,6 +308,115 @@ def test_rejects_missing_doi_and_conflicting_doi(client: TestClient, tmp_path: P
         doi="10.5555/manual",
     )
     assert conflict.status_code == 409
+
+
+def test_force_upload_replaces_pdf_and_crossref_metadata_for_regular_user(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_headers = login(client, "admin", "admin-pass")
+    initial = upload(client, admin_headers)
+    assert initial.status_code == 200
+    original = initial.json()["pdf"]
+    old_path = tmp_path / "storage" / "objects" / original["sha256"][:2] / f"{original['sha256']}.pdf"
+    assert old_path.exists()
+
+    created = client.post(
+        "/admin/users",
+        headers=admin_headers,
+        json={"username": "replacer", "password": "replacer-pass", "role": "user"},
+    )
+    assert created.status_code == 200
+    user_headers = login(client, "replacer", "replacer-pass")
+    alias_sha = "a" * 64
+    assert client.post(
+        "/pdfs/aliases",
+        headers=admin_headers,
+        json={"aliases": [{"sha256": alias_sha, "doi": DOI}]},
+    ).status_code == 200
+
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    monkeypatch.setattr(
+        main_helpers,
+        "fetch_crossref_metadata",
+        lambda doi: crossref.CrossrefMetadata(
+            status="ok",
+            title="Current Crossref Title",
+            authors=None,
+            container_title="Current Crossref Journal",
+            publisher=None,
+            published_year=2027,
+            resource_url=f"https://doi.org/{doi}",
+        ),
+    )
+
+    replaced = upload(
+        client,
+        user_headers,
+        name="replacement.pdf",
+        content=REPLACEMENT_PDF_BYTES,
+        force=True,
+    )
+    assert replaced.status_code == 200
+    payload = replaced.json()
+    assert payload["replaced"] is True
+    assert payload["pdf"]["id"] == original["id"]
+    assert payload["pdf"]["sha256"] == hashlib.sha256(REPLACEMENT_PDF_BYTES).hexdigest()
+    assert payload["pdf"]["original_name"] == "replacement.pdf"
+    assert payload["pdf"]["title"] == "Current Crossref Title"
+    assert payload["pdf"]["authors"] is None
+    assert payload["pdf"]["container_title"] == "Current Crossref Journal"
+    assert payload["pdf"]["publisher"] is None
+    assert payload["pdf"]["published_year"] == 2027
+    assert payload["pdf"]["uploaded_by"] == "replacer"
+    assert not old_path.exists()
+
+    downloaded = client.get("/pdfs/by-doi/download", headers=user_headers, params={"doi": DOI})
+    assert downloaded.content == REPLACEMENT_PDF_BYTES
+    assert len(list((tmp_path / "storage" / "objects").rglob("*.pdf"))) == 1
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        assert db.query(models.PdfFileAlias).count() == 0
+
+
+def test_force_upload_requires_successful_crossref(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = login(client, "admin", "admin-pass")
+    initial = upload(client, headers)
+    assert initial.status_code == 200
+    original_sha = initial.json()["pdf"]["sha256"]
+    assert upload(
+        client,
+        headers,
+        content=REPLACEMENT_PDF_BYTES,
+        force=True,
+        no_crossref=True,
+    ).status_code == 400
+
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    monkeypatch.setattr(
+        main_helpers,
+        "fetch_crossref_metadata",
+        lambda _doi: crossref.CrossrefMetadata(status="unavailable"),
+    )
+    unavailable = upload(
+        client,
+        headers,
+        content=REPLACEMENT_PDF_BYTES,
+        force=True,
+    )
+    assert unavailable.status_code == 503
+    current = client.get("/pdfs/by-doi", headers=headers, params={"doi": DOI}).json()
+    assert current["sha256"] == original_sha
+    assert len(list((tmp_path / "storage" / "objects").rglob("*.pdf"))) == 1
 
 
 def test_pdf_alias_cannot_be_reassigned_to_another_doi(client: TestClient) -> None:

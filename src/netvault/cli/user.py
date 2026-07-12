@@ -787,6 +787,7 @@ Examples:
   nv upload ./paper-a.pdf ./paper-b.pdf
   nv upload ~/Downloads/papers
   nv upload ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+  nv upload ./new-paper.pdf --force
   nv upload ~/Downloads/papers --no-crossref
 
 \b
@@ -800,6 +801,11 @@ def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Replace the existing PDF for its DOI and refresh all metadata from Crossref.",
+    ),
     refresh_doi: bool = typer.Option(
         False,
         "--refresh-doi",
@@ -820,8 +826,11 @@ def upload_command(
 
     if doi and len(pdfs) != 1:
         raise typer.BadParameter("--doi can only be used when uploading one PDF file")
+    if force and no_crossref:
+        raise typer.BadParameter("--force cannot be combined with --no-crossref")
 
     uploaded = 0
+    replaced = 0
     deduped = 0
     skipped = 0
     failed: list[tuple[Path, str]] = []
@@ -876,7 +885,7 @@ def upload_command(
         new_pdfs: list[Path] = []
         for pdf_path, sha256 in hashes_by_path.items():
             existing_pdf = existing_by_sha.get(sha256)
-            if existing_pdf:
+            if existing_pdf and not force:
                 latest_pdf = existing_pdf
                 skipped += 1
             else:
@@ -946,7 +955,7 @@ def upload_command(
         aliases_to_register: list[tuple[str, str]] = []
         for pdf_path in upload_candidates:
             existing_pdf = existing_by_doi.get(dois_by_path[pdf_path])
-            if existing_pdf:
+            if existing_pdf and not force:
                 latest_pdf = existing_pdf
                 skipped += 1
                 sha256 = hashes_by_path[pdf_path]
@@ -973,12 +982,15 @@ def upload_command(
                 sha256 = hashes_by_path[pdf_path]
                 result = upload_pdf(
                     pdf_path,
-                    doi=doi,
+                    doi=doi or (dois_by_path[pdf_path] if force else None),
                     no_crossref=no_crossref,
+                    force=force,
                     sha256=sha256,
                 )
                 latest_pdf = result["pdf"]
-                if result["deduplicated"]:
+                if result.get("replaced"):
+                    replaced += 1
+                elif result["deduplicated"]:
                     deduped += 1
                 else:
                     uploaded += 1
@@ -987,10 +999,12 @@ def upload_command(
             finally:
                 progress.advance(task, 1)
 
-    ok_count = uploaded + deduped + skipped
+    ok_count = uploaded + replaced + deduped + skipped
     parts = [f"done: {ok_count}/{len(pdfs)} processed"]
     if uploaded:
         parts.append(f"{uploaded} uploaded")
+    if replaced:
+        parts.append(f"{replaced} replaced")
     if deduped:
         parts.append(f"{deduped} deduped")
     if skipped:

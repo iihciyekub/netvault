@@ -476,6 +476,56 @@ h2 {
   line-height: 1.55;
 }
 
+.journal-list-picker {
+  display: grid;
+  gap: 7px;
+  color: #333333;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.journal-list-picker[hidden] { display: none; }
+
+.journal-list-picker-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.journal-list-picker-control > i {
+  position: absolute;
+  left: 13px;
+  z-index: 1;
+  color: #888888;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.journal-list-picker-control input {
+  min-height: 38px;
+  padding: 7px 70px 7px 34px;
+  background: var(--soft);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.journal-list-picker-control button {
+  position: absolute;
+  right: 4px;
+  min-height: 30px;
+  padding-inline: 12px;
+  border-color: transparent;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+.journal-list-picker > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
 .journal-list-meta {
   display: flex;
   align-items: center;
@@ -1022,6 +1072,19 @@ tr:last-child td { border-bottom: 0; }
   font-variant-numeric: tabular-nums;
 }
 
+.heatmap-limit-form input[aria-invalid="true"] {
+  border-color: #b42318;
+}
+
+.heatmap-limit-status {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.heatmap-limit-status:empty { display: none; }
+
 .heatmap-sort-field {
   display: flex;
   align-items: center;
@@ -1039,71 +1102,7 @@ tr:last-child td { border-bottom: 0; }
   font-size: 12px;
 }
 
-.heatmap-limit-apply {
-  min-height: 30px;
-  padding-inline: 9px;
-  border-color: var(--line);
-  background: #ffffff;
-  font-size: 11px;
-}
-
 .heatmap-filter-bar .heatmap-legend { margin-left: auto; }
-
-.journal-pin-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: -2px 0 8px;
-}
-
-.journal-pin-entry {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: min(420px, 100%);
-}
-
-.journal-pin-entry > i {
-  position: absolute;
-  left: 12px;
-  z-index: 1;
-  color: #777777;
-  font-size: 11px;
-  pointer-events: none;
-  transform: rotate(-18deg);
-}
-
-.journal-pin-entry input {
-  min-height: 36px;
-  padding: 7px 66px 7px 34px;
-  background: var(--soft);
-  font-size: 13px;
-}
-
-.journal-pin-add {
-  position: absolute;
-  right: 4px;
-  min-height: 28px;
-  padding-inline: 9px;
-  border-color: transparent;
-  background: #ffffff;
-  font-size: 11px;
-}
-
-.journal-pin-clear {
-  min-height: 30px;
-  padding-inline: 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.journal-pin-feedback {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.journal-pin-feedback:empty { display: none; }
 
 .heatmap-no-matches {
   padding-block: 36px;
@@ -1257,6 +1256,13 @@ tr:last-child td { border-bottom: 0; }
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.heatmap-legend .heat-cell {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
 }
 
 .heatmap-tooltip {
@@ -1846,7 +1852,6 @@ ul {
   .panel-heading { display: grid; gap: 10px; }
   .heatmap-filter-bar { align-items: stretch; }
   .heatmap-filter-field { width: 100%; }
-  .journal-pin-entry { width: 100%; }
   .dashboard-toolbar { display: grid; }
   .summary-tags { justify-content: flex-start; }
   .actions { width: 100%; }

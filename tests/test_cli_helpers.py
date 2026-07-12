@@ -414,6 +414,66 @@ def test_upload_reuses_manual_identity_without_parsing_pdf(tmp_path: Path, monke
     assert registered == [(sha256, "10.1234/manual")]
 
 
+def test_upload_force_bypasses_duplicate_skips_and_replaces(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    existing = {
+        "doi": "10.1234/force",
+        "sha256": "a" * 64,
+        "original_name": "old.pdf",
+        "title": "Old",
+    }
+    monkeypatch.setattr(
+        user_cli,
+        "get_existing_pdfs_by_sha256",
+        lambda *args, **kwargs: {next(iter(args[0])): existing},
+    )
+    monkeypatch.setattr(
+        user_cli,
+        "get_existing_pdfs_by_doi",
+        lambda *args, **kwargs: {"10.1234/force": existing},
+    )
+    uploaded: list[dict] = []
+
+    def fake_upload(path, **kwargs):
+        uploaded.append({"path": path, **kwargs})
+        return {
+            "pdf": {**existing, "original_name": path.name, "title": "Fresh"},
+            "deduplicated": False,
+            "replaced": True,
+        }
+
+    monkeypatch.setattr(user_cli, "upload_pdf", fake_upload)
+    pdf = tmp_path / "new.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/force\n%%EOF\n")
+
+    result = CliRunner().invoke(
+        user_cli.app,
+        ["upload", str(pdf), "--force"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "1 replaced" in result.output
+    assert len(uploaded) == 1
+    assert uploaded[0]["force"] is True
+    assert uploaded[0]["doi"] == "10.1234/force"
+
+
+def test_upload_force_rejects_no_crossref(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    pdf = tmp_path / "new.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/force\n%%EOF\n")
+
+    no_crossref = CliRunner().invoke(
+        user_cli.app,
+        ["upload", str(pdf), "--force", "--no-crossref"],
+    )
+
+    assert no_crossref.exit_code == 2
+    assert "--force cannot be combined with --no-crossref" in no_crossref.output
+
+
 def test_upload_caches_no_doi_result_until_refresh(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
     monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")

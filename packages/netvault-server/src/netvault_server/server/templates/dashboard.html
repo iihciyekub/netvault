@@ -69,6 +69,26 @@
       <span>List name</span>
       <input name="list_name" type="text" maxlength="60" autocomplete="off" data-custom-list-name>
     </label>
+    <div class="journal-list-picker" data-custom-journal-picker hidden>
+      <label for="journal-list-picker-input">Add a journal</label>
+      <div class="journal-list-picker-control">
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+        <input
+          id="journal-list-picker-input"
+          type="text"
+          list="journal-list-options"
+          placeholder="Choose a journal name..."
+          autocomplete="off"
+          spellcheck="false"
+          data-journal-list-picker-input
+        >
+        <button type="button" data-journal-list-add>Add</button>
+      </div>
+      <datalist id="journal-list-options">
+        {% for journal in journal_options %}<option value="{{ journal }}"></option>{% endfor %}
+      </datalist>
+      <p>Select a journal to append it below. Save the list when you are finished.</p>
+    </div>
     <label class="journal-list-field">
       <span>Journal names</span>
       <textarea name="journals" rows="14" spellcheck="false" data-journal-list-textarea></textarea>
@@ -115,14 +135,14 @@
         <span class="heat-cell level-4"></span>
         <span>More</span>
       </div>
-      <form class="heatmap-limit-form" method="post" action="{{ path_for('/web/preferences/all-journal-limit') }}" data-no-pjax>
+      <form class="heatmap-limit-form" method="post" action="{{ path_for('/web/preferences/all-journal-limit') }}" data-journal-limit-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="active_filter" value="{{ journal_filter }}">
         <label for="dashboard-journal-limit">
           <span>Show</span>
-          <input id="dashboard-journal-limit" name="journal_limit" type="number" min="1" max="200" value="{{ dashboard_journal_limit }}" inputmode="numeric" aria-label="Number of journals shown">
+          <input id="dashboard-journal-limit" name="journal_limit" type="number" min="1" max="200" value="{{ dashboard_journal_limit }}" inputmode="numeric" aria-label="Number of journals shown" aria-describedby="journal-limit-status" data-journal-limit data-saved-value="{{ dashboard_journal_limit }}">
         </label>
-        <button type="submit" class="heatmap-limit-apply">Apply</button>
+        <output id="journal-limit-status" class="heatmap-limit-status" data-journal-limit-status aria-live="polite"></output>
       </form>
       <label class="heatmap-sort-field" for="journal-heatmap-sort">
         <span>Sort</span>
@@ -133,28 +153,6 @@
           <option value="total-asc">Total: Low to High</option>
         </select>
       </label>
-    </div>
-    <div class="journal-pin-bar" data-journal-pin-panel>
-      <div class="journal-pin-entry">
-        <i class="fa-solid fa-thumbtack" aria-hidden="true"></i>
-        <label class="sr-only" for="journal-pin-input">Pin a journal</label>
-        <input
-          id="journal-pin-input"
-          type="text"
-          list="journal-pin-options"
-          placeholder="Pin a journal name..."
-          autocomplete="off"
-          spellcheck="false"
-          aria-describedby="journal-pin-feedback"
-          data-journal-pin-input
-        >
-        <button type="button" class="journal-pin-add" data-journal-pin-add><i class="fa-solid fa-thumbtack" aria-hidden="true"></i><span>Pin</span></button>
-      </div>
-      <datalist id="journal-pin-options">
-        {% for journal in journal_options %}<option value="{{ journal }}"></option>{% endfor %}
-      </datalist>
-      <button type="button" class="journal-pin-clear" data-journal-pin-clear hidden><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear pins</span></button>
-      <span id="journal-pin-feedback" class="journal-pin-feedback" data-journal-pin-feedback aria-live="polite"></span>
     </div>
     <div class="heatmap-scroll">
       <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">

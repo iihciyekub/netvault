@@ -61,6 +61,7 @@ class PdfDetail(PdfRead):
 class UploadResponse(BaseModel):
     pdf: PdfRead
     deduplicated: bool
+    replaced: bool = False
 
 
 class Sha256ExistsRequest(BaseModel):

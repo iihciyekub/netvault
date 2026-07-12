@@ -2,12 +2,12 @@ import json
 
 from fastapi import HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from netvault_server.server.crossref import CrossrefMetadata, fetch_crossref_metadata
 from netvault_server.server.doi import extract_doi_evidence, normalize_doi
-from netvault_server.server.models import Pdf, UploadRecord, User
+from netvault_server.server.models import Pdf, PdfFileAlias, UploadRecord, User, utc_now
 from netvault_server.server.schemas import PdfRead, UploadResponse
 from netvault_server.server.storage import (
     acquire_object_lock,
@@ -38,17 +38,25 @@ def pdf_to_read(pdf: Pdf) -> PdfRead:
     )
 
 
-def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata) -> None:
+def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata, *, overwrite: bool = False) -> None:
     pdf.crossref_status = metadata.status
     pdf.crossref_fetched_at = metadata.fetched_at or pdf.crossref_fetched_at
     if metadata.status != "ok":
         return
-    pdf.title = metadata.title or pdf.title
-    pdf.authors = metadata.authors or pdf.authors
-    pdf.container_title = metadata.container_title or pdf.container_title
-    pdf.publisher = metadata.publisher or pdf.publisher
-    pdf.published_year = metadata.published_year or pdf.published_year
-    pdf.crossref_url = metadata.resource_url or pdf.crossref_url
+    if overwrite:
+        pdf.title = metadata.title
+        pdf.authors = metadata.authors
+        pdf.container_title = metadata.container_title
+        pdf.publisher = metadata.publisher
+        pdf.published_year = metadata.published_year
+        pdf.crossref_url = metadata.resource_url
+    else:
+        pdf.title = metadata.title or pdf.title
+        pdf.authors = metadata.authors or pdf.authors
+        pdf.container_title = metadata.container_title or pdf.container_title
+        pdf.publisher = metadata.publisher or pdf.publisher
+        pdf.published_year = metadata.published_year or pdf.published_year
+        pdf.crossref_url = metadata.resource_url or pdf.crossref_url
 
 
 def doi_evidence_json(evidence) -> str:
@@ -101,13 +109,19 @@ async def process_upload(
     user: User,
     db: Session,
     idempotency_key: str | None = None,
+    force: bool = False,
 ) -> UploadResponse:
+    if force and no_crossref:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Force upload requires Crossref metadata",
+        )
     sha256, size, relative_path, object_deduplicated, staged_path = await store_pdf(file)
     promoted_new_object = False
     object_lock = await run_in_threadpool(acquire_object_lock, sha256)
     try:
         pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
-        if pdf_by_sha is not None:
+        if pdf_by_sha is not None and not force:
             if staged_path is not None:
                 promote_staged_pdf(staged_path, sha256)
                 staged_path = None
@@ -149,7 +163,71 @@ async def process_upload(
             )
         normalized_doi = evidence.doi
 
-        pdf_by_doi = db.scalar(select(Pdf).where(Pdf.doi == normalized_doi))
+        pdf_by_doi = db.scalar(
+            select(Pdf).where(Pdf.doi == normalized_doi).with_for_update()
+        )
+        alias_pdf_id = db.scalar(
+            select(PdfFileAlias.pdf_id).where(PdfFileAlias.sha256 == sha256)
+        )
+        if alias_pdf_id is not None and (pdf_by_doi is None or alias_pdf_id != pdf_by_doi.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This PDF hash is already linked to another DOI",
+            )
+        if force and pdf_by_sha is not None and pdf_by_sha.doi != normalized_doi:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"This PDF is already linked to DOI {pdf_by_sha.doi}",
+            )
+        if force and pdf_by_doi is not None:
+            metadata = await run_in_threadpool(fetch_crossref_metadata, normalized_doi)
+            if metadata.status != "ok":
+                error_status = (
+                    status.HTTP_404_NOT_FOUND
+                    if metadata.status == "not_found"
+                    else status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+                raise HTTPException(
+                    status_code=error_status,
+                    detail=f"Crossref metadata refresh failed: {metadata.status}",
+                )
+
+            old_sha256 = pdf_by_doi.sha256
+            storage_deduplicated = promote_staged_pdf(staged_path, sha256)
+            promoted_new_object = staged_path is not None and not storage_deduplicated
+            staged_path = None
+            db.execute(delete(PdfFileAlias).where(PdfFileAlias.pdf_id == pdf_by_doi.id))
+            pdf_by_doi.doi = normalized_doi
+            pdf_by_doi.doi_source = evidence.source or "explicit"
+            pdf_by_doi.doi_evidence = doi_evidence_json(evidence)
+            pdf_by_doi.sha256 = sha256
+            pdf_by_doi.original_name = file.filename or f"{sha256}.pdf"
+            pdf_by_doi.size = size
+            pdf_by_doi.storage_path = relative_path
+            pdf_by_doi.uploaded_by_id = user.id
+            pdf_by_doi.uploaded_at = utc_now()
+            pdf_by_doi.is_deleted = False
+            pdf_by_doi.deleted_at = None
+            pdf_by_doi.deleted_by_id = None
+            apply_crossref_metadata(pdf_by_doi, metadata, overwrite=True)
+            add_upload_record(pdf_by_doi, file, size, user, db, idempotency_key)
+            db.commit()
+            from netvault_server.server.stats import invalidate_stats_cache
+
+            invalidate_stats_cache()
+            db.refresh(pdf_by_doi)
+            db.expire(pdf_by_doi, ["uploaded_by"])
+            if old_sha256 != sha256:
+                try:
+                    object_path(old_sha256).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            return UploadResponse(
+                pdf=pdf_to_read(pdf_by_doi),
+                deduplicated=object_deduplicated or storage_deduplicated,
+                replaced=True,
+            )
+
         if pdf_by_doi is not None and pdf_by_doi.sha256 != sha256:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

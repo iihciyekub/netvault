@@ -128,7 +128,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui21",
+        "asset_version": f"{__version__}-ui22",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -297,6 +297,8 @@ def update_all_journal_limit(
     from netvault_server.server.stats import invalidate_stats_cache
 
     invalidate_stats_cache()
+    if request.headers.get("x-requested-with") == "fetch":
+        return {"journal_limit": journal_limit}
     return redirect(f"/web?filter={quote(normalize_filter_key(active_filter))}")
 
 

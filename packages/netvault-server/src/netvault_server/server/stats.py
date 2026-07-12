@@ -74,7 +74,7 @@ def get_dashboard_stats(
             include_journals=included,
             user_id=user_id,
         ),
-        "journal_options": get_all_journal_names(db, filter_key, user_id=user_id),
+        "journal_options": get_all_journal_names(db, "all", user_id=user_id),
         "journal_filter": filter_key,
         "journal_filters": filter_options[0],
         "abs_journal_filters": filter_options[1],

@@ -51,6 +51,16 @@ def test_ft50_default_filter_uses_ceibs_50_journal_list() -> None:
     assert source["source_url"] == "https://ceibs.libguides.com/c.php?g=963339&p=7006421"
 
 
+def test_utd24_default_filter_uses_current_journal_names() -> None:
+    filters = importlib.import_module("netvault_server.server.journal_filters")
+
+    journals = filters.default_journal_names("utd24")
+
+    assert len(journals) == 24
+    assert "INFORMS Journal on Computing" in journals
+    assert "Journal on Computing" not in journals
+
+
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("NETVAULT_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
@@ -311,6 +321,9 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert 'name="journal_limit" type="number" min="1" max="200" value="20"' in normal.text
     limit_form = normal.text.split('class="heatmap-limit-form"', 1)[1].split("</form>", 1)[0]
     assert ">journals</span>" not in limit_form
+    assert ">Apply</button>" not in limit_form
+    assert "data-journal-limit" in limit_form
+    assert "data-journal-limit-status" in limit_form
     assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
         'class="heatmap-limit-form"'
     )
@@ -330,6 +343,12 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert updated.history[0].headers["location"].endswith("/web?filter=all")
     assert 'data-journal-name="Journal 20"' in updated.text
     assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in updated.text
+    autosaved = client.post(
+        "/web/preferences/all-journal-limit",
+        data={"csrf_token": client.cookies["netvault_csrf"], "journal_limit": "21"},
+        headers={"x-requested-with": "fetch"},
+    )
+    assert autosaved.json() == {"journal_limit": 21}
 
     client.post(
         "/web/journal-filters/utd24",
@@ -458,8 +477,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.9" in info_page.text
-    assert "app.js?v=0.7.9-ui21" in info_page.text
+    assert "0.7.10" in info_page.text
+    assert "app.js?v=0.7.10-ui22" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -516,13 +535,13 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert dashboard.status_code == 200
     assert "journal-heatmap" in dashboard.text
     assert 'data-journal-filter' in dashboard.text
-    assert 'data-journal-pin-panel' in dashboard.text
-    assert 'data-journal-pin-input' in dashboard.text
-    assert 'data-journal-pin-add' in dashboard.text
-    assert 'data-journal-pin-clear' in dashboard.text
-    assert 'data-journal-pin-list' not in dashboard.text
-    assert 'placeholder="Pin a journal name..."' in dashboard.text
-    assert 'id="journal-pin-options"' in dashboard.text
+    assert 'data-journal-pin-panel' not in dashboard.text
+    assert 'data-journal-pin-input' not in dashboard.text
+    assert 'data-custom-journal-picker' in dashboard.text
+    assert 'data-journal-list-picker-input' in dashboard.text
+    assert 'data-journal-list-add' in dashboard.text
+    assert 'placeholder="Choose a journal name..."' in dashboard.text
+    assert 'id="journal-list-options"' in dashboard.text
     assert 'placeholder="Filter journal names..."' in dashboard.text
     assert 'data-journal-name="Web Journal"' in dashboard.text
     assert 'data-journal-name="Another Journal"' in dashboard.text

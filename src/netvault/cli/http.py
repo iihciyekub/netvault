@@ -85,6 +85,7 @@ def upload_pdf(
     path: Path,
     doi: str | None = None,
     no_crossref: bool = False,
+    force: bool = False,
     progress_callback: Any | None = None,
     sha256: str | None = None,
 ) -> Any:
@@ -94,6 +95,8 @@ def upload_pdf(
             fields["doi"] = doi
         if no_crossref:
             fields["no_crossref"] = "true"
+        if force:
+            fields["force"] = "true"
         fields["file"] = (path.name, handle, "application/pdf")
 
         encoder = MultipartEncoder(fields=fields)
