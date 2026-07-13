@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.11 - 2026-07-13
+
+- Let `nv upload` use SHA-256-bound DOI records from a sibling version 1
+  `pdf-download-index.json`, with strict stale-index detection and PDF parsing fallback.
+- Add configurable download-index names plus explicit `--index-file` and `--no-index`
+  controls, and preserve the `download-index` DOI source in server audit data.
+
 ## 0.7.10 - 2026-07-12
 
 - Add authenticated `nv upload FILE --force` replacement for every user.

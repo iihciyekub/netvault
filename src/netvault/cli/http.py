@@ -88,11 +88,14 @@ def upload_pdf(
     force: bool = False,
     progress_callback: Any | None = None,
     sha256: str | None = None,
+    doi_source: str | None = None,
 ) -> Any:
     with path.open("rb") as handle:
         fields: dict[str, Any] = {}
         if doi:
             fields["doi"] = doi
+        if doi_source:
+            fields["doi_source"] = doi_source
         if no_crossref:
             fields["no_crossref"] = "true"
         if force:

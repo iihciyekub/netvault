@@ -30,6 +30,7 @@ from netvault.cli.config import (
     IDENTITY_CACHE_PATH,
     clear_credentials,
     load_credentials,
+    load_upload_index_settings,
     save_credentials,
 )
 from netvault.cli.http import (
@@ -42,6 +43,7 @@ from netvault.cli.http import (
     upload_pdf,
 )
 from netvault.cli.update import update_from_github
+from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
     DoiEvidence,
@@ -321,6 +323,22 @@ def manual_identity(doi: str) -> dict:
     normalized = normalize_doi(doi)
     evidence = DoiEvidence("ok", normalized, "explicit", [], None)
     return identity_from_evidence(evidence, manual=True)
+
+
+def download_index_identity(match: DownloadIndexMatch) -> dict:
+    return {
+        "doi": match.record.doi,
+        "status": "ok",
+        "source": "download-index",
+        "reason": None,
+        "resolver_version": DOI_RESOLVER_VERSION,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "index_path": str(match.index_path),
+        "index_version": match.index_version,
+        "index_updated_at": match.index_updated_at,
+        "source_url": match.record.source_url,
+        "validation_method": match.record.validation_method,
+    }
 
 
 def existing_pdf_from_response(response: requests.Response) -> dict | None:
@@ -789,12 +807,14 @@ Examples:
   nv upload ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
   nv upload ./new-paper.pdf --force
   nv upload ~/Downloads/papers --no-crossref
+  nv upload ~/Downloads/papers --index-file ./pdf-download-index.json
 
 \b
 Notes:
   Directories are scanned recursively for .pdf/.PDF files.
   Existing PDFs are skipped before DOI extraction/upload by checking sha256 first.
   File hashes are cached locally in ~/.config/netvault/hash-cache.json.
+  A sibling pdf-download-index.json is preferred over PDF DOI extraction.
 """,
 )
 def upload_command(
@@ -816,6 +836,20 @@ def upload_command(
         "--exclude-dir",
         help="Additional directory name to skip during recursive scans; repeat as needed.",
     ),
+    index_file: Path | None = typer.Option(
+        None,
+        "--index-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Use this version 1 download index for every selected PDF.",
+    ),
+    no_index: bool = typer.Option(
+        False,
+        "--no-index",
+        help="Ignore download index files and use cached or PDF-derived DOI identities.",
+    ),
 ) -> None:
     ensure_logged_in()
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
@@ -828,6 +862,17 @@ def upload_command(
         raise typer.BadParameter("--doi can only be used when uploading one PDF file")
     if force and no_crossref:
         raise typer.BadParameter("--force cannot be combined with --no-crossref")
+    if index_file is not None and no_index:
+        raise typer.BadParameter("--index-file cannot be combined with --no-index")
+    try:
+        configured_index_enabled, index_names = load_upload_index_settings()
+    except RuntimeError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    index_resolver = DownloadIndexResolver(
+        index_names,
+        explicit_path=index_file,
+        enabled=not no_index and (configured_index_enabled or index_file is not None),
+    )
 
     uploaded = 0
     replaced = 0
@@ -841,6 +886,8 @@ def upload_command(
     identity_cache_pending = 0
     doi_cache_hits = 0
     doi_scans = 0
+    download_index_hits = 0
+    download_index_renames = 0
     hashes_by_path: dict[Path, str] = {}
     existing_by_sha: dict[str, dict] = {}
 
@@ -892,12 +939,13 @@ def upload_command(
                 new_pdfs.append(pdf_path)
 
         dois_by_path: dict[Path, str] = {}
+        doi_sources_by_path: dict[Path, str] = {}
         upload_candidates: list[Path] = []
         progress.reset(
             task,
             total=len(new_pdfs),
             completed=0,
-            description="Reading DOI metadata",
+            description="Resolving DOI identities",
         )
         for pdf_path in new_pdfs:
             try:
@@ -906,10 +954,32 @@ def upload_command(
                 if refresh_doi and identity and identity.get("source") != "user":
                     identity = None
 
+                index_match = None
+                if not doi:
+                    index_match = index_resolver.resolve(
+                        pdf_path,
+                        sha256,
+                        pdf_path.stat().st_size,
+                    )
+
                 if doi:
                     identity = manual_identity(doi)
                     identity_cache[sha256] = identity
                     identity_cache_pending += 1
+                elif identity and identity.get("source") == "user":
+                    if index_match and normalize_doi(identity["doi"]) != index_match.record.doi:
+                        raise RuntimeError(
+                            "User-confirmed DOI conflicts with download index DOI "
+                            f"{index_match.record.doi}"
+                        )
+                    doi_cache_hits += 1
+                elif index_match:
+                    identity = download_index_identity(index_match)
+                    identity_cache[sha256] = identity
+                    identity_cache_pending += 1
+                    download_index_hits += 1
+                    if index_match.renamed:
+                        download_index_renames += 1
                 elif identity:
                     doi_cache_hits += 1
                 else:
@@ -930,6 +1000,7 @@ def upload_command(
                     )
                     continue
                 dois_by_path[pdf_path] = extracted
+                doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
                 upload_candidates.append(pdf_path)
             except (RuntimeError, OSError, ValueError) as exc:
                 failed.append((pdf_path, str(exc)))
@@ -982,7 +1053,8 @@ def upload_command(
                 sha256 = hashes_by_path[pdf_path]
                 result = upload_pdf(
                     pdf_path,
-                    doi=doi or (dois_by_path[pdf_path] if force else None),
+                    doi=dois_by_path[pdf_path],
+                    doi_source=doi_sources_by_path[pdf_path],
                     no_crossref=no_crossref,
                     force=force,
                     sha256=sha256,
@@ -1013,6 +1085,10 @@ def upload_command(
         parts.append(f"{doi_cache_hits} DOI cache hits")
     if doi_scans:
         parts.append(f"{doi_scans} DOI scans")
+    if download_index_hits:
+        parts.append(f"{download_index_hits} download index hits")
+    if download_index_renames:
+        parts.append(f"{download_index_renames} matched after rename")
     if failed:
         parts.append(f"{len(failed)} failed")
     if latest_pdf:

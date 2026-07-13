@@ -59,12 +59,15 @@ def upload(
     name: str = "paper.pdf",
     content: bytes = PDF_BYTES,
     doi: str | None = None,
+    doi_source: str | None = None,
     force: bool = False,
     no_crossref: bool = False,
 ):
     data = {}
     if doi:
         data["doi"] = doi
+    if doi_source:
+        data["doi_source"] = doi_source
     if force:
         data["force"] = "true"
     if no_crossref:
@@ -308,6 +311,46 @@ def test_rejects_missing_doi_and_conflicting_doi(client: TestClient, tmp_path: P
         doi="10.5555/manual",
     )
     assert conflict.status_code == 409
+
+
+def test_upload_records_download_index_doi_source(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+
+    indexed = upload(
+        client,
+        headers,
+        name="indexed.pdf",
+        content=b"%PDF-1.4\nno DOI text\n%%EOF\n",
+        doi="10.5555/download.index",
+        doi_source="download-index",
+    )
+
+    assert indexed.status_code == 200
+    assert indexed.json()["pdf"]["doi"] == "10.5555/download.index"
+    assert indexed.json()["pdf"]["doi_source"] == "download-index"
+
+
+def test_upload_rejects_unsupported_doi_source(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+
+    response = upload(
+        client,
+        headers,
+        doi="10.5555/untrusted.source",
+        doi_source="arbitrary-value",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported DOI source"
+
+    missing_doi = client.post(
+        "/pdfs/upload",
+        headers=headers,
+        data={"doi_source": "download-index"},
+        files={"file": ("paper.pdf", PDF_BYTES, "application/pdf")},
+    )
+    assert missing_doi.status_code == 400
+    assert missing_doi.json()["detail"] == "DOI source requires an explicit DOI"
 
 
 def test_force_upload_replaces_pdf_and_crossref_metadata_for_regular_user(

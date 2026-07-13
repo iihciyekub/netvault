@@ -94,6 +94,38 @@ is keyed by SHA-256 rather than path, so moving or renaming an unchanged PDF
 does not trigger another DOI scan. Automatic missing/conflict results are also
 cached; pass `--refresh-doi` when you want to retry them.
 
+### Download index files
+
+If a PDF's immediate directory contains `pdf-download-index.json`, NetVault can
+use the downloader's DOI record before reading DOI text from the PDF. The JSON
+file must use version 1, declare `SHA-256`, and contain a `records` array. Each
+record contains `doi`, `filename`, `size`, `lastModified`, `sha256`,
+`downloadedAt`, `sourceUrl`, and a `validation` object with `status`, `checkedAt`,
+`method`, and `reason`.
+
+NetVault still computes the PDF digest itself. It uses an index DOI only when the
+actual digest and size match and `validation.status` is `valid`. Files absent
+from the index use the normal DOI resolver. A matching filename with different
+bytes is treated as a stale index error and is not silently parsed or uploaded.
+
+Specify one index for all selected PDFs or disable index lookup:
+
+```bash
+nv upload ~/Downloads/papers --index-file ~/Downloads/pdf-download-index.json
+nv upload ~/Downloads/papers --no-index
+```
+
+The default sibling name can be changed in `~/.config/netvault/config.toml`:
+
+```toml
+[upload.index]
+enabled = true
+names = ["pdf-download-index.json"]
+```
+
+Names must be JSON basenames. More than one configured index present in the same
+directory is an error; select the intended file with `--index-file`.
+
 If an existing DOI is confirmed for a PDF with different bytes, NetVault records
 the new SHA-256 as a server-side alias of the canonical item. This handles
 publisher copies, repository copies, and regenerated PDFs across devices without

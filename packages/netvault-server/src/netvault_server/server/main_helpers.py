@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 from fastapi import HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
@@ -16,6 +17,16 @@ from netvault_server.server.storage import (
     release_object_lock,
     store_pdf,
 )
+
+
+CLIENT_DOI_SOURCES = {
+    "download-index",
+    "explicit",
+    "filename",
+    "pdf-content",
+    "pdf-metadata",
+    "user",
+}
 
 
 def pdf_to_read(pdf: Pdf) -> PdfRead:
@@ -110,12 +121,24 @@ async def process_upload(
     db: Session,
     idempotency_key: str | None = None,
     force: bool = False,
+    doi_source: str | None = None,
 ) -> UploadResponse:
     if force and no_crossref:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Force upload requires Crossref metadata",
         )
+    if doi_source is not None:
+        if not doi or not doi.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="DOI source requires an explicit DOI",
+            )
+        if doi_source not in CLIENT_DOI_SOURCES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported DOI source",
+            )
     sha256, size, relative_path, object_deduplicated, staged_path = await store_pdf(file)
     promoted_new_object = False
     object_lock = await run_in_threadpool(acquire_object_lock, sha256)
@@ -154,6 +177,8 @@ async def process_upload(
 
         evidence_path = staged_path or object_path(sha256)
         evidence = extract_doi_evidence(evidence_path, explicit_doi=doi, filename=file.filename)
+        if doi_source is not None and evidence.status == "ok":
+            evidence = replace(evidence, source=doi_source)
         if evidence.status == "conflict":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=evidence.reason or "DOI conflict")
         if evidence.status != "ok" or not evidence.doi:

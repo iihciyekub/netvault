@@ -41,6 +41,8 @@ For the existing `iiaide.com` Traefik host, use:
 docker compose -f docker-compose.iiaide.yml up --build -d
 ```
 
+Production operators should also read the [SSH/PostgreSQL operations audit](docs/operations-audit-2026-07-13.md) and the [full migration runbook](docs/migration.md). They document the private Docker database connection, backup limitations, validation, cutover, and rollback procedures.
+
 Required `.env` values:
 
 ```text
@@ -170,6 +172,59 @@ resolution. User-confirmed identities are never invalidated automatically.
 When a local file has the DOI of an existing vault item but a different SHA-256,
 the CLI also registers that digest as a server-side alias. Later uploads from
 this or another machine can then skip the file during the initial SHA-256 check.
+
+When a PDF directory contains `pdf-download-index.json`, `nv upload` first looks
+for a version 1 record whose `sha256` matches the locally computed PDF digest. A
+valid matching record supplies the DOI without parsing DOI text from the PDF. A
+PDF with no index record uses the normal cached or PDF-derived DOI resolver. If
+the filename is indexed but the digest differs, the upload fails instead of
+silently trusting a stale index.
+
+The native index format is:
+
+```json
+{
+  "version": 1,
+  "updatedAt": "2026-07-13T04:58:31.935Z",
+  "algorithm": "SHA-256",
+  "records": [
+    {
+      "doi": "10.1002/mar.20228",
+      "filename": "10.1002_mar.20228.pdf",
+      "size": 147264,
+      "lastModified": 1783918710583,
+      "sha256": "81de15d258937e983e38bbca3bf63d2c2431ecf368d2457ef7194a3bb934bb5d",
+      "downloadedAt": "2026-07-13T04:58:30.601Z",
+      "sourceUrl": "/doi/pdfdirect/10.1002/mar.20228?download=true",
+      "validation": {
+        "status": "valid",
+        "checkedAt": "2026-07-13T04:58:30.579Z",
+        "method": "pdf-signature-eof",
+        "reason": null
+      }
+    }
+  ]
+}
+```
+
+Use one index for every selected PDF, or bypass index discovery:
+
+```bash
+nv upload ./papers --index-file ./custom-download-index.json
+nv upload ./papers --no-index
+```
+
+Change the sibling filenames in `~/.config/netvault/config.toml`:
+
+```toml
+[upload.index]
+enabled = true
+names = ["pdf-download-index.json"]
+```
+
+Each configured name must be a JSON basename. During recursive upload, NetVault
+uses only an index in the PDF's immediate directory; it does not search parent
+directories. An explicit `--index-file` applies to every selected PDF.
 
 Recursive uploads skip common technical directories such as `.git`, `.venv`,
 `node_modules`, `Library`, `dist`, `build`, and `output`. An explicitly supplied

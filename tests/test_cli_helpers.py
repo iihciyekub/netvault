@@ -3,6 +3,7 @@ import logging
 import hashlib
 import json
 
+import pytest
 from pypdf import PdfWriter
 from netvault.cli.user import (
     cached_identity,
@@ -24,10 +25,64 @@ from netvault.cli.user import (
     unique_destination,
 )
 from netvault.cli.update import build_update_command
+from netvault.cli.upload_index import (
+    DownloadIndexError,
+    DownloadIndexResolver,
+    load_download_index,
+)
 from typer.testing import CliRunner
+import netvault.cli.config as cli_config
 import netvault.cli.user as user_cli
 import netvault.doi
 from netvault.doi import DoiEvidence, extract_doi_evidence
+
+
+@pytest.fixture(autouse=True)
+def default_upload_index_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        user_cli,
+        "load_upload_index_settings",
+        lambda: (True, ("pdf-download-index.json",)),
+    )
+
+
+def write_download_index(
+    path: Path,
+    pdf: Path,
+    doi: str,
+    *,
+    filename: str | None = None,
+    sha256: str | None = None,
+    validation_status: str = "valid",
+    validation_reason: str | None = None,
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "updatedAt": "2026-07-13T04:58:31.935Z",
+                "algorithm": "SHA-256",
+                "records": [
+                    {
+                        "doi": doi,
+                        "filename": filename or pdf.name,
+                        "size": pdf.stat().st_size,
+                        "lastModified": 1783918710583,
+                        "sha256": sha256 or file_sha256(pdf),
+                        "downloadedAt": "2026-07-13T04:58:30.601Z",
+                        "sourceUrl": f"/doi/pdfdirect/{doi}?download=true",
+                        "validation": {
+                            "status": validation_status,
+                            "checkedAt": "2026-07-13T04:58:30.579Z",
+                            "method": "pdf-signature-eof",
+                            "reason": validation_reason,
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_pypdf_logs_are_quiet_for_cli_upload() -> None:
@@ -310,6 +365,203 @@ def test_hash_cache_reuses_unchanged_file(tmp_path: Path, monkeypatch) -> None:
     cached_sha256, cached = cached_file_sha256(pdf, reloaded_cache)
     assert cached is True
     assert cached_sha256 == sha256
+
+
+def test_download_index_loads_existing_version_one_structure(tmp_path: Path) -> None:
+    pdf = tmp_path / "10.1002_mar.20228.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    index_path = tmp_path / "pdf-download-index.json"
+    write_download_index(index_path, pdf, "10.1002/mar.20228")
+
+    index = load_download_index(index_path)
+    match = index.resolve(pdf, file_sha256(pdf), pdf.stat().st_size)
+
+    assert match is not None
+    assert match.record.doi == "10.1002/mar.20228"
+    assert match.record.validation_method == "pdf-signature-eof"
+    assert match.renamed is False
+
+
+def test_download_index_names_are_configurable(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        '[upload.index]\nenabled = true\nnames = ["custom-index.json"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli_config, "CONFIG_PATH", config_path)
+
+    assert cli_config.load_upload_index_settings() == (True, ("custom-index.json",))
+
+
+def test_download_index_matches_renamed_pdf_by_sha256(tmp_path: Path) -> None:
+    original = tmp_path / "original.pdf"
+    renamed = tmp_path / "renamed.pdf"
+    original.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    index_path = tmp_path / "pdf-download-index.json"
+    write_download_index(index_path, original, "10.1234/renamed")
+    original.rename(renamed)
+
+    resolver = DownloadIndexResolver((index_path.name,))
+    match = resolver.resolve(renamed, file_sha256(renamed), renamed.stat().st_size)
+
+    assert match is not None
+    assert match.record.doi == "10.1234/renamed"
+    assert match.renamed is True
+
+
+def test_download_index_rejects_stale_same_filename_record(tmp_path: Path) -> None:
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\ncurrent bytes\n%%EOF\n")
+    index_path = tmp_path / "pdf-download-index.json"
+    write_download_index(index_path, pdf, "10.1234/stale", sha256="a" * 64)
+
+    resolver = DownloadIndexResolver((index_path.name,))
+
+    with pytest.raises(DownloadIndexError, match="SHA-256 mismatch"):
+        resolver.resolve(pdf, file_sha256(pdf), pdf.stat().st_size)
+
+
+def test_download_index_rejects_non_valid_download(tmp_path: Path) -> None:
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\ncurrent bytes\n%%EOF\n")
+    index_path = tmp_path / "pdf-download-index.json"
+    write_download_index(
+        index_path,
+        pdf,
+        "10.1234/invalid",
+        validation_status="invalid",
+        validation_reason="missing EOF marker",
+    )
+
+    resolver = DownloadIndexResolver((index_path.name,))
+
+    with pytest.raises(DownloadIndexError, match="missing EOF marker"):
+        resolver.resolve(pdf, file_sha256(pdf), pdf.stat().st_size)
+
+
+def test_upload_uses_sibling_download_index_without_parsing_pdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    write_download_index(
+        tmp_path / "pdf-download-index.json",
+        pdf,
+        "10.1234/from.index",
+    )
+
+    def fail_extract(*args, **kwargs):
+        raise AssertionError("download index hit should skip PDF DOI extraction")
+
+    monkeypatch.setattr(user_cli, "extract_doi_evidence", fail_extract)
+    uploads: list[dict] = []
+
+    def fake_upload(path, **kwargs):
+        uploads.append({"path": path, **kwargs})
+        return {
+            "pdf": {
+                "doi": kwargs["doi"],
+                "sha256": kwargs["sha256"],
+                "original_name": path.name,
+                "title": "Indexed paper",
+            },
+            "deduplicated": False,
+        }
+
+    monkeypatch.setattr(user_cli, "upload_pdf", fake_upload)
+
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+
+    assert result.exit_code == 0, result.output
+    assert "1 download index hits" in result.output
+    assert "DOI scans" not in result.output
+    assert uploads[0]["doi"] == "10.1234/from.index"
+    assert uploads[0]["doi_source"] == "download-index"
+
+
+def test_upload_does_not_fall_back_when_indexed_filename_hash_is_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        user_cli,
+        "extract_doi_evidence",
+        lambda *args, **kwargs: pytest.fail("stale index must not fall back to PDF extraction"),
+    )
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/pdf.value\n%%EOF\n")
+    write_download_index(
+        tmp_path / "pdf-download-index.json",
+        pdf,
+        "10.1234/index.value",
+        sha256="b" * 64,
+    )
+
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+
+    assert result.exit_code == 1, result.output
+    assert "SHA-256 mismatch" in result.output
+    assert "indexed file paper.pdf" in result.output
+    assert "DOI scans" not in result.output
+
+
+def test_upload_no_index_uses_existing_pdf_resolver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/pdf.value\n%%EOF\n")
+    write_download_index(
+        tmp_path / "pdf-download-index.json",
+        pdf,
+        "10.1234/index.value",
+    )
+    monkeypatch.setattr(
+        user_cli,
+        "extract_doi_evidence",
+        lambda *args, **kwargs: DoiEvidence(
+            "ok", "10.1234/pdf.value", "pdf-content", [], None
+        ),
+    )
+    uploads: list[dict] = []
+
+    def fake_upload(path, **kwargs):
+        uploads.append({"path": path, **kwargs})
+        return {
+            "pdf": {
+                "doi": kwargs["doi"],
+                "sha256": kwargs["sha256"],
+                "original_name": path.name,
+                "title": "PDF-resolved paper",
+            },
+            "deduplicated": False,
+        }
+
+    monkeypatch.setattr(user_cli, "upload_pdf", fake_upload)
+
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--no-index"])
+
+    assert result.exit_code == 0, result.output
+    assert "1 DOI scans" in result.output
+    assert "download index hits" not in result.output
+    assert uploads[0]["doi"] == "10.1234/pdf.value"
+    assert uploads[0]["doi_source"] == "pdf-content"
 
 
 def test_manual_identity_cache_survives_file_rename(tmp_path: Path, monkeypatch) -> None:
