@@ -90,6 +90,13 @@ def test_pypdf_logs_are_quiet_for_cli_upload() -> None:
     assert netvault.doi.PdfReader is not None
 
 
+def test_doi_suffix_accepts_ampersand() -> None:
+    doi = "10.1207/s15327663jcp1001&2_01"
+
+    assert netvault.doi.normalize_doi(doi) == doi
+    assert netvault.doi.find_dois_in_text(f"DOI: {doi}") == [doi]
+
+
 def test_update_command_uses_uv_for_uv_tool_install(monkeypatch) -> None:
     monkeypatch.setattr("netvault.cli.update.shutil.which", lambda name: "/opt/homebrew/bin/uv" if name == "uv" else None)
 
@@ -380,6 +387,20 @@ def test_download_index_loads_existing_version_one_structure(tmp_path: Path) -> 
     assert match.record.doi == "10.1002/mar.20228"
     assert match.record.validation_method == "pdf-signature-eof"
     assert match.renamed is False
+
+
+def test_download_index_accepts_ampersand_in_doi(tmp_path: Path) -> None:
+    pdf = tmp_path / "10.1207_s15327663jcp1001&2_01.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    index_path = tmp_path / "pdf-download-index.json"
+    doi = "10.1207/s15327663jcp1001&2_01"
+    write_download_index(index_path, pdf, doi)
+
+    index = load_download_index(index_path)
+    match = index.resolve(pdf, file_sha256(pdf), pdf.stat().st_size)
+
+    assert match is not None
+    assert match.record.doi == doi
 
 
 def test_download_index_names_are_configurable(tmp_path: Path, monkeypatch) -> None:
