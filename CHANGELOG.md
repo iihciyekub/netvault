@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.12 - 2026-07-13
+
+- Accept registered DOI suffixes containing ampersands during extraction and
+  download-index validation.
+
 ## 0.7.11 - 2026-07-13
 
 - Let `nv upload` use SHA-256-bound DOI records from a sibling version 1
