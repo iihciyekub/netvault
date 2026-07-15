@@ -1040,11 +1040,36 @@ tr:last-child td { border-bottom: 0; }
   font-size: 13px;
 }
 
-.heatmap-filter-status {
+.heatmap-filter-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.heatmap-filter-status,
+.heatmap-filter-pdf-count {
   flex: 0 0 auto;
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.heatmap-filter-pdf-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+  color: var(--fg);
+  font-weight: 650;
+}
+
+.heatmap-filter-pdf-count i,
+.heatmap-limit-form label > i,
+.heatmap-sort-field > i {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .heatmap-limit-form,

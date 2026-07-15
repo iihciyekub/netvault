@@ -242,6 +242,14 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert abs1_summary.json()["active_pdfs"] == 1
     assert abs1_summary.json()["total_size"] == 200
 
+    stats = importlib.import_module("netvault_server.server.stats")
+    with database.SessionLocal() as db:
+        dashboard_stats = stats.get_dashboard_stats(db, "utd24")
+    assert dashboard_stats["summary"]["active_pdfs"] == 1
+    assert dashboard_stats["summary"]["total_size"] == 100
+    assert dashboard_stats["vault_summary"]["active_pdfs"] == 6
+    assert dashboard_stats["vault_summary"]["total_size"] == len(PDF_BYTES) + 624
+
 
 def test_dashboard_stats_cache_can_be_invalidated(client: TestClient) -> None:
     headers = login_headers(client)
@@ -324,10 +332,14 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert ">Apply</button>" not in limit_form
     assert "data-journal-limit" in limit_form
     assert "data-journal-limit-status" in limit_form
+    assert '<i class="fa-solid fa-eye" aria-hidden="true"></i>' in limit_form
+    assert "<span>Show</span>" not in limit_form
     assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
         'class="heatmap-limit-form"'
     )
     assert 'data-journal-sort aria-controls="journal-year-heatmap"' in normal.text
+    assert '<i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>' in normal.text
+    assert "<span>Sort</span>" not in normal.text
     assert '<option value="name-asc">Journal A–Z</option>' in normal.text
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
@@ -359,6 +371,9 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert 'class="heatmap-limit-form"' in filtered.text
     assert 'name="active_filter" value="utd24"' in filtered.text
     assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in filtered.text
+    assert '<div class="summary-tags" aria-label="Vault summary">' in filtered.text
+    assert '<span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>231</span>' in filtered.text
+    assert '<span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>21</span>' in filtered.text
     filtered_update = client.post(
         "/web/preferences/all-journal-limit",
         data={
@@ -419,7 +434,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert ">0</span>" in dashboard.text
     assert "0 PDFs" not in dashboard.text
     assert "1974-" not in dashboard.text
-    assert "Current filter summary" in dashboard.text
+    assert "Vault summary" in dashboard.text
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
     assert "Info" in dashboard.text
@@ -478,7 +493,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
     assert "0.7.12" in info_page.text
-    assert "app.js?v=0.7.12-ui22" in info_page.text
+    assert "app.js?v=0.7.12-ui23" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text

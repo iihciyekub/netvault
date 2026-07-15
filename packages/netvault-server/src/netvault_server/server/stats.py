@@ -65,8 +65,10 @@ def get_dashboard_stats(
     if cached is not None and now < cached[0]:
         return cached[1]
     filter_options = user_filter_options(db, user_id) if user_id is not None else ([], [], [])
+    summary = get_summary(db, filter_key, user_id=user_id)
     stats = {
-        "summary": get_summary(db, filter_key, user_id=user_id),
+        "summary": summary,
+        "vault_summary": summary if filter_key == "all" else get_summary(db, "all", user_id=user_id),
         "journal_year": get_by_journal_year(
             db,
             filter_key,

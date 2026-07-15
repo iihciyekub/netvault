@@ -47,9 +47,9 @@
       </div>
     </details>
   </div>
-  <div class="summary-tags" aria-label="Current filter summary">
-    <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs|number }}</span>
-    <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ summary.total_size|bytes }}</span>
+  <div class="summary-tags" aria-label="Vault summary">
+    <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ vault_summary.active_pdfs|number }}</span>
+    <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ vault_summary.total_size|bytes }}</span>
   </div>
 </div>
 
@@ -125,7 +125,10 @@
           data-journal-filter
         >
       </div>
-      <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite">{{ journal_year.rows|length }} journal{% if journal_year.rows|length != 1 %}s{% endif %}</output>
+      <div class="heatmap-filter-summary">
+        <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite">{{ journal_year.rows|length }} journal{% if journal_year.rows|length != 1 %}s{% endif %}</output>
+        <span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs|number }}</span>
+      </div>
       <div class="heatmap-legend" aria-label="Heatmap legend">
         <span>Less</span>
         <span class="heat-cell level-0"></span>
@@ -139,13 +142,15 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="active_filter" value="{{ journal_filter }}">
         <label for="dashboard-journal-limit">
-          <span>Show</span>
+          <i class="fa-solid fa-eye" aria-hidden="true"></i>
+          <span class="sr-only">Number of journals shown</span>
           <input id="dashboard-journal-limit" name="journal_limit" type="number" min="1" max="200" value="{{ dashboard_journal_limit }}" inputmode="numeric" aria-label="Number of journals shown" aria-describedby="journal-limit-status" data-journal-limit data-saved-value="{{ dashboard_journal_limit }}">
         </label>
         <output id="journal-limit-status" class="heatmap-limit-status" data-journal-limit-status aria-live="polite"></output>
       </form>
       <label class="heatmap-sort-field" for="journal-heatmap-sort">
-        <span>Sort</span>
+        <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+        <span class="sr-only">Sort journals</span>
         <select id="journal-heatmap-sort" data-journal-sort aria-controls="journal-year-heatmap">
           <option value="name-asc">Journal A–Z</option>
           <option value="name-desc">Journal Z–A</option>
