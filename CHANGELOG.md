@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.14 - 2026-07-15
+
+- Collapse local PDF copies with the same SHA-256 before DOI resolution and upload,
+  and report found paths, unique PDFs, local duplicates, server skips, and uploads separately.
+
 ## 0.7.13 - 2026-07-15
 
 - Pin CLI installs and updates to the latest published GitHub release, enforce one

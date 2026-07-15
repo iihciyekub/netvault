@@ -765,6 +765,55 @@ def test_upload_reuses_manual_identity_without_parsing_pdf(tmp_path: Path, monke
     assert registered == [(sha256, "10.1234/manual")]
 
 
+def test_upload_collapses_local_duplicate_paths_before_server_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    content = b"%PDF-1.4\nDOI: 10.1234/local.duplicate\n%%EOF\n"
+    first = tmp_path / "first.pdf"
+    second = tmp_path / "nested" / "second.pdf"
+    second.parent.mkdir()
+    first.write_bytes(content)
+    second.write_bytes(content)
+    sha256 = hashlib.sha256(content).hexdigest()
+    existing = {
+        "doi": "10.1234/local.duplicate",
+        "sha256": sha256,
+        "original_name": "stored.pdf",
+        "title": "Stored",
+    }
+    server_checks: list[list[str]] = []
+
+    def existing_by_sha(hashes, **kwargs):
+        checked = list(hashes)
+        server_checks.append(checked)
+        return {sha256: existing}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", existing_by_sha)
+    monkeypatch.setattr(
+        user_cli,
+        "extract_doi_evidence",
+        lambda *args, **kwargs: pytest.fail("existing unique PDF must skip DOI extraction"),
+    )
+    monkeypatch.setattr(
+        user_cli,
+        "upload_pdf",
+        lambda *args, **kwargs: pytest.fail("existing unique PDF must not be uploaded"),
+    )
+
+    result = CliRunner().invoke(user_cli.app, ["upload", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert server_checks == [[sha256]]
+    assert "found paths: 2" in result.output
+    assert "unique PDFs: 1" in result.output
+    assert "local duplicate paths: 1" in result.output
+    assert "already stored: 1 skipped" in result.output
+    assert "uploaded: 0" in result.output
+
+
 def test_upload_force_bypasses_duplicate_skips_and_replaces(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
     monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")

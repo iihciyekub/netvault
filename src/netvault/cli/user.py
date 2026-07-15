@@ -890,6 +890,8 @@ def upload_command(
     download_index_renames = 0
     hashes_by_path: dict[Path, str] = {}
     existing_by_sha: dict[str, dict] = {}
+    unique_pdf_paths: list[Path] = []
+    local_duplicate_paths = 0
 
     with Progress(
         SpinnerColumn(),
@@ -918,19 +920,26 @@ def upload_command(
         if cache_changed:
             save_hash_cache(hash_cache)
 
+        pdf_paths_by_sha: dict[str, list[Path]] = {}
+        for pdf_path, sha256 in hashes_by_path.items():
+            pdf_paths_by_sha.setdefault(sha256, []).append(pdf_path)
+        unique_pdf_paths = [paths[0] for paths in pdf_paths_by_sha.values()]
+        local_duplicate_paths = len(hashes_by_path) - len(unique_pdf_paths)
+
         progress.reset(
             task,
-            total=len(hashes_by_path),
+            total=len(unique_pdf_paths),
             completed=0,
-            description="Checking server for existing files",
+            description="Checking unique PDFs on server",
         )
         existing_by_sha = get_existing_pdfs_by_sha256(
-            hashes_by_path.values(),
+            pdf_paths_by_sha,
             progress_callback=lambda completed: progress.update(task, completed=completed),
         )
 
         new_pdfs: list[Path] = []
-        for pdf_path, sha256 in hashes_by_path.items():
+        for pdf_path in unique_pdf_paths:
+            sha256 = hashes_by_path[pdf_path]
             existing_pdf = existing_by_sha.get(sha256)
             if existing_pdf and not force:
                 latest_pdf = existing_pdf
@@ -1044,7 +1053,12 @@ def upload_command(
                 console.print(f"warning: could not register PDF aliases: {exc}")
 
         if not new_pdfs:
-            progress.update(task, description="Done", completed=len(pdfs), total=len(pdfs))
+            progress.update(
+                task,
+                description="Done",
+                completed=len(unique_pdf_paths),
+                total=len(unique_pdf_paths),
+            )
         else:
             progress.reset(task, total=len(new_pdfs), completed=0, description="Indexing new PDFs")
 
@@ -1071,16 +1085,17 @@ def upload_command(
             finally:
                 progress.advance(task, 1)
 
-    ok_count = uploaded + replaced + deduped + skipped
-    parts = [f"done: {ok_count}/{len(pdfs)} processed"]
-    if uploaded:
-        parts.append(f"{uploaded} uploaded")
+    parts = [
+        f"found paths: {len(pdfs)}",
+        f"unique PDFs: {len(unique_pdf_paths)}",
+        f"local duplicate paths: {local_duplicate_paths}",
+        f"already stored: {skipped} skipped",
+        f"uploaded: {uploaded}",
+    ]
     if replaced:
         parts.append(f"{replaced} replaced")
     if deduped:
         parts.append(f"{deduped} deduped")
-    if skipped:
-        parts.append(f"{skipped} skipped")
     if doi_cache_hits:
         parts.append(f"{doi_cache_hits} DOI cache hits")
     if doi_scans:
@@ -1094,7 +1109,7 @@ def upload_command(
     if latest_pdf:
         title = latest_pdf.get("title") or latest_pdf["original_name"]
         parts.append(f"latest: {latest_pdf['doi']}  {title}")
-    console.print("; ".join(parts))
+    console.print("\n".join(parts))
     for pdf_path, error in failed:
         console.print(f"failed: {pdf_path}: {error}")
     if failed:

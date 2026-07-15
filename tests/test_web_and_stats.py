@@ -492,8 +492,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.13" in info_page.text
-    assert "app.js?v=0.7.13-ui23" in info_page.text
+    assert "0.7.14" in info_page.text
+    assert "app.js?v=0.7.14-ui23" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
