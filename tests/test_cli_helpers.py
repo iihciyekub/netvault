@@ -24,7 +24,12 @@ from netvault.cli.user import (
     collect_pdf_paths,
     unique_destination,
 )
-from netvault.cli.update import build_update_command
+from netvault.cli.update import (
+    build_update_command,
+    github_repository_slug,
+    latest_release_tag,
+    release_package_url,
+)
 from netvault.cli.upload_index import (
     DownloadIndexError,
     DownloadIndexResolver,
@@ -32,6 +37,7 @@ from netvault.cli.upload_index import (
 )
 from typer.testing import CliRunner
 import netvault.cli.config as cli_config
+import netvault.cli.update as update_cli
 import netvault.cli.user as user_cli
 import netvault.doi
 from netvault.doi import DoiEvidence, extract_doi_evidence
@@ -158,6 +164,67 @@ def test_update_command_falls_back_to_current_python_pip(monkeypatch) -> None:
         "--force-reinstall",
         "git+https://github.com/iihciyekub/netvault.git",
     ]
+
+
+def test_update_resolves_and_pins_latest_github_release(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, str]:
+            return {"tag_name": "v0.7.13"}
+
+    monkeypatch.setattr("netvault.cli.update.requests.get", lambda *args, **kwargs: Response())
+
+    repo_url = "https://github.com/iihciyekub/netvault.git"
+    assert github_repository_slug(repo_url) == "iihciyekub/netvault"
+    assert latest_release_tag(repo_url) == "v0.7.13"
+    assert release_package_url(repo_url, "v0.7.13") == (
+        "git+https://github.com/iihciyekub/netvault.git@v0.7.13"
+    )
+
+
+def test_update_leaves_non_github_repository_unpinned() -> None:
+    repo_url = "https://git.example.com/team/netvault.git"
+
+    assert github_repository_slug(repo_url) is None
+    assert latest_release_tag(repo_url) is None
+    assert release_package_url(repo_url, None) == f"git+{repo_url}"
+
+
+def test_update_rejects_invalid_github_release_response(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list:
+            return []
+
+    monkeypatch.setattr("netvault.cli.update.requests.get", lambda *args, **kwargs: Response())
+
+    with pytest.raises(RuntimeError, match="invalid latest release response"):
+        latest_release_tag("https://github.com/iihciyekub/netvault.git")
+
+
+def test_update_from_github_installs_the_resolved_release(monkeypatch) -> None:
+    package_urls: list[str] = []
+    commands: list[list[str]] = []
+    monkeypatch.setattr(update_cli, "latest_release_tag", lambda _url: "v0.7.13")
+    monkeypatch.setattr(
+        update_cli,
+        "build_update_command",
+        lambda package_url: package_urls.append(package_url) or ["installer", package_url],
+    )
+    monkeypatch.setattr(
+        update_cli.subprocess,
+        "run",
+        lambda command, check: commands.append(command),
+    )
+
+    update_cli.update_from_github()
+
+    assert package_urls == ["git+https://github.com/iihciyekub/netvault.git@v0.7.13"]
+    assert commands == [["installer", package_urls[0]]]
 
 
 def test_list_command_json_output(monkeypatch) -> None:

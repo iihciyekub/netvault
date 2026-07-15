@@ -35,6 +35,9 @@ Update the CLI:
 nv update
 ```
 
+The installer and `nv update` pin the CLI to GitHub's latest published NetVault
+release. Development commits on `main` are not installed as user releases.
+
 ## Login
 
 ```bash

@@ -99,10 +99,13 @@ Users install only the lightweight CLI package:
 curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash
 ```
 
-Or manually:
+The installer resolves GitHub's latest published NetVault release and pins the
+installation to that tag. It never installs an unreleased `main` version.
+
+For development from `main` instead:
 
 ```bash
-uv tool install --force git+https://github.com/iihciyekub/netvault.git
+uv tool install --force git+https://github.com/iihciyekub/netvault.git@main
 ```
 
 If `uv` is not installed:
@@ -126,6 +129,9 @@ Update from GitHub:
 ```bash
 nv update
 ```
+
+`nv update` also resolves and installs the latest published release tag. See the
+[release guide](docs/releasing.md) for the automated version and publication checks.
 
 If the GitHub repo URL changes, update with:
 

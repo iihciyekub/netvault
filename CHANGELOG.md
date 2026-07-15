@@ -2,6 +2,9 @@
 
 ## 0.7.13 - 2026-07-15
 
+- Pin CLI installs and updates to the latest published GitHub release, enforce one
+  version across CLI/server metadata and lockfiles, and automate tested tag/release
+  publication with attached source and wheel artifacts.
 - Prevent publisher PDF download URLs from overriding a standalone labeled DOI,
   preserve valid DOI suffixes containing additional slashes, and invalidate stale
   automatic DOI cache entries with resolver version 2.
