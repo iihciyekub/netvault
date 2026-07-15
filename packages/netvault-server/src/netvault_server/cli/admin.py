@@ -116,6 +116,34 @@ def delete_pdf(identifier: str) -> None:
     console.print(f"Deleted PDF #{pdf['id']} ({pdf['original_name']}).")
 
 
+@app.command("correct-doi")
+def correct_doi(
+    pdf_id: int,
+    doi: str,
+    reason: str = typer.Option(..., "--reason", help="Why this DOI identity is being corrected."),
+    expected_sha256: str | None = typer.Option(
+        None,
+        "--expected-sha256",
+        help="Abort if the canonical PDF changed before correction.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without changing data."),
+) -> None:
+    payload: dict[str, Any] = {
+        "doi": doi,
+        "reason": reason,
+        "dry_run": dry_run,
+    }
+    if expected_sha256:
+        payload["expected_sha256"] = expected_sha256
+    result = api_post(f"/admin/pdfs/{pdf_id}/correct-doi", payload)
+    action = "Would correct" if result.get("dry_run") else "Corrected"
+    console.print(
+        f"{action} PDF #{result['pdf_id']}: {result['previous_doi']} -> {result['new_doi']}"
+    )
+    if result.get("title"):
+        console.print(f"Crossref: {result['title']}")
+
+
 def run() -> None:
     try:
         app()

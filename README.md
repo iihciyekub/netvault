@@ -378,6 +378,8 @@ netvault-admin delete-pdf 1
 - `POST /admin/users`
 - `POST /admin/users/{username}/reset-password`
 - `POST /admin/users/{username}/deactivate`
+- `POST /admin/pdfs/{id}/correct-doi`
+- `GET /admin/pdfs/{id}/doi-corrections`
 - `DELETE /admin/pdfs/by-doi?doi=...`
 - `DELETE /admin/pdfs/{id-or-sha256}`
 

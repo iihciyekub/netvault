@@ -137,6 +137,19 @@ def _add_pdf_file_aliases(engine: Engine) -> None:
         )
 
 
+def _add_pdf_doi_corrections(engine: Engine) -> None:
+    from netvault_server.server.models import PdfDoiCorrection
+
+    PdfDoiCorrection.__table__.create(bind=engine, checkfirst=True)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_pdf_doi_corrections_pdf_id "
+                "ON pdf_doi_corrections (pdf_id)"
+            )
+        )
+
+
 def _add_user_journal_filters(engine: Engine) -> None:
     from netvault_server.server.models import UserJournalFilter
 
@@ -172,6 +185,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _add_pdf_file_aliases,
     _add_user_journal_filters,
     _add_user_dashboard_journal_limit,
+    _add_pdf_doi_corrections,
 )
 
 

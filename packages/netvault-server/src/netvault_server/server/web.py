@@ -438,7 +438,14 @@ def pdfs_page(
             exact_doi = normalize_doi(q)
         except ValueError:
             exact_doi = None
-        conditions.append(Pdf.doi == exact_doi if exact_doi else pdf_contains_query(q))
+        exact_exists = (
+            db.scalar(
+                select(Pdf.id).where(Pdf.is_deleted.is_(False), Pdf.doi == exact_doi).limit(1)
+            )
+            if exact_doi
+            else None
+        )
+        conditions.append(Pdf.doi == exact_doi if exact_exists else pdf_contains_query(q))
         query = (
             select(Pdf, func.count(Pdf.id).over().label("total_count"))
             .options(*pdf_read_options())

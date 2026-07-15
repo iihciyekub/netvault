@@ -7,7 +7,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from netvault_server.server.crossref import CrossrefMetadata, fetch_crossref_metadata
-from netvault_server.server.doi import extract_doi_evidence, normalize_doi
+from netvault_server.server.doi import (
+    doi_evidence_requires_confirmation,
+    extract_doi_evidence,
+    normalize_doi,
+)
 from netvault_server.server.models import Pdf, PdfFileAlias, UploadRecord, User, utc_now
 from netvault_server.server.schemas import PdfRead, UploadResponse
 from netvault_server.server.storage import (
@@ -27,6 +31,7 @@ CLIENT_DOI_SOURCES = {
     "pdf-metadata",
     "user",
 }
+AUTOMATIC_CLIENT_DOI_SOURCES = {"filename", "pdf-content", "pdf-metadata"}
 
 
 def pdf_to_read(pdf: Pdf) -> PdfRead:
@@ -81,6 +86,7 @@ def doi_evidence_json(evidence) -> str:
                     "detail": candidate.detail,
                     "score": candidate.score,
                     "context": candidate.context,
+                    "embedded_publisher_url": candidate.embedded_publisher_url,
                 }
                 for candidate in evidence.candidates
             ],
@@ -156,7 +162,11 @@ async def process_upload(
                 if pdf_by_sha.doi and pdf_by_sha.doi != normalized_explicit_doi:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail=f"This PDF is already linked to DOI {pdf_by_sha.doi}",
+                        detail=(
+                            f"This PDF is already linked to DOI {pdf_by_sha.doi}. "
+                            "Force upload replaces a file for the same DOI; an administrator must "
+                            "correct a wrong DOI identity."
+                        ),
                     )
             if pdf_by_sha.is_deleted:
                 pdf_by_sha.is_deleted = False
@@ -176,7 +186,27 @@ async def process_upload(
             return UploadResponse(pdf=pdf_to_read(pdf_by_sha), deduplicated=True)
 
         evidence_path = staged_path or object_path(sha256)
-        evidence = extract_doi_evidence(evidence_path, explicit_doi=doi, filename=file.filename)
+        if doi_source in AUTOMATIC_CLIENT_DOI_SOURCES:
+            evidence = extract_doi_evidence(evidence_path, filename=file.filename)
+            try:
+                client_doi = normalize_doi(doi or "")
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            if evidence.status != "ok" or evidence.doi != client_doi:
+                detected = evidence.doi or evidence.reason or "no DOI"
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Client DOI {client_doi} does not match server PDF analysis ({detected}). "
+                        "Update NetVault and confirm the identity with --doi if needed."
+                    ),
+                )
+        else:
+            evidence = extract_doi_evidence(
+                evidence_path,
+                explicit_doi=doi,
+                filename=file.filename,
+            )
         if doi_source is not None and evidence.status == "ok":
             evidence = replace(evidence, source=doi_source)
         if evidence.status == "conflict":
@@ -202,7 +232,10 @@ async def process_upload(
         if force and pdf_by_sha is not None and pdf_by_sha.doi != normalized_doi:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"This PDF is already linked to DOI {pdf_by_sha.doi}",
+                detail=(
+                    f"This PDF is already linked to DOI {pdf_by_sha.doi}. "
+                    "Force upload cannot change DOI identity; ask an administrator to correct it."
+                ),
             )
         if force and pdf_by_doi is not None:
             metadata = await run_in_threadpool(fetch_crossref_metadata, normalized_doi)
@@ -290,6 +323,20 @@ async def process_upload(
             pdf.doi_evidence = doi_evidence_json(evidence)
         if not no_crossref and (created_pdf or not pdf.title or pdf.crossref_status in (None, "pending", "unavailable")):
             metadata = await run_in_threadpool(fetch_crossref_metadata, normalized_doi)
+            if (
+                created_pdf
+                and evidence.source in AUTOMATIC_CLIENT_DOI_SOURCES
+                and doi_evidence_requires_confirmation(evidence)
+                and metadata.status != "ok"
+            ):
+                error_status = 422 if metadata.status == "not_found" else status.HTTP_503_SERVICE_UNAVAILABLE
+                raise HTTPException(
+                    status_code=error_status,
+                    detail=(
+                        "Automatically detected DOI appears embedded in a publisher download URL "
+                        f"and could not be verified ({metadata.status}). Confirm it with --doi."
+                    ),
+                )
             apply_crossref_metadata(pdf, metadata)
         elif no_crossref:
             pdf.crossref_status = "skipped"

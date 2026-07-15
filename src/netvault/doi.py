@@ -21,7 +21,7 @@ DOI_METADATA_PATTERNS = [
     )
 ]
 DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 1
+DOI_RESOLVER_VERSION = 2
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -32,6 +32,7 @@ class DoiCandidate:
     detail: str = ""
     score: int = 0
     context: str = ""
+    embedded_publisher_url: bool = False
 
 
 @dataclass(frozen=True)
@@ -147,11 +148,7 @@ def unique_dois(candidates: list[DoiCandidate], sources: set[str] | None = None)
             continue
         if candidate.doi not in dois:
             dois.append(candidate.doi)
-    return [
-        doi
-        for doi in dois
-        if not any(other != doi and other.startswith(doi) and len(other) > len(doi) for other in dois)
-    ]
+    return dois
 
 
 def choose_candidate(candidates: list[DoiCandidate], doi: str) -> DoiCandidate | None:
@@ -171,7 +168,22 @@ def candidate_context(text: str, start: int, end: int, width: int = 90) -> str:
     return context[:220]
 
 
-def score_text_candidate(text: str, match: re.Match[str], page: int | None = None, in_references: bool = False) -> int:
+def embedded_in_publisher_url(text: str, match: re.Match[str]) -> bool:
+    before = text[max(0, match.start() - 500) : match.start()]
+    url_match = re.search(r"https?://([^/\s<>'\"]+)[^\s<>'\"]*$", before, re.IGNORECASE)
+    if not url_match:
+        return False
+    hostname = url_match.group(1).lower().split(":", 1)[0].removeprefix("www.")
+    return hostname not in {"doi.org", "dx.doi.org"}
+
+
+def score_text_candidate(
+    text: str,
+    match: re.Match[str],
+    page: int | None = None,
+    in_references: bool = False,
+    embedded_publisher_url: bool = False,
+) -> int:
     before = text[max(0, match.start() - 140) : match.start()]
     after = text[match.end() : min(len(text), match.end() + 80)]
     score = 54
@@ -181,6 +193,8 @@ def score_text_candidate(text: str, match: re.Match[str], page: int | None = Non
         score += 8
     if DOI_LABEL_RE.search(before + after):
         score += 18
+    if embedded_publisher_url:
+        score -= 40
     if in_references or re.search(r"(?i)\b(references|bibliography|works cited|cited by)\b", before[-80:]):
         score -= 38
     return max(5, min(score, 88))
@@ -196,13 +210,21 @@ def candidates_from_text(text: str, source: str, detail: str, page: int | None =
         except ValueError:
             continue
         in_references = reference_start is not None and match.start() >= reference_start
+        in_publisher_url = embedded_in_publisher_url(text, match)
         candidates.append(
             DoiCandidate(
                 doi=doi,
                 source=source,
                 detail=detail,
-                score=score_text_candidate(text, match, page=page, in_references=in_references),
+                score=score_text_candidate(
+                    text,
+                    match,
+                    page=page,
+                    in_references=in_references,
+                    embedded_publisher_url=in_publisher_url,
+                ),
                 context=candidate_context(text, match.start(), match.end()),
+                embedded_publisher_url=in_publisher_url,
             )
         )
     return candidates
@@ -343,11 +365,27 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
     elif content_dois:
         best_doi, best_score, _ = scored_dois[0]
         second_score = scored_dois[1][1] if len(scored_dois) > 1 else 0
-        if len(content_dois) > 1 and best_score < 72 and best_score - second_score < 18:
-            return DoiEvidence("conflict", None, None, candidates, "Multiple PDF content DOI values")
+        if len(content_dois) > 1 and best_score - second_score < 18:
+            return DoiEvidence(
+                "conflict",
+                None,
+                None,
+                candidates,
+                "Multiple PDF content DOI values have similar confidence",
+            )
         doi = best_doi
         source = choose_source(candidates, doi)
 
     if not doi:
         return DoiEvidence("no-doi", None, None, candidates, "No DOI found")
     return DoiEvidence("ok", doi, source, candidates)
+
+
+def doi_evidence_requires_confirmation(evidence: DoiEvidence) -> bool:
+    return bool(
+        evidence.doi
+        and any(
+            candidate.doi == evidence.doi and candidate.embedded_publisher_url
+            for candidate in evidence.candidates
+        )
+    )

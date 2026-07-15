@@ -231,6 +231,26 @@ netvault-admin delete-pdf 10.1016/j.ijpe.2018.04.006
 Deletion is a soft delete. The row remains in PostgreSQL and the object file
 currently remains in storage.
 
+Correct a PDF that was registered under the wrong DOI without changing its row ID,
+file, upload history, download history, or SHA-256 aliases. Preview first and bind
+the operation to the currently observed file hash:
+
+```bash
+netvault-admin correct-doi 56240 10.1108/MBR-10-2023-0163 \
+  --reason "Publisher download URL was parsed as DOI" \
+  --expected-sha256 b94a428842b7a98f127abda5dff35b8de7412562246549e8b599a001b730399e \
+  --dry-run
+
+netvault-admin correct-doi 56240 10.1108/MBR-10-2023-0163 \
+  --reason "Publisher download URL was parsed as DOI" \
+  --expected-sha256 b94a428842b7a98f127abda5dff35b8de7412562246549e8b599a001b730399e
+```
+
+The server requires an administrator, rejects target DOI conflicts, verifies the
+new DOI through Crossref, and stores the previous identity and metadata in
+`pdf_doi_corrections`. Do not use `--force` for identity corrections; it only
+replaces bytes and metadata for the same DOI.
+
 ## Updates
 
 Code repository:

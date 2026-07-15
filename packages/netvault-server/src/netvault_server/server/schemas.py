@@ -85,3 +85,35 @@ class PdfAliasCreateRequest(BaseModel):
 
 class PdfAliasCreateResponse(BaseModel):
     registered: dict[str, PdfRead]
+
+
+class PdfDoiCorrectionRequest(BaseModel):
+    doi: str = Field(min_length=1, max_length=255)
+    reason: str = Field(min_length=3, max_length=500)
+    expected_sha256: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-fA-F]{64}$",
+    )
+    dry_run: bool = False
+
+
+class PdfDoiCorrectionResponse(BaseModel):
+    pdf_id: int
+    previous_doi: str
+    new_doi: str
+    sha256: str
+    title: str | None = None
+    correction_id: int | None = None
+    dry_run: bool = False
+
+
+class PdfDoiCorrectionRead(BaseModel):
+    id: int
+    pdf_id: int
+    old_doi: str
+    new_doi: str
+    reason: str
+    corrected_by: str
+    corrected_at: datetime

@@ -152,6 +152,18 @@ Add `--doi DOI` when automatic DOI extraction is not possible. This is available
 to every authenticated user. NetVault requires a successful
 current Crossref response before it replaces the canonical PDF, clears old file
 aliases, and overwrites the title, authors, journal, publisher, year, and URL.
+`--force` cannot change DOI identity. If a file was registered under an incorrect
+DOI, an administrator must correct that record before replacing its PDF.
+
+Automatic DOI claims are independently checked by the server. If a publisher
+download URL contains a DOI-like path that conflicts with the PDF's labeled DOI,
+update the CLI and inspect the evidence before confirming it explicitly:
+
+```bash
+nv update
+nv doi ~/Downloads/paper.pdf --verbose
+nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
+```
 
 For a PDF that has no embedded DOI but whose identity you have verified, save a
 user-confirmed mapping before upload:

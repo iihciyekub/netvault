@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.13 - 2026-07-15
+
+- Prevent publisher PDF download URLs from overriding a standalone labeled DOI,
+  preserve valid DOI suffixes containing additional slashes, and invalidate stale
+  automatic DOI cache entries with resolver version 2.
+- Revalidate automatic client DOI claims on the server, require confirmation for
+  unverified publisher-URL candidates, and show related malformed identifiers when
+  an exact DOI search has no match.
+- Add dry-run-capable, SHA-guarded administrator DOI correction with Crossref
+  verification and a durable correction audit trail that preserves PDF IDs and history.
+- Keep dashboard vault totals independent of journal filters, move filtered PDF counts
+  beside the journal count, and replace visible Show/Sort labels with accessible icons.
+
 ## 0.7.12 - 2026-07-13
 
 - Accept registered DOI suffixes containing ampersands during extraction and

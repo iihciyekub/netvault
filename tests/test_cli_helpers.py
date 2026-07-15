@@ -97,6 +97,17 @@ def test_doi_suffix_accepts_ampersand() -> None:
     assert netvault.doi.find_dois_in_text(f"DOI: {doi}") == [doi]
 
 
+def test_doi_suffix_preserves_additional_slashes() -> None:
+    doi = "10.1234/456abc/zyz"
+
+    assert netvault.doi.normalize_doi(doi) == doi
+    assert netvault.doi.find_dois_in_text(f"https://doi.org/{doi}") == [doi]
+
+
+def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
+    assert netvault.doi.DOI_RESOLVER_VERSION == 2
+
+
 def test_update_command_uses_uv_for_uv_tool_install(monkeypatch) -> None:
     monkeypatch.setattr("netvault.cli.update.shutil.which", lambda name: "/opt/homebrew/bin/uv" if name == "uv" else None)
 
@@ -862,3 +873,20 @@ def test_smart_doi_selects_labeled_content_candidate(tmp_path: Path) -> None:
 
     assert evidence.status == "ok"
     assert evidence.doi == "10.1234/article.main"
+
+
+def test_smart_doi_rejects_publisher_download_url_suffix(tmp_path: Path) -> None:
+    pdf = tmp_path / "mbr-10-2023-0163en.pdf"
+    pdf.write_bytes(
+        b"%PDF-1.4\n"
+        b"DOI 10.1108/MBR-10-2023-0163\n"
+        b"Downloaded from http://www.emerald.com/mbr/article-pdf/doi/"
+        b"10.1108/MBR-10-2023-0163/11288746/mbr-10-2023-0163en.pdf\n"
+        b"%%EOF\n"
+    )
+
+    evidence = extract_doi_evidence(pdf)
+
+    assert evidence.status == "ok"
+    assert evidence.doi == "10.1108/mbr-10-2023-0163"
+    assert any(candidate.embedded_publisher_url for candidate in evidence.candidates)

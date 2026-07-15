@@ -51,3 +51,47 @@ def test_reset_deactivate_and_delete_commands(monkeypatch) -> None:
     ]
     assert deletes == ["/admin/pdfs/7"]
     assert "Deleted PDF #7" in deleted.output
+
+
+def test_correct_doi_command_supports_preview_and_expected_hash(monkeypatch) -> None:
+    calls = []
+
+    def fake_post(path, payload=None):
+        calls.append((path, payload))
+        return {
+            "pdf_id": 56240,
+            "previous_doi": "10.1108/mbr-10-2023-0163/11288746/file.pdf",
+            "new_doi": "10.1108/mbr-10-2023-0163",
+            "title": "Host country distance",
+            "dry_run": True,
+        }
+
+    monkeypatch.setattr(admin, "api_post", fake_post)
+    result = runner.invoke(
+        admin.app,
+        [
+            "correct-doi",
+            "56240",
+            "10.1108/MBR-10-2023-0163",
+            "--reason",
+            "Publisher URL was parsed as DOI",
+            "--expected-sha256",
+            "a" * 64,
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert calls == [
+        (
+            "/admin/pdfs/56240/correct-doi",
+            {
+                "doi": "10.1108/MBR-10-2023-0163",
+                "reason": "Publisher URL was parsed as DOI",
+                "dry_run": True,
+                "expected_sha256": "a" * 64,
+            },
+        )
+    ]
+    assert "Would correct PDF #56240" in result.output
+    assert "Crossref: Host country distance" in result.output

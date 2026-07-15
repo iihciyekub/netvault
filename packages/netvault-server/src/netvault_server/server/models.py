@@ -77,6 +77,7 @@ class Pdf(Base):
     uploaded_by: Mapped[User] = relationship(foreign_keys=[uploaded_by_id])
     uploads: Mapped[list["UploadRecord"]] = relationship(back_populates="pdf")
     file_aliases: Mapped[list["PdfFileAlias"]] = relationship(back_populates="pdf")
+    doi_corrections: Mapped[list["PdfDoiCorrection"]] = relationship(back_populates="pdf")
 
 
 class PdfFileAlias(Base):
@@ -91,6 +92,22 @@ class PdfFileAlias(Base):
 
     pdf: Mapped[Pdf] = relationship(back_populates="file_aliases")
     asserted_by: Mapped[User] = relationship()
+
+
+class PdfDoiCorrection(Base):
+    __tablename__ = "pdf_doi_corrections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pdf_id: Mapped[int] = mapped_column(ForeignKey("pdfs.id"), index=True, nullable=False)
+    old_doi: Mapped[str] = mapped_column(String(255), nullable=False)
+    new_doi: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_state: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    corrected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    pdf: Mapped[Pdf] = relationship(back_populates="doi_corrections")
+    corrected_by: Mapped[User] = relationship()
 
 
 class UploadRecord(Base):

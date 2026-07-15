@@ -492,8 +492,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.12" in info_page.text
-    assert "app.js?v=0.7.12-ui23" in info_page.text
+    assert "0.7.13" in info_page.text
+    assert "app.js?v=0.7.13-ui23" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -882,6 +882,40 @@ def test_search_pagination_shows_crossref_metadata_cards(client: TestClient) -> 
     assert third.status_code == 200
     assert third.text.count('class="paper-result"') == 1
     assert "Page 3 of 3" in third.text
+
+
+def test_web_exact_doi_search_falls_back_to_related_identifier(client: TestClient) -> None:
+    web_login(client)
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    correct_doi = "10.1108/mbr-10-2023-0163"
+    malformed_doi = f"{correct_doi}/11288746/mbr-10-2023-0163en.pdf"
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        db.add(
+            models.Pdf(
+                doi=malformed_doi,
+                doi_source="pdf-content",
+                sha256="e" * 64,
+                original_name="mbr-10-2023-0163en.pdf",
+                title=None,
+                authors=None,
+                container_title=None,
+                publisher=None,
+                published_year=None,
+                crossref_status="not_found",
+                size=728183,
+                storage_path="objects/ee/mbr.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.commit()
+
+    result = client.get("/web/pdfs", params={"q": correct_doi})
+
+    assert result.status_code == 200
+    assert malformed_doi in result.text
+    assert 'class="paper-result"' in result.text
 
 
 def test_static_assets_are_long_cached(client: TestClient) -> None:

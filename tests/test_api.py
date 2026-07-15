@@ -42,6 +42,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         )
 
     monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref_metadata)
+    monkeypatch.setattr(main, "fetch_crossref_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
         yield test_client
 
@@ -227,6 +228,80 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     assert len(stored_objects) == 1
 
 
+def test_exact_doi_search_falls_back_to_related_malformed_identifier(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+    correct_doi = "10.1108/mbr-10-2023-0163"
+    malformed_doi = f"{correct_doi}/11288746/mbr-10-2023-0163en.pdf"
+    uploaded = upload(client, headers, doi=malformed_doi)
+
+    assert uploaded.status_code == 200
+    searched = client.get("/pdfs/search", headers=headers, params={"q": correct_doi})
+    assert searched.status_code == 200
+    assert [row["doi"] for row in searched.json()] == [malformed_doi]
+
+
+def test_server_rejects_stale_client_publisher_url_doi(client: TestClient) -> None:
+    headers = login(client, "admin", "admin-pass")
+    correct_doi = "10.1108/mbr-10-2023-0163"
+    malformed_doi = f"{correct_doi}/11288746/mbr-10-2023-0163en.pdf"
+    content = (
+        b"%PDF-1.4\n"
+        b"DOI 10.1108/MBR-10-2023-0163\n"
+        b"Downloaded from http://www.emerald.com/mbr/article-pdf/doi/"
+        b"10.1108/MBR-10-2023-0163/11288746/mbr-10-2023-0163en.pdf\n"
+        b"%%EOF\n"
+    )
+
+    response = upload(
+        client,
+        headers,
+        name="mbr-10-2023-0163en.pdf",
+        content=content,
+        doi=malformed_doi,
+        doi_source="pdf-content",
+    )
+
+    assert response.status_code == 409
+    assert "does not match server PDF analysis" in response.json()["detail"]
+    assert client.get("/pdfs", headers=headers).json() == []
+
+
+def test_unverified_publisher_url_doi_requires_confirmation(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    headers = login(client, "admin", "admin-pass")
+    malformed_doi = "10.1108/mbr-10-2023-0163/11288746/mbr-10-2023-0163en.pdf"
+    content = (
+        b"%PDF-1.4\n"
+        b"Downloaded from http://www.emerald.com/mbr/article-pdf/doi/"
+        b"10.1108/MBR-10-2023-0163/11288746/mbr-10-2023-0163en.pdf\n"
+        b"%%EOF\n"
+    )
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    monkeypatch.setattr(
+        main_helpers,
+        "fetch_crossref_metadata",
+        lambda _doi: crossref.CrossrefMetadata(status="not_found"),
+    )
+
+    response = upload(
+        client,
+        headers,
+        name="download.pdf",
+        content=content,
+        doi=malformed_doi,
+        doi_source="pdf-content",
+    )
+
+    assert response.status_code == 422
+    assert "publisher download URL" in response.json()["detail"]
+    assert client.get("/pdfs", headers=headers).json() == []
+    assert list((tmp_path / "storage" / "objects").rglob("*.pdf")) == []
+
+
 def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) -> None:
     headers = login(client, "admin", "admin-pass")
     idempotent_headers = {**headers, "Idempotency-Key": hashlib.sha256(PDF_BYTES).hexdigest()}
@@ -239,18 +314,23 @@ def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) ->
     models = importlib.import_module("netvault_server.server.models")
     with database.SessionLocal() as db:
         assert db.query(models.UploadRecord).count() == 1
-        from sqlalchemy import inspect
+        from sqlalchemy import inspect, text
 
         pdf_indexes = {index["name"] for index in inspect(db.bind).get_indexes("pdfs")}
         upload_indexes = {index["name"] for index in inspect(db.bind).get_indexes("upload_records")}
         alias_indexes = {
             index["name"] for index in inspect(db.bind).get_indexes("pdf_file_aliases")
         }
+        correction_indexes = {
+            index["name"] for index in inspect(db.bind).get_indexes("pdf_doi_corrections")
+        }
         assert "ix_pdfs_active_uploaded_at" in pdf_indexes
         assert "ix_pdfs_journal_year" in pdf_indexes
         assert "ix_upload_records_idempotency_key" in upload_indexes
         assert "ix_pdf_file_aliases_sha256" in alias_indexes
         assert "ix_pdf_file_aliases_pdf_id" in alias_indexes
+        assert "ix_pdf_doi_corrections_pdf_id" in correction_indexes
+        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 7
 
     incomplete = upload(
         client,
@@ -460,6 +540,135 @@ def test_force_upload_requires_successful_crossref(
     current = client.get("/pdfs/by-doi", headers=headers, params={"doi": DOI}).json()
     assert current["sha256"] == original_sha
     assert len(list((tmp_path / "storage" / "objects").rglob("*.pdf"))) == 1
+
+
+def test_admin_can_atomically_correct_doi_and_preserve_history(client: TestClient) -> None:
+    admin_headers = login(client, "admin", "admin-pass")
+    uploaded = upload(client, admin_headers)
+    assert uploaded.status_code == 200
+    original = uploaded.json()["pdf"]
+    alias_sha = "a" * 64
+    assert client.post(
+        "/pdfs/aliases",
+        headers=admin_headers,
+        json={"aliases": [{"sha256": alias_sha, "doi": DOI}]},
+    ).status_code == 200
+    assert client.get(
+        "/pdfs/by-doi/download",
+        headers=admin_headers,
+        params={"doi": DOI},
+    ).status_code == 200
+    corrected_doi = "10.1234/netvault.corrected"
+    payload = {
+        "doi": corrected_doi,
+        "reason": "Automatic resolver selected a publisher download URL",
+        "expected_sha256": original["sha256"],
+    }
+
+    preview = client.post(
+        f"/admin/pdfs/{original['id']}/correct-doi",
+        headers=admin_headers,
+        json={**payload, "dry_run": True},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["dry_run"] is True
+    assert preview.json()["new_doi"] == corrected_doi
+    assert client.get(
+        "/pdfs/by-doi",
+        headers=admin_headers,
+        params={"doi": DOI},
+    ).status_code == 200
+
+    corrected = client.post(
+        f"/admin/pdfs/{original['id']}/correct-doi",
+        headers=admin_headers,
+        json=payload,
+    )
+    assert corrected.status_code == 200
+    result = corrected.json()
+    assert result["pdf_id"] == original["id"]
+    assert result["previous_doi"] == DOI
+    assert result["new_doi"] == corrected_doi
+    assert result["sha256"] == original["sha256"]
+    assert result["correction_id"] is not None
+    assert client.get(
+        "/pdfs/by-doi",
+        headers=admin_headers,
+        params={"doi": DOI},
+    ).status_code == 404
+    detail = client.get(
+        "/pdfs/by-doi",
+        headers=admin_headers,
+        params={"doi": corrected_doi},
+    )
+    assert detail.status_code == 200
+    assert detail.json()["id"] == original["id"]
+    assert detail.json()["sha256"] == original["sha256"]
+    assert detail.json()["upload_count"] == 1
+    assert detail.json()["doi_source"] == "admin-corrected"
+    assert detail.json()["title"] == f"Title for {corrected_doi}"
+    alias = client.post(
+        "/pdfs/exists",
+        headers=admin_headers,
+        json={"sha256": [alias_sha]},
+    )
+    assert alias.json()["existing"][alias_sha]["id"] == original["id"]
+    audit = client.get(
+        f"/admin/pdfs/{original['id']}/doi-corrections",
+        headers=admin_headers,
+    )
+    assert audit.status_code == 200
+    assert audit.json()[0]["old_doi"] == DOI
+    assert audit.json()[0]["new_doi"] == corrected_doi
+    assert audit.json()[0]["corrected_by"] == "admin"
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        assert db.query(models.UploadRecord).filter_by(pdf_id=original["id"]).count() == 1
+        assert db.query(models.DownloadRecord).filter_by(pdf_id=original["id"]).count() == 1
+
+
+def test_doi_correction_rejects_conflicts_and_non_admins(client: TestClient) -> None:
+    admin_headers = login(client, "admin", "admin-pass")
+    first = upload(client, admin_headers)
+    second = upload(
+        client,
+        admin_headers,
+        name="other.pdf",
+        content=OTHER_PDF_BYTES,
+        doi="10.1234/other.test",
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert client.post(
+        "/admin/users",
+        headers=admin_headers,
+        json={"username": "reader", "password": "reader-pass", "role": "user"},
+    ).status_code == 200
+    user_headers = login(client, "reader", "reader-pass")
+    endpoint = f"/admin/pdfs/{first.json()['pdf']['id']}/correct-doi"
+    payload = {"doi": "10.1234/other.test", "reason": "Test correction conflict"}
+
+    assert client.post(endpoint, headers=user_headers, json=payload).status_code == 403
+    conflict = client.post(endpoint, headers=admin_headers, json=payload)
+    assert conflict.status_code == 409
+    assert f"PDF #{second.json()['pdf']['id']}" in conflict.json()["detail"]
+    stale = client.post(
+        endpoint,
+        headers=admin_headers,
+        json={
+            "doi": "10.1234/new.test",
+            "reason": "Stale correction attempt",
+            "expected_sha256": "f" * 64,
+        },
+    )
+    assert stale.status_code == 409
+    assert client.get(
+        "/pdfs/by-doi",
+        headers=admin_headers,
+        params={"doi": DOI},
+    ).status_code == 200
 
 
 def test_pdf_alias_cannot_be_reassigned_to_another_doi(client: TestClient) -> None:
