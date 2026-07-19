@@ -5,23 +5,32 @@ download PDFs, while the remote server handles storage, metadata, and the web UI
 
 ## Install
 
-Recommended lightweight CLI install from GitHub:
+The platform installers install `uv` when necessary, resolve the latest published
+NetVault release, install its wheel, configure the command directory, and verify
+the installation. Git is not required.
+
+### macOS and Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash
+(
+  set -e
+  installer="$(mktemp "${TMPDIR:-/tmp}/netvault-install.XXXXXX")"
+  trap 'rm -f "$installer"' EXIT
+  curl -fsSLo "$installer" https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh
+  bash "$installer"
+)
 ```
 
-If `uv` is missing on macOS:
+### Windows PowerShell
 
-```bash
-brew install uv
-curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP ('netvault-install-'+[guid]::NewGuid()+'.ps1'); try { irm https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.ps1 -OutFile $p; & $p } finally { Remove-Item $p -Force -ErrorAction SilentlyContinue }"
 ```
 
-Check the CLI:
+Open a new terminal after installation, then check the CLI:
 
-```bash
-nv --help
+```text
+nv --version
 ```
 
 `nv` and `netvault` are equivalent. Subcommands are case-insensitive.

@@ -45,6 +45,13 @@ def latest_release_tag(repo_url: str) -> str | None:
 
 def release_package_url(repo_url: str, tag: str | None) -> str:
     normalized = repo_url.removeprefix("git+")
+    slug = github_repository_slug(normalized)
+    if slug is not None and tag is not None:
+        version = tag.removeprefix("v")
+        return (
+            f"https://github.com/{slug}/releases/download/{tag}/"
+            f"netvault-{version}-py3-none-any.whl"
+        )
     suffix = f"@{tag}" if tag else ""
     return f"git+{normalized}{suffix}"
 
@@ -86,9 +93,21 @@ def update_from_github(repo_url: str | None = None) -> None:
         subprocess.run(command, check=True)
     except subprocess.CalledProcessError as exc:
         typer.echo("NetVault update failed. Try reinstalling with the install script:", err=True)
-        typer.echo(
-            "curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash",
-            err=True,
-        )
+        if os.name == "nt":
+            typer.echo(
+                'powershell -NoProfile -ExecutionPolicy Bypass -Command "'
+                "$p=Join-Path $env:TEMP ('netvault-install-'+[guid]::NewGuid()+'.ps1'); "
+                "try { irm https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/"
+                "install.ps1 -OutFile $p; & $p } finally { Remove-Item $p -Force "
+                "-ErrorAction SilentlyContinue }" + '"',
+                err=True,
+            )
+        else:
+            typer.echo(
+                "curl -fsSLo \"${TMPDIR:-/tmp}/netvault-install.sh\" "
+                "https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh "
+                "&& bash \"${TMPDIR:-/tmp}/netvault-install.sh\"",
+                err=True,
+            )
         raise typer.Exit(exc.returncode) from exc
     typer.echo("NetVault updated.")

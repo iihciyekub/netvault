@@ -429,6 +429,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'data-journal-list-dialog' in dashboard.text
     assert 'data-journal-list-form' in dashboard.text
     assert 'data-journal-list-edit-trigger' in dashboard.text
+    assert "Saved to your account and available on every device where you sign in." in dashboard.text
     assert 'title="Click to filter; right-click to edit UTD24"' in dashboard.text
     assert "summary-count" in dashboard.text
     assert ">0</span>" in dashboard.text
@@ -492,8 +493,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.14" in info_page.text
-    assert "app.js?v=0.7.14-ui23" in info_page.text
+    assert "0.7.15" in info_page.text
+    assert "app.js?v=0.7.15-ui23" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -756,6 +757,13 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert reset_utd.status_code == 200
     assert reset_utd.json()["is_default"] is True
     assert reset_utd.json()["count"] == 24
+
+    # A fresh browser session for the same account loads the server-persisted list.
+    client.cookies.clear()
+    web_login(client)
+    same_account_custom = client.get("/web/journal-filters/custom")
+    assert same_account_custom.status_code == 200
+    assert same_account_custom.json()["journals"] == ["Web Journal"]
 
     client.cookies.clear()
     login_page = client.get("/web/login")

@@ -180,7 +180,8 @@ def test_update_resolves_and_pins_latest_github_release(monkeypatch) -> None:
     assert github_repository_slug(repo_url) == "iihciyekub/netvault"
     assert latest_release_tag(repo_url) == "v0.7.13"
     assert release_package_url(repo_url, "v0.7.13") == (
-        "git+https://github.com/iihciyekub/netvault.git@v0.7.13"
+        "https://github.com/iihciyekub/netvault/releases/download/"
+        "v0.7.13/netvault-0.7.13-py3-none-any.whl"
     )
 
 
@@ -223,7 +224,10 @@ def test_update_from_github_installs_the_resolved_release(monkeypatch) -> None:
 
     update_cli.update_from_github()
 
-    assert package_urls == ["git+https://github.com/iihciyekub/netvault.git@v0.7.13"]
+    assert package_urls == [
+        "https://github.com/iihciyekub/netvault/releases/download/"
+        "v0.7.13/netvault-0.7.13-py3-none-any.whl"
+    ]
     assert commands == [["installer", package_urls[0]]]
 
 

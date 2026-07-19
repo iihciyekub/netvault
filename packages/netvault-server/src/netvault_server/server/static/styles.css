@@ -526,6 +526,23 @@ h2 {
   font-weight: 400;
 }
 
+.journal-list-account-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.journal-list-account-note i {
+  color: #333333;
+}
+
 .journal-list-meta {
   display: flex;
   align-items: center;

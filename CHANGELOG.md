@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.15 - 2026-07-20
+
+- Harden the standalone CLI installers for macOS, Linux, and Windows with retrying
+  downloads, temporary-file cleanup, release-wheel pinning, PATH fallbacks, and
+  installed-command and version verification, without shipping server or web components.
+- Clarify in the journal-list editor that lists are saved to the signed-in account and
+  remain available across devices, with regression coverage for session persistence and
+  account isolation.
+
 ## 0.7.14 - 2026-07-15
 
 - Collapse local PDF copies with the same SHA-256 before DOI resolution and upload,

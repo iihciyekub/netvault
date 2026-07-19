@@ -93,25 +93,42 @@ http://127.0.0.1:8000
 
 ## Install CLI
 
-Users install only the lightweight CLI package:
+Users install only the lightweight CLI package. The installers below install `uv`
+when necessary, resolve the latest published NetVault release, install its wheel,
+configure the command directory, and verify the installation.
+
+### macOS and Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh | bash
+(
+  set -e
+  installer="$(mktemp "${TMPDIR:-/tmp}/netvault-install.XXXXXX")"
+  trap 'rm -f "$installer"' EXIT
+  curl -fsSLo "$installer" https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh
+  bash "$installer"
+)
 ```
 
-The installer resolves GitHub's latest published NetVault release and pins the
-installation to that tag. It never installs an unreleased `main` version.
+### Windows PowerShell
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP ('netvault-install-'+[guid]::NewGuid()+'.ps1'); try { irm https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.ps1 -OutFile $p; & $p } finally { Remove-Item $p -Force -ErrorAction SilentlyContinue }"
+```
+
+Open a new terminal after installation, then verify:
+
+```text
+nv --version
+```
+
+The installers pin the installation to GitHub's latest published release. They
+download the release wheel directly and do not require Git. Only the lightweight
+CLI is installed; the server, web interface, and deployment files are excluded.
 
 For development from `main` instead:
 
 ```bash
 uv tool install --force git+https://github.com/iihciyekub/netvault.git@main
-```
-
-If `uv` is not installed:
-
-```bash
-brew install uv
 ```
 
 The CLI provides both names:

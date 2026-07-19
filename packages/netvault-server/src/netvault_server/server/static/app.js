@@ -360,10 +360,10 @@
     if (resetLabel) resetLabel.textContent = payload.can_delete ? "Delete list" : "Reset default";
     if (feedback) {
       feedback.textContent = payload.custom
-        ? "Your private custom list. An empty list matches no journals."
+        ? "This account list is private to you and syncs across your signed-in devices. An empty list matches no journals."
         : payload.is_default
-          ? "Using the default list. Saving creates your private editable copy."
-          : "Using your private edited list.";
+          ? "Using the default list. Saving creates an account-synced editable copy."
+          : "Using the edited list saved to your account.";
     }
     updateJournalListCount(dialog);
   };
