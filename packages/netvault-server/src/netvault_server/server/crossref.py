@@ -16,6 +16,7 @@ _local = threading.local()
 @dataclass(frozen=True)
 class CrossrefMetadata:
     status: str
+    canonical_doi: str | None = None
     title: str | None = None
     authors: str | None = None
     container_title: str | None = None
@@ -96,6 +97,7 @@ def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
 
     return CrossrefMetadata(
         status="ok",
+        canonical_doi=message.get("DOI"),
         title=_first(message.get("title")),
         authors=_authors(message),
         container_title=_first(message.get("container-title")),

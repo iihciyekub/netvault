@@ -302,9 +302,15 @@ DOI extraction uses NetVault's smart resolver:
 - PDF metadata markers such as `prism:doi`, `crossmark:DOI`, `pdfx:doi`, and `dc:identifier`
 - filename DOI values, including `10.1016_j.chb.2015.03.041.pdf`
 - publisher filename patterns such as Springer `s12144-024-...`, PLOS `journal.pone...`, and Frontiers `fpsyg-...`
-- visible first-page PDF text, with reference-list DOI values heavily down-ranked
+- visible text from the first three PDF pages, with reference-list DOI values heavily down-ranked
 - raw PDF text fallback for unusual encodings
 - confidence scoring when multiple DOI candidates are present
+
+For automatic uploads, the server treats the client result as a hint. It tries filename,
+PDF-metadata, and first-three-page candidates in order, verifies each DOI with Crossref, and
+checks the normalized Crossref title against extractable PDF text before accepting it. A failed
+filename candidate therefore falls back to PDF metadata or page content instead of causing a
+client/server DOI conflict.
 
 Inspect DOI resolution before upload:
 

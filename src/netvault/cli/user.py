@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -993,6 +993,20 @@ def upload_command(
                     doi_cache_hits += 1
                 else:
                     evidence = extract_doi_evidence(pdf_path)
+                    if evidence.status == "conflict" and evidence.candidates and not no_crossref:
+                        # Automatic identities are only upload hints. The server owns
+                        # Crossref verification and can safely fall back to another
+                        # candidate from the PDF.
+                        best = max(
+                            evidence.candidates,
+                            key=lambda candidate: (candidate.score, candidate.source, candidate.doi),
+                        )
+                        evidence = replace(
+                            evidence,
+                            status="ok",
+                            doi=best.doi,
+                            source=best.source,
+                        )
                     identity = identity_from_evidence(evidence)
                     identity_cache[sha256] = identity
                     identity_cache_pending += 1
@@ -1023,18 +1037,31 @@ def upload_command(
             identity_cache_pending = 0
         progress.reset(
             task,
-            total=len(dois_by_path),
+            total=sum(
+                doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata"}
+                for path in upload_candidates
+            ),
             completed=0,
             description="Checking DOI duplicates",
         )
+        trusted_dois = [
+            dois_by_path[path]
+            for path in upload_candidates
+            if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata"}
+        ]
         existing_by_doi = get_existing_pdfs_by_doi(
-            dois_by_path.values(),
+            trusted_dois,
             progress_callback=lambda completed: progress.update(task, completed=completed),
         )
         new_pdfs = []
         aliases_to_register: list[tuple[str, str]] = []
         for pdf_path in upload_candidates:
-            existing_pdf = existing_by_doi.get(dois_by_path[pdf_path])
+            automatic_source = doi_sources_by_path[pdf_path] in {
+                "filename",
+                "pdf-content",
+                "pdf-metadata",
+            }
+            existing_pdf = None if automatic_source else existing_by_doi.get(dois_by_path[pdf_path])
             if existing_pdf and not force:
                 latest_pdf = existing_pdf
                 skipped += 1

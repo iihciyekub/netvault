@@ -229,10 +229,16 @@ NetVault uses a smart DOI resolver rather than a single PDF regex:
 - PDF metadata markers such as `prism:doi`, `crossmark:DOI`, `pdfx:doi`, and `dc:identifier`
 - filename DOI values, including names like `10.1016_j.chb.2015.03.041.pdf`
 - publisher filename patterns such as Springer `s12144-024-...`, PLOS `journal.pone...`, and Frontiers `fpsyg-...`
-- visible first-page text if `pdftotext` is available
+- visible text from the first three pages if `pdftotext` is available
 - reference-list DOI candidates are heavily down-ranked
 - raw PDF text fallback for unusual encodings
 - confidence scoring when multiple DOI candidates are present
+
+During an automatic upload, the server tries filename, PDF metadata, and first-three-page DOI
+candidates in order. Each candidate is looked up in Crossref and, when PDF text is available,
+the normalized Crossref title must match the PDF. Invalid filename candidates automatically fall
+back to metadata or page content. Use `--no-crossref` only when this online verification is not
+required; ambiguous offline evidence still requires an explicit `--doi`.
 
 PDFs without a DOI are rejected. This keeps the vault DOI-centered.
 

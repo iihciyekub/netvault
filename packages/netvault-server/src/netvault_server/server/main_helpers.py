@@ -1,5 +1,9 @@
+import html
 import json
+import re
+import unicodedata
 from dataclasses import replace
+from difflib import SequenceMatcher
 
 from fastapi import HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
@@ -8,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from netvault_server.server.crossref import CrossrefMetadata, fetch_crossref_metadata
 from netvault_server.server.doi import (
-    doi_evidence_requires_confirmation,
+    DoiCandidate,
+    extract_pdf_text,
     extract_doi_evidence,
     normalize_doi,
 )
@@ -75,7 +80,7 @@ def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata, *, overwrite: 
         pdf.crossref_url = metadata.resource_url or pdf.crossref_url
 
 
-def doi_evidence_json(evidence) -> str:
+def doi_evidence_json(evidence, verification: list[dict] | None = None) -> str:
     return json.dumps(
         {
             "source": evidence.source,
@@ -90,9 +95,151 @@ def doi_evidence_json(evidence) -> str:
                 }
                 for candidate in evidence.candidates
             ],
+            "verification": verification or [],
         },
         ensure_ascii=False,
     )
+
+
+def _normalized_title_text(value: str) -> str:
+    value = html.unescape(unicodedata.normalize("NFKC", value)).casefold()
+    value = re.sub(r"-\s+", "", value)
+    return " ".join(re.findall(r"[\w]+", value, flags=re.UNICODE))
+
+
+def title_match_score(title: str | None, pdf_text: str) -> float | None:
+    """Return a deterministic title match score, or None when PDF text is unavailable."""
+    normalized_title = _normalized_title_text(title or "")
+    normalized_pdf = _normalized_title_text(pdf_text)
+    if len(normalized_title.replace(" ", "")) < 12:
+        return 0.0
+    if len(normalized_pdf.replace(" ", "")) < 40:
+        return None
+
+    compact_title = normalized_title.replace(" ", "")
+    compact_pdf = normalized_pdf.replace(" ", "")
+    if compact_title in compact_pdf:
+        return 1.0
+
+    title_tokens = normalized_title.split()
+    pdf_tokens = normalized_pdf.split()
+    if not title_tokens or len(pdf_tokens) < max(1, len(title_tokens) - 3):
+        return 0.0
+    minimum = max(1, len(title_tokens) - 3)
+    maximum = min(len(pdf_tokens), len(title_tokens) + 3)
+    best = 0.0
+    for width in range(minimum, maximum + 1):
+        for start in range(0, len(pdf_tokens) - width + 1):
+            window = " ".join(pdf_tokens[start : start + width])
+            best = max(best, SequenceMatcher(None, normalized_title, window).ratio())
+            if best >= 0.98:
+                return best
+    return best
+
+
+def _ordered_automatic_candidates(
+    evidence,
+    client_doi: str | None,
+    client_source: str | None,
+) -> list[DoiCandidate]:
+    source_order = {"filename": 0, "pdf-metadata": 1, "pdf-content": 2}
+    candidates = list(evidence.candidates)
+    if client_doi and not any(candidate.doi == client_doi for candidate in candidates):
+        candidates.append(
+            DoiCandidate(
+                client_doi,
+                client_source if client_source in AUTOMATIC_CLIENT_DOI_SOURCES else "pdf-content",
+                "client-hint",
+            )
+        )
+    candidates.sort(
+        key=lambda candidate: (
+            source_order.get(candidate.source, 9),
+            -candidate.score,
+            candidate.doi,
+        )
+    )
+    unique = []
+    seen = set()
+    for candidate in candidates:
+        if candidate.doi in seen:
+            continue
+        seen.add(candidate.doi)
+        unique.append(candidate)
+    return unique[:12]
+
+
+async def verify_automatic_doi(
+    evidence,
+    path,
+    client_doi: str | None = None,
+    client_source: str | None = None,
+) -> tuple[object, CrossrefMetadata, list[dict]]:
+    pdf_text = await run_in_threadpool(extract_pdf_text, path)
+    attempts: list[dict] = []
+    crossref_unavailable = False
+    candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
+
+    for candidate in candidates:
+        metadata = await run_in_threadpool(fetch_crossref_metadata, candidate.doi)
+        attempt = {
+            "doi": candidate.doi,
+            "source": candidate.source,
+            "crossref_status": metadata.status,
+        }
+        if metadata.status == "unavailable":
+            crossref_unavailable = True
+            attempt["accepted"] = False
+            attempt["reason"] = "Crossref unavailable"
+            attempts.append(attempt)
+            continue
+        if metadata.status != "ok":
+            attempt["accepted"] = False
+            attempt["reason"] = "DOI not found in Crossref"
+            attempts.append(attempt)
+            continue
+
+        match_score = title_match_score(metadata.title, pdf_text)
+        attempt["crossref_title"] = metadata.title
+        attempt["title_match_score"] = match_score
+        if match_score is not None and match_score < 0.88:
+            attempt["accepted"] = False
+            attempt["reason"] = "Crossref title does not match the PDF"
+            attempts.append(attempt)
+            continue
+
+        try:
+            canonical_doi = normalize_doi(metadata.canonical_doi or candidate.doi)
+        except ValueError:
+            attempt["accepted"] = False
+            attempt["reason"] = "Crossref returned an invalid canonical DOI"
+            attempts.append(attempt)
+            continue
+        attempt["accepted"] = True
+        attempt["canonical_doi"] = canonical_doi
+        attempts.append(attempt)
+        return (
+            replace(
+                evidence,
+                status="ok",
+                doi=canonical_doi,
+                source=candidate.source,
+                reason=None,
+            ),
+            replace(metadata, canonical_doi=canonical_doi),
+            attempts,
+        )
+
+    if crossref_unavailable:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Crossref was unavailable and no DOI candidate could be verified",
+        )
+    publisher_url = any(candidate.embedded_publisher_url for candidate in candidates)
+    detail = "No DOI candidate could be verified against Crossref and the PDF title"
+    if publisher_url:
+        detail += "; a candidate appeared only in a publisher download URL"
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
 
 
 def add_upload_record(
@@ -154,7 +301,7 @@ async def process_upload(
             if staged_path is not None:
                 promote_staged_pdf(staged_path, sha256)
                 staged_path = None
-            if doi:
+            if doi and doi_source not in AUTOMATIC_CLIENT_DOI_SOURCES:
                 try:
                     normalized_explicit_doi = normalize_doi(doi)
                 except ValueError as exc:
@@ -186,20 +333,28 @@ async def process_upload(
             return UploadResponse(pdf=pdf_to_read(pdf_by_sha), deduplicated=True)
 
         evidence_path = staged_path or object_path(sha256)
-        if doi_source in AUTOMATIC_CLIENT_DOI_SOURCES:
+        verified_metadata: CrossrefMetadata | None = None
+        verification: list[dict] = []
+        automatic_resolution = doi_source in AUTOMATIC_CLIENT_DOI_SOURCES or doi is None
+        client_doi = None
+        if automatic_resolution:
             evidence = extract_doi_evidence(evidence_path, filename=file.filename)
-            try:
-                client_doi = normalize_doi(doi or "")
-            except ValueError as exc:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-            if evidence.status != "ok" or evidence.doi != client_doi:
-                detected = evidence.doi or evidence.reason or "no DOI"
+            if doi:
+                try:
+                    client_doi = normalize_doi(doi)
+                except ValueError as exc:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            if not evidence.candidates and not client_doi:
                 raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        f"Client DOI {client_doi} does not match server PDF analysis ({detected}). "
-                        "Update NetVault and confirm the identity with --doi if needed."
-                    ),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=evidence.reason or "No DOI found in PDF. Pass --doi DOI when uploading.",
+                )
+            if not no_crossref:
+                evidence, verified_metadata, verification = await verify_automatic_doi(
+                    evidence,
+                    evidence_path,
+                    client_doi=client_doi,
+                    client_source=doi_source,
                 )
         else:
             evidence = extract_doi_evidence(
@@ -207,10 +362,13 @@ async def process_upload(
                 explicit_doi=doi,
                 filename=file.filename,
             )
-        if doi_source is not None and evidence.status == "ok":
+        if doi_source is not None and not automatic_resolution and evidence.status == "ok":
             evidence = replace(evidence, source=doi_source)
         if evidence.status == "conflict":
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=evidence.reason or "DOI conflict")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=evidence.reason or "DOI candidates are ambiguous; confirm with --doi",
+            )
         if evidence.status != "ok" or not evidence.doi:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -238,7 +396,10 @@ async def process_upload(
                 ),
             )
         if force and pdf_by_doi is not None:
-            metadata = await run_in_threadpool(fetch_crossref_metadata, normalized_doi)
+            metadata = verified_metadata or await run_in_threadpool(
+                fetch_crossref_metadata,
+                normalized_doi,
+            )
             if metadata.status != "ok":
                 error_status = (
                     status.HTTP_404_NOT_FOUND
@@ -257,7 +418,7 @@ async def process_upload(
             db.execute(delete(PdfFileAlias).where(PdfFileAlias.pdf_id == pdf_by_doi.id))
             pdf_by_doi.doi = normalized_doi
             pdf_by_doi.doi_source = evidence.source or "explicit"
-            pdf_by_doi.doi_evidence = doi_evidence_json(evidence)
+            pdf_by_doi.doi_evidence = doi_evidence_json(evidence, verification)
             pdf_by_doi.sha256 = sha256
             pdf_by_doi.original_name = file.filename or f"{sha256}.pdf"
             pdf_by_doi.size = size
@@ -286,6 +447,25 @@ async def process_upload(
                 replaced=True,
             )
 
+        if (
+            pdf_by_doi is not None
+            and pdf_by_doi.sha256 != sha256
+            and automatic_resolution
+            and verified_metadata is not None
+            and not force
+        ):
+            db.add(PdfFileAlias(pdf_id=pdf_by_doi.id, sha256=sha256))
+            add_upload_record(pdf_by_doi, file, size, user, db, idempotency_key)
+            db.commit()
+            if staged_path is not None:
+                staged_path.unlink(missing_ok=True)
+                staged_path = None
+            from netvault_server.server.stats import invalidate_stats_cache
+
+            invalidate_stats_cache()
+            db.refresh(pdf_by_doi)
+            return UploadResponse(pdf=pdf_to_read(pdf_by_doi), deduplicated=True)
+
         if pdf_by_doi is not None and pdf_by_doi.sha256 != sha256:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -299,7 +479,7 @@ async def process_upload(
             pdf = Pdf(
                 doi=normalized_doi,
                 doi_source=evidence.source,
-                doi_evidence=doi_evidence_json(evidence),
+                doi_evidence=doi_evidence_json(evidence, verification),
                 sha256=sha256,
                 original_name=file.filename or f"{sha256}.pdf",
                 size=size,
@@ -312,7 +492,7 @@ async def process_upload(
         elif not pdf.doi:
             pdf.doi = normalized_doi
             pdf.doi_source = evidence.source
-            pdf.doi_evidence = doi_evidence_json(evidence)
+            pdf.doi_evidence = doi_evidence_json(evidence, verification)
         if pdf.is_deleted:
             pdf.is_deleted = False
             pdf.deleted_at = None
@@ -320,23 +500,12 @@ async def process_upload(
 
         if evidence.source and not pdf.doi_source:
             pdf.doi_source = evidence.source
-            pdf.doi_evidence = doi_evidence_json(evidence)
+            pdf.doi_evidence = doi_evidence_json(evidence, verification)
         if not no_crossref and (created_pdf or not pdf.title or pdf.crossref_status in (None, "pending", "unavailable")):
-            metadata = await run_in_threadpool(fetch_crossref_metadata, normalized_doi)
-            if (
-                created_pdf
-                and evidence.source in AUTOMATIC_CLIENT_DOI_SOURCES
-                and doi_evidence_requires_confirmation(evidence)
-                and metadata.status != "ok"
-            ):
-                error_status = 422 if metadata.status == "not_found" else status.HTTP_503_SERVICE_UNAVAILABLE
-                raise HTTPException(
-                    status_code=error_status,
-                    detail=(
-                        "Automatically detected DOI appears embedded in a publisher download URL "
-                        f"and could not be verified ({metadata.status}). Confirm it with --doi."
-                    ),
-                )
+            metadata = verified_metadata or await run_in_threadpool(
+                fetch_crossref_metadata,
+                normalized_doi,
+            )
             apply_crossref_metadata(pdf, metadata)
         elif no_crossref:
             pdf.crossref_status = "skipped"

@@ -111,7 +111,7 @@ def test_doi_suffix_preserves_additional_slashes() -> None:
 
 
 def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
-    assert netvault.doi.DOI_RESOLVER_VERSION == 2
+    assert netvault.doi.DOI_RESOLVER_VERSION == 3
 
 
 def test_update_command_uses_uv_for_uv_tool_install(monkeypatch) -> None:
@@ -626,7 +626,13 @@ def test_upload_no_index_uses_existing_pdf_resolver(
     monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
     monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
     monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
-    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
+    doi_checks = []
+
+    def existing_by_doi(dois, **kwargs):
+        doi_checks.append(list(dois))
+        return {"10.1234/pdf.value": {"doi": "10.1234/pdf.value"}}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", existing_by_doi)
 
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/pdf.value\n%%EOF\n")
@@ -665,6 +671,7 @@ def test_upload_no_index_uses_existing_pdf_resolver(
     assert "download index hits" not in result.output
     assert uploads[0]["doi"] == "10.1234/pdf.value"
     assert uploads[0]["doi_source"] == "pdf-content"
+    assert doi_checks == [[]]
 
 
 def test_manual_identity_cache_survives_file_rename(tmp_path: Path, monkeypatch) -> None:
@@ -959,24 +966,23 @@ def test_smart_doi_prefers_filename_over_content_noise(tmp_path: Path) -> None:
     assert evidence.source == "filename"
 
 
-def test_filename_doi_fast_path_skips_text_extractors(tmp_path: Path, monkeypatch) -> None:
-    pdf = tmp_path / "10.1234_fast-path.pdf"
-    pdf.write_bytes(b"%PDF-1.4\nno embedded metadata\n%%EOF\n")
-
-    def fail_scan(*args, **kwargs):
-        raise AssertionError("filename DOI fast path should not run pdftotext")
-
-    def fail_reader(*args, **kwargs):
-        raise AssertionError("filename DOI fast path should not run pypdf")
-
-    monkeypatch.setattr(netvault.doi, "scan_with_pdftotext", fail_scan)
-    monkeypatch.setattr(netvault.doi, "PdfReader", fail_reader)
+def test_filename_candidate_is_reconciled_with_nested_slash_pdf_doi(tmp_path: Path) -> None:
+    pdf = tmp_path / "10_25300_misq_2025_18946.pdf"
+    pdf.write_bytes(
+        b"%PDF-1.4\n"
+        b"DOI: 10.25300/MISQ/2025/18946\n"
+        b"%%EOF\n"
+    )
 
     evidence = extract_doi_evidence(pdf)
 
     assert evidence.status == "ok"
-    assert evidence.doi == "10.1234/fast-path"
-    assert evidence.source == "filename"
+    assert evidence.doi == "10.25300/misq/2025/18946"
+    assert evidence.source == "pdf-content"
+    assert {candidate.doi for candidate in evidence.candidates} == {
+        "10.25300/misq/2025/18946",
+        "10.25300/misq_2025_18946",
+    }
 
 
 def test_smart_doi_selects_labeled_content_candidate(tmp_path: Path) -> None:
@@ -993,6 +999,22 @@ def test_smart_doi_selects_labeled_content_candidate(tmp_path: Path) -> None:
 
     assert evidence.status == "ok"
     assert evidence.doi == "10.1234/article.main"
+
+
+def test_smart_doi_reads_document_info_metadata(tmp_path: Path) -> None:
+    pdf = tmp_path / "paper.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({"/Subject": "DOI: 10.1234/document.info"})
+    with pdf.open("wb") as handle:
+        writer.write(handle)
+
+    evidence = extract_doi_evidence(pdf)
+
+    assert evidence.status == "ok"
+    assert evidence.doi == "10.1234/document.info"
+    assert evidence.source == "pdf-metadata"
+    assert any(candidate.detail == "document-info:/Subject" for candidate in evidence.candidates)
 
 
 def test_smart_doi_rejects_publisher_download_url_suffix(tmp_path: Path) -> None:

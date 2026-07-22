@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "netvault-server"
-version = "0.7.15"
+version = "0.7.16"
 description = "FastAPI server, admin CLI, and web UI for NetVault."
 readme = "README.md"
 requires-python = ">=3.11"

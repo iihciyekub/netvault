@@ -1,5 +1,6 @@
 import hashlib
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -240,7 +241,7 @@ def test_exact_doi_search_falls_back_to_related_malformed_identifier(client: Tes
     assert [row["doi"] for row in searched.json()] == [malformed_doi]
 
 
-def test_server_rejects_stale_client_publisher_url_doi(client: TestClient) -> None:
+def test_server_replaces_stale_client_doi_with_verified_pdf_candidate(client: TestClient) -> None:
     headers = login(client, "admin", "admin-pass")
     correct_doi = "10.1108/mbr-10-2023-0163"
     malformed_doi = f"{correct_doi}/11288746/mbr-10-2023-0163en.pdf"
@@ -261,9 +262,110 @@ def test_server_rejects_stale_client_publisher_url_doi(client: TestClient) -> No
         doi_source="pdf-content",
     )
 
-    assert response.status_code == 409
-    assert "does not match server PDF analysis" in response.json()["detail"]
-    assert client.get("/pdfs", headers=headers).json() == []
+    assert response.status_code == 200
+    assert response.json()["pdf"]["doi"] == correct_doi
+    assert response.json()["pdf"]["doi_source"] == "pdf-content"
+
+
+def test_automatic_resolution_falls_back_from_filename_to_pdf_content(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = login(client, "admin", "admin-pass")
+    wrong_filename_doi = "10.25300/misq_2025_18946"
+    correct_doi = "10.25300/misq/2025/18946"
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    calls = []
+
+    def fake_crossref(doi: str):
+        calls.append(doi)
+        if doi == wrong_filename_doi:
+            return crossref.CrossrefMetadata(status="not_found")
+        return crossref.CrossrefMetadata(
+            status="ok",
+            canonical_doi=correct_doi.upper(),
+            title="AI-Augmented Content Validation in Behavioral Research",
+        )
+
+    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref)
+    response = upload(
+        client,
+        headers,
+        name="10_25300_misq_2025_18946.pdf",
+        content=(
+            b"%PDF-1.4\n"
+            b"AI-Augmented Content Validation in Behavioral Research\n"
+            b"DOI: 10.25300/MISQ/2025/18946\n"
+            b"%%EOF\n"
+        ),
+        doi=wrong_filename_doi,
+        doi_source="filename",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["pdf"]["doi"] == correct_doi
+    assert response.json()["pdf"]["doi_source"] == "pdf-content"
+    assert calls == [wrong_filename_doi, correct_doi]
+
+    detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": correct_doi})
+    verification = json.loads(detail.json()["doi_evidence"])["verification"]
+    assert verification[0]["reason"] == "DOI not found in Crossref"
+    assert verification[1]["accepted"] is True
+
+
+def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = login(client, "admin", "admin-pass")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    wrong_doi = "10.5555/wrong.filename"
+    correct_doi = "10.5555/correct.content"
+    monkeypatch.setattr(
+        main_helpers,
+        "extract_pdf_text",
+        lambda _path: "A Reliable Paper Title\nDOI: 10.5555/correct.content",
+    )
+
+    def fake_crossref(doi: str):
+        if doi == wrong_doi:
+            return crossref.CrossrefMetadata(status="ok", title="An Unrelated Article")
+        return crossref.CrossrefMetadata(status="ok", title="A Reliable Paper Title")
+
+    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref)
+    response = upload(
+        client,
+        headers,
+        name="10.5555_wrong.filename.pdf",
+        content=b"%PDF-1.4\nDOI: 10.5555/correct.content\n%%EOF\n",
+        doi=wrong_doi,
+        doi_source="filename",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["pdf"]["doi"] == correct_doi
+    detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": correct_doi})
+    attempts = json.loads(detail.json()["doi_evidence"])["verification"]
+    assert attempts[0]["reason"] == "Crossref title does not match the PDF"
+    assert attempts[1]["accepted"] is True
+
+
+def test_title_match_normalizes_line_breaks_punctuation_and_case() -> None:
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+
+    score = main_helpers.title_match_score(
+        "AI-Augmented Content Validation in Behavioral Research: Development & Evaluation",
+        "AI-\nAUGMENTED CONTENT VALIDATION IN BEHAVIORAL RESEARCH — Development and Evaluation",
+    )
+
+    assert score is not None and score >= 0.88
+    mismatch = main_helpers.title_match_score(
+        "Completely Different Work",
+        "A Reliable Paper Title with enough additional abstract text for comparison",
+    )
+    assert mismatch is not None and mismatch < 0.88
 
 
 def test_unverified_publisher_url_doi_requires_confirmation(

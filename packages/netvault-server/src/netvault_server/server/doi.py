@@ -245,6 +245,28 @@ def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
     return candidates_from_text(result.stdout, "pdf-content", "pdftotext")
 
 
+def extract_pdf_text(path: Path) -> str:
+    """Return usable text from the first three pages for identity verification."""
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-f", "1", "-l", "3", str(path), "-"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        result = None
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        return result.stdout
+
+    try:
+        reader = PdfReader(str(path))
+        return "\n".join(page.extract_text() or "" for page in reader.pages[:3])
+    except Exception:
+        return ""
+
+
 def metadata_candidates(raw_text: str) -> list[DoiCandidate]:
     candidates = []
     for pattern in DOI_METADATA_PATTERNS:
@@ -261,6 +283,28 @@ def metadata_candidates(raw_text: str) -> list[DoiCandidate]:
                 )
             except ValueError:
                 continue
+    return candidates
+
+
+def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
+    candidates = []
+    try:
+        metadata = reader.metadata or {}
+    except Exception:
+        return candidates
+    for key, value in metadata.items():
+        if not isinstance(value, str):
+            continue
+        for doi in find_dois_in_text(value):
+            candidates.append(
+                DoiCandidate(
+                    doi,
+                    "pdf-metadata",
+                    f"document-info:{key}",
+                    96,
+                    value[:220],
+                )
+            )
     return candidates
 
 
@@ -301,6 +345,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
 
     try:
         reader = PdfReader(str(path))
+        for candidate in document_info_candidates(reader):
+            add(candidate)
         page_texts = [page.extract_text() or "" for page in reader.pages[:3]]
     except Exception:
         page_texts = []
@@ -335,9 +381,6 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
             return DoiEvidence("conflict", None, None, candidates, "Filename DOI conflicts with PDF metadata DOI")
         doi = filename_matched or filename_doi
         source = "filename" if not filename_matched else choose_source(candidates, doi)
-    elif filename_matched:
-        doi = filename_matched
-        source = choose_source(candidates, doi)
     elif metadata_dois:
         if len(metadata_dois) == 1:
             doi = metadata_dois[0]

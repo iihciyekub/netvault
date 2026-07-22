@@ -21,7 +21,7 @@ DOI_METADATA_PATTERNS = [
     )
 ]
 DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 2
+DOI_RESOLVER_VERSION = 3
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -265,6 +265,28 @@ def metadata_candidates(raw_text: str) -> list[DoiCandidate]:
     return candidates
 
 
+def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
+    candidates = []
+    try:
+        metadata = reader.metadata or {}
+    except Exception:
+        return candidates
+    for key, value in metadata.items():
+        if not isinstance(value, str):
+            continue
+        for doi in find_dois_in_text(value):
+            candidates.append(
+                DoiCandidate(
+                    doi,
+                    "pdf-metadata",
+                    f"document-info:{key}",
+                    96,
+                    value[:220],
+                )
+            )
+    return candidates
+
+
 def extract_doi_from_pdf(path: Path) -> str | None:
     evidence = extract_doi_evidence(path)
     return evidence.doi if evidence.status == "ok" else None
@@ -277,42 +299,6 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         except ValueError:
             return DoiEvidence("no-doi", None, None, [], "Explicit DOI is invalid")
         return DoiEvidence("ok", doi, "explicit", [DoiCandidate(doi, "explicit", "--doi")])
-
-    filename_candidate = (
-        find_filename_doi_from_name(filename)
-        if filename
-        else find_filename_doi_from_name(path.name)
-    )
-    if filename_candidate:
-        raw_text = path.read_bytes().decode("latin-1", errors="ignore")
-        metadata = metadata_candidates(raw_text)
-        metadata_conflict = next(
-            (
-                candidate.doi
-                for candidate in metadata
-                if not doi_matches(filename_candidate.doi, candidate.doi)
-            ),
-            None,
-        )
-        candidates = [*metadata, filename_candidate]
-        if metadata_conflict:
-            return DoiEvidence(
-                "conflict",
-                None,
-                None,
-                candidates,
-                "Filename DOI conflicts with PDF metadata DOI",
-            )
-        matched = next(
-            (
-                candidate.doi
-                for candidate in metadata
-                if doi_matches(filename_candidate.doi, candidate.doi)
-            ),
-            None,
-        )
-        selected = matched or filename_candidate.doi
-        return DoiEvidence("ok", selected, choose_source(candidates, selected), candidates)
 
     candidates: list[DoiCandidate] = []
     seen = set()
@@ -338,6 +324,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
 
     try:
         reader = PdfReader(str(path))
+        for candidate in document_info_candidates(reader):
+            add(candidate)
         page_texts = [page.extract_text() or "" for page in reader.pages[:3]]
     except Exception:
         page_texts = []
@@ -345,8 +333,18 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         for candidate in candidates_from_text(text, "pdf-content", f"pypdf-page-{index}", page=index):
             add(candidate)
 
+    filename_candidate = find_filename_doi_from_name(filename) if filename else find_filename_doi_from_name(path.name)
+    if filename_candidate:
+        add(filename_candidate)
+
     metadata_dois = unique_dois(candidates, {"pdf-metadata"})
     content_dois = unique_dois(candidates, {"pdf-content"})
+    pdf_dois = unique_dois(candidates, {"pdf-content", "pdf-metadata"})
+    filename_doi = filename_candidate.doi if filename_candidate else None
+    filename_matched = None
+    if filename_doi:
+        filename_matched = next((doi for doi in pdf_dois if doi_matches(filename_doi, doi)), None)
+
     scored_dois = []
     for candidate_doi in unique_dois(candidates):
         best = choose_candidate(candidates, candidate_doi)
@@ -356,7 +354,13 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
 
     doi = None
     source = None
-    if metadata_dois:
+    if filename_doi:
+        metadata_conflict = next((metadata_doi for metadata_doi in metadata_dois if not doi_matches(filename_doi, metadata_doi)), None)
+        if metadata_conflict:
+            return DoiEvidence("conflict", None, None, candidates, "Filename DOI conflicts with PDF metadata DOI")
+        doi = filename_matched or filename_doi
+        source = "filename" if not filename_matched else choose_source(candidates, doi)
+    elif metadata_dois:
         if len(metadata_dois) == 1:
             doi = metadata_dois[0]
             source = choose_source(candidates, doi)

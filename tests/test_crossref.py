@@ -35,3 +35,37 @@ def test_crossref_session_retries_transient_failures(monkeypatch) -> None:
     metadata = crossref.fetch_crossref_metadata("10.1234/missing")
     assert metadata.status == "not_found"
     assert metadata.fetched_at is not None
+
+
+def test_crossref_returns_the_registry_canonical_doi(monkeypatch) -> None:
+    from netvault_server.server import crossref
+
+    class FakeResponse:
+        status_code = 200
+        ok = True
+
+        @staticmethod
+        def json():
+            return {
+                "message": {
+                    "DOI": "10.25300/MISQ/2025/18946",
+                    "title": ["AI-Augmented Content Validation"],
+                }
+            }
+
+    class FakeSession:
+        @staticmethod
+        def get(*args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        crossref,
+        "get_settings",
+        lambda: SimpleNamespace(crossref_mailto=None, crossref_user_agent="NetVault test"),
+    )
+    monkeypatch.setattr(crossref, "_session", lambda: FakeSession())
+
+    metadata = crossref.fetch_crossref_metadata("10.25300/misq/2025/18946")
+
+    assert metadata.status == "ok"
+    assert metadata.canonical_doi == "10.25300/MISQ/2025/18946"

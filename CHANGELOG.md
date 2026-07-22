@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.16 - 2026-07-22
+
+- Resolve automatic DOI candidates in filename, PDF metadata, and first-three-page order,
+  verify each candidate with Crossref and normalized PDF-title matching, and fall back instead
+  of rejecting stale client hints.
+- Preserve canonical DOI values returned by Crossref, read PDF Document Info DOI values, and
+  invalidate resolver-version-2 automatic identity cache entries.
+
 ## 0.7.15 - 2026-07-20
 
 - Harden the standalone CLI installers for macOS, Linux, and Windows with retrying
