@@ -40,7 +40,7 @@ def _prepare_correction(
             status_code=status.HTTP_409_CONFLICT,
             detail="The PDF changed after the correction was prepared",
         )
-    if expected_current_doi and normalize_doi(expected_current_doi) != normalize_doi(pdf.doi):
+    if expected_current_doi and expected_current_doi.strip().casefold() != pdf.doi.strip().casefold():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="The DOI changed after the correction was prepared",
@@ -66,7 +66,7 @@ def _prepare_correction(
             detail="Metadata provider returned an invalid canonical DOI",
         ) from exc
 
-    if canonical_doi == normalize_doi(pdf.doi):
+    if canonical_doi == pdf.doi.strip().casefold():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The PDF already uses this DOI",
