@@ -232,8 +232,20 @@ Deletion is a soft delete. The row remains in PostgreSQL and the object file
 currently remains in storage.
 
 Correct a PDF that was registered under the wrong DOI without changing its row ID,
-file, upload history, download history, or SHA-256 aliases. Preview first and bind
-the operation to the currently observed file hash:
+file, upload history, download history, or SHA-256 aliases. The preferred remote workflow is the
+lightweight user CLI, which previews the corrected canonical DOI and refreshed metadata before
+changing anything:
+
+```bash
+nv correct-doi 56240 10.1287/msom.2021.1032 \
+  --reason "Incorrect DOI extracted from PDF syntax"
+```
+
+Administrators can perform the same preview/apply workflow from **Search PDFs → Correct DOI** in
+the Web UI.
+
+The server-package admin command remains available for lower-level operations. Preview first and
+bind the operation to the currently observed file hash:
 
 ```bash
 netvault-admin correct-doi 56240 10.1108/MBR-10-2023-0163 \
@@ -246,9 +258,9 @@ netvault-admin correct-doi 56240 10.1108/MBR-10-2023-0163 \
   --expected-sha256 b94a428842b7a98f127abda5dff35b8de7412562246549e8b599a001b730399e
 ```
 
-The server requires an administrator, rejects target DOI conflicts, verifies the
-new DOI through Crossref, and stores the previous identity and metadata in
-`pdf_doi_corrections`. Do not use `--force` for identity corrections; it only
+The server requires an administrator, rejects target DOI conflicts, verifies the new DOI and
+available PDF title evidence, refreshes registry metadata, and stores the previous identity and
+metadata in `pdf_doi_corrections`. Do not use `--force` for identity corrections; it only
 replaces bytes and metadata for the same DOI.
 
 ## Updates
