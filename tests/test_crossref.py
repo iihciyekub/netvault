@@ -69,3 +69,28 @@ def test_crossref_returns_the_registry_canonical_doi(monkeypatch) -> None:
 
     assert metadata.status == "ok"
     assert metadata.canonical_doi == "10.25300/MISQ/2025/18946"
+
+
+def test_doi_metadata_falls_back_when_crossref_has_no_record(monkeypatch) -> None:
+    from netvault_server.server import crossref
+
+    monkeypatch.setattr(
+        crossref,
+        "fetch_crossref_metadata",
+        lambda _doi: crossref.CrossrefMetadata(status="not_found"),
+    )
+    monkeypatch.setattr(
+        crossref,
+        "fetch_doi_org_metadata",
+        lambda doi: crossref.CrossrefMetadata(
+            status="ok",
+            canonical_doi=doi,
+            title="Repository Object",
+            provider="doi.org",
+        ),
+    )
+
+    metadata = crossref.fetch_doi_metadata("10.9999/example")
+    assert metadata.status == "ok"
+    assert metadata.provider == "doi.org"
+    assert metadata.title == "Repository Object"
