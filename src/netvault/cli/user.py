@@ -1227,6 +1227,160 @@ def doi_command(
     render_doi_evidence(path, explicit_doi=doi, verbose=verbose)
 
 
+def resolve_remote_pdf(identifier: str) -> dict:
+    value = identifier.strip()
+    if value.isdigit() or (len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)):
+        return api_get(f"/pdfs/{value}")
+    return api_get("/pdfs/by-doi", doi=value)
+
+
+def render_doi_correction_preview(result: dict) -> None:
+    match = result.get("title_match_score")
+    match_text = "unavailable" if match is None else f"{float(match) * 100:.0f}%"
+    console.print(
+        Panel.fit(
+            f"[bold]PDF[/bold] #{result['pdf_id']}\n"
+            f"[bold]Current DOI[/bold] {result['previous_doi']}\n"
+            f"[bold]Requested DOI[/bold] {result['requested_doi']}\n"
+            f"[bold]Canonical DOI[/bold] {result['new_doi']}\n"
+            f"[bold]SHA-256[/bold] {result['sha256']}\n\n"
+            f"[bold]Metadata[/bold] {result.get('metadata_provider') or '-'}\n"
+            f"[bold]Title[/bold] {result.get('title') or '-'}\n"
+            f"[bold]Journal[/bold] {result.get('container_title') or '-'}\n"
+            f"[bold]Year[/bold] {result.get('published_year') or '-'}\n"
+            f"[bold]PDF title match[/bold] {match_text}",
+            title="DOI Correction Preview",
+        )
+    )
+
+
+@app.command(
+    "correct-doi",
+    epilog="""\b
+Examples:
+  nv correct-doi 56240 10.1287/msom.2021.1032 --reason "Incorrect PDF DOI extraction"
+  nv correct-doi 10.1287/msom.2021.1032%29%3E%3E/border 10.1287/msom.2021.1032 --reason "Trim PDF object syntax"
+  nv correct-doi 56240 10.1287/msom.2021.1032 --reason "Verified manually" --dry-run
+""",
+)
+def correct_doi_command(
+    identifier: str = typer.Argument(..., help="Current DOI, PDF id, or SHA-256."),
+    new_doi: str = typer.Argument(..., help="Correct DOI for the existing PDF."),
+    reason: str = typer.Option(..., "--reason", help="Why the DOI identity is being corrected."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without changing the server."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Apply without an interactive confirmation."),
+    allow_title_mismatch: bool = typer.Option(
+        False,
+        "--allow-title-mismatch",
+        help="Explicitly allow a verified DOI whose metadata title does not match PDF text.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    me = api_get("/me")
+    if me.get("role") != "admin":
+        raise RuntimeError("Admin role required")
+
+    pdf = resolve_remote_pdf(identifier)
+    payload = {
+        "doi": new_doi,
+        "reason": reason,
+        "expected_sha256": pdf["sha256"],
+        "expected_current_doi": pdf["doi"],
+        "allow_title_mismatch": allow_title_mismatch,
+        "dry_run": True,
+    }
+    preview = api_post(f"/admin/pdfs/{pdf['id']}/correct-doi", payload)
+
+    if json_output:
+        typer.echo(json.dumps(preview, ensure_ascii=False))
+    else:
+        render_doi_correction_preview(preview)
+
+    if dry_run:
+        return
+
+    if preview.get("requires_title_override") and not allow_title_mismatch:
+        raise RuntimeError(
+            "Metadata title does not match the PDF. Review the preview and rerun with "
+            "--allow-title-mismatch only when the DOI was independently verified."
+        )
+
+    if not yes and not typer.confirm(
+        "Apply DOI correction? The PDF file, SHA-256, aliases and history stay unchanged",
+        default=False,
+    ):
+        console.print("Cancelled.")
+        return
+
+    payload.update(
+        {
+            "expected_sha256": preview["sha256"],
+            "expected_current_doi": preview["previous_doi"],
+            "dry_run": False,
+        }
+    )
+    result = api_post(f"/admin/pdfs/{pdf['id']}/correct-doi", payload)
+    if json_output:
+        typer.echo(json.dumps(result, ensure_ascii=False))
+    else:
+        console.print(
+            f"Corrected PDF #{result['pdf_id']}: "
+            f"{result['previous_doi']} -> {result['new_doi']}"
+        )
+        if result.get("title"):
+            console.print(f"Metadata: {result['title']}")
+
+
+@app.command(
+    "doi-audit",
+    epilog="""\b
+Examples:
+  nv doi-audit
+  nv doi-audit --limit 500 --json
+""",
+)
+def doi_audit_command(
+    limit: int = typer.Option(500, min=1, max=500, help="Maximum active PDFs to inspect."),
+    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    me = api_get("/me")
+    if me.get("role") != "admin":
+        raise RuntimeError("Admin role required")
+    rows = api_get("/pdfs", limit=limit, offset=0)
+    suspicious = []
+    tokens = (">>", "<<", "/border", "/uri", "/annot")
+    for row in rows:
+        doi = str(row.get("doi") or "")
+        reasons = []
+        if any(token in doi.lower() for token in tokens):
+            reasons.append("PDF syntax in DOI")
+        if row.get("crossref_status") != "ok":
+            reasons.append(f"metadata status={row.get('crossref_status')}")
+        try:
+            normalized = normalize_doi(doi)
+        except ValueError:
+            reasons.append("invalid under resolver v4")
+        else:
+            if normalized != doi.lower():
+                reasons.append(f"normalizes to {normalized}")
+        if reasons:
+            suspicious.append({**row, "audit_reasons": reasons})
+
+    if json_output:
+        typer.echo(json.dumps(suspicious, ensure_ascii=False))
+        return
+    if not suspicious:
+        console.print("No suspicious DOI records found in the inspected rows.")
+        return
+    table = Table(title="DOI Audit", box=box.SIMPLE_HEAVY)
+    table.add_column("ID", justify="right")
+    table.add_column("DOI")
+    table.add_column("Reason")
+    for row in suspicious:
+        table.add_row(str(row["id"]), row["doi"], "; ".join(row["audit_reasons"]))
+    console.print(table)
+
+
 @app.command(
     "list",
     epilog="""\b
