@@ -1,4 +1,5 @@
 from pathlib import Path
+from html.parser import HTMLParser
 import logging
 import secrets
 from typing import Any
@@ -7,6 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 from starlette.background import BackgroundTask
 from zipstream import ZIP_STORED, ZipStream
 from sqlalchemy import func, select
@@ -68,8 +70,49 @@ def format_number(value: int) -> str:
     return f"{value:,}"
 
 
+class _MetadataMarkupSanitizer(HTMLParser):
+    _allowed_tags = {
+        "b": "strong",
+        "em": "em",
+        "i": "em",
+        "jats:bold": "strong",
+        "jats:italic": "em",
+        "jats:sub": "sub",
+        "jats:sup": "sup",
+        "strong": "strong",
+        "sub": "sub",
+        "sup": "sup",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if safe_tag := self._allowed_tags.get(tag):
+            self.parts.append(f"<{safe_tag}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        if safe_tag := self._allowed_tags.get(tag):
+            self.parts.append(f"</{safe_tag}>")
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(str(escape(data)))
+
+
+def render_metadata(value: str | None) -> Markup:
+    """Render Crossref inline markup while dropping tags and attributes we do not trust."""
+    if not value:
+        return Markup("")
+    parser = _MetadataMarkupSanitizer()
+    parser.feed(value)
+    parser.close()
+    return Markup("".join(parser.parts))
+
+
 templates.env.filters["bytes"] = format_bytes
 templates.env.filters["number"] = format_number
+templates.env.filters["metadata"] = render_metadata
 
 
 def base_path() -> str:
@@ -129,7 +172,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui23",
+        "asset_version": f"{__version__}-ui24",
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)

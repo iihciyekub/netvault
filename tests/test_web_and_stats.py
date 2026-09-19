@@ -39,6 +39,14 @@ def test_dashboard_number_format_uses_thousands_separators() -> None:
     assert web.format_number(12539) == "12,539"
 
 
+def test_metadata_markup_preserves_allowed_inline_tags() -> None:
+    web = importlib.import_module("netvault_server.server.web")
+
+    rendered = str(web.render_metadata("A <jats:italic>safe</jats:italic> <unknown>plain</unknown> & value"))
+
+    assert rendered == "A <em>safe</em> plain &amp; value"
+
+
 def test_ft50_default_filter_uses_ceibs_50_journal_list() -> None:
     filters = importlib.import_module("netvault_server.server.journal_filters")
 
@@ -496,7 +504,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
     assert "Version" in info_page.text
     assert "0.7.17" in info_page.text
-    assert "app.js?v=0.7.17-ui23" in info_page.text
+    assert "app.js?v=0.7.17-ui24" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -602,6 +610,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Correct DOI" in pdfs_with_query.text
     assert "data-doi-correct" in pdfs_with_query.text
     assert "data-doi-dialog" in pdfs_with_query.text
+    assert "doi-copy-button" in pdfs_with_query.text
+    assert "data-copy=" in pdfs_with_query.text
 
     publisher_search = client.get("/web/pdfs", params={"q": "NetVault Press"})
     assert publisher_search.status_code == 200

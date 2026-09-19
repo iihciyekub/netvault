@@ -22,6 +22,7 @@
           <a class="doi-link" href="{{ pdf.crossref_url or ('https://doi.org/' ~ (pdf.doi|urlencode)) }}" target="_blank" rel="noreferrer" data-no-pjax>
             <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>{{ pdf.doi }}</span><i class="fa-solid fa-arrow-up-right-from-square external-mark" aria-hidden="true"></i>
           </a>
+          <button class="copy-button doi-copy-button" type="button" data-copy="{{ pdf.doi }}" aria-label="Copy DOI"><span data-copy-label>Copy</span></button>
           {% if pdf.crossref_status == "ok" %}
           <span class="crossref-badge is-verified" title="Metadata retrieved from Crossref">
             <span class="verified-seal" aria-hidden="true"><i class="fa-solid fa-certificate"></i><i class="fa-solid fa-check"></i></span>
@@ -31,14 +32,14 @@
           <span class="crossref-badge is-unverified"><i class="fa-solid fa-circle-question" aria-hidden="true"></i><span>Crossref {{ pdf.crossref_status|replace('_', ' ') }}</span></span>
           {% endif %}
         </div>
-        <h2 class="paper-title">{{ pdf.title or pdf.original_name }}</h2>
+        <h2 class="paper-title">{% if pdf.title %}{{ pdf.title|metadata }}{% else %}{{ pdf.original_name }}{% endif %}</h2>
         {% if pdf.authors and pdf.authors != "[]" %}
-        <p class="paper-authors"><i class="fa-solid fa-user-group" aria-hidden="true"></i><span>{{ pdf.authors }}</span></p>
+        <p class="paper-authors"><i class="fa-solid fa-user-group" aria-hidden="true"></i><span>{{ pdf.authors|metadata }}</span></p>
         {% endif %}
         <div class="paper-metadata">
-          {% if pdf.container_title %}<span><i class="fa-solid fa-book" aria-hidden="true"></i>{{ pdf.container_title }}</span>{% endif %}
+          {% if pdf.container_title %}<span><i class="fa-solid fa-book" aria-hidden="true"></i>{{ pdf.container_title|metadata }}</span>{% endif %}
           {% if pdf.published_year %}<span><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>{{ pdf.published_year }}</span>{% endif %}
-          {% if pdf.publisher %}<span><i class="fa-solid fa-building-columns" aria-hidden="true"></i>{{ pdf.publisher }}</span>{% endif %}
+          {% if pdf.publisher %}<span><i class="fa-solid fa-building-columns" aria-hidden="true"></i>{{ pdf.publisher|metadata }}</span>{% endif %}
         </div>
         <div class="paper-file-meta">
           <span><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ pdf.original_name }}</span>
