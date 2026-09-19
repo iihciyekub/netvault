@@ -24,6 +24,7 @@ class CrossrefMetadata:
     published_year: int | None = None
     resource_url: str | None = None
     fetched_at: datetime | None = None
+    provider: str = "crossref"
 
 
 def _first(values: list[Any] | None) -> Any | None:
@@ -105,4 +106,81 @@ def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
         published_year=_published_year(message),
         resource_url=message.get("URL"),
         fetched_at=fetched_at,
+        provider="crossref",
     )
+
+
+def _csl_authors(message: dict[str, Any]) -> str | None:
+    authors = []
+    for author in message.get("author") or []:
+        given = author.get("given")
+        family = author.get("family")
+        literal = author.get("literal")
+        name = " ".join(part for part in (given, family) if part) or literal
+        if name:
+            authors.append(name)
+    return "; ".join(authors) if authors else None
+
+
+def _csl_year(message: dict[str, Any]) -> int | None:
+    for key in ("issued", "published", "created"):
+        date_parts = message.get(key, {}).get("date-parts")
+        first = _first(date_parts)
+        if first and isinstance(first, list) and first:
+            year = first[0]
+            return int(year) if isinstance(year, int) else None
+    return None
+
+
+def fetch_doi_org_metadata(doi: str) -> CrossrefMetadata:
+    settings = get_settings()
+    fetched_at = datetime.now(timezone.utc)
+    url = f"https://doi.org/{quote(doi, safe='/')}"
+    headers = {
+        "Accept": "application/vnd.citationstyles.csl+json",
+        "User-Agent": settings.crossref_user_agent,
+    }
+    try:
+        response = _session().get(url, headers=headers, timeout=(3.05, 10), allow_redirects=True)
+    except requests.RequestException:
+        return CrossrefMetadata(status="unavailable", fetched_at=fetched_at, provider="doi.org")
+
+    if response.status_code == 404:
+        return CrossrefMetadata(status="not_found", fetched_at=fetched_at, provider="doi.org")
+    if not response.ok:
+        return CrossrefMetadata(status="unavailable", fetched_at=fetched_at, provider="doi.org")
+
+    try:
+        message = response.json()
+    except ValueError:
+        return CrossrefMetadata(status="unavailable", fetched_at=fetched_at, provider="doi.org")
+
+    title = message.get("title")
+    if isinstance(title, list):
+        title = _first(title)
+    container_title = message.get("container-title")
+    if isinstance(container_title, list):
+        container_title = _first(container_title)
+
+    return CrossrefMetadata(
+        status="ok",
+        canonical_doi=message.get("DOI") or doi,
+        title=title if isinstance(title, str) else None,
+        authors=_csl_authors(message),
+        container_title=container_title if isinstance(container_title, str) else None,
+        publisher=message.get("publisher") if isinstance(message.get("publisher"), str) else None,
+        published_year=_csl_year(message),
+        resource_url=message.get("URL") if isinstance(message.get("URL"), str) else f"https://doi.org/{doi}",
+        fetched_at=fetched_at,
+        provider="doi.org",
+    )
+
+
+def fetch_doi_metadata(doi: str) -> CrossrefMetadata:
+    metadata = fetch_crossref_metadata(doi)
+    if metadata.status != "not_found":
+        return metadata
+    fallback = fetch_doi_org_metadata(doi)
+    if fallback.status == "unavailable":
+        return fallback
+    return fallback
