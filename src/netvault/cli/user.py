@@ -1229,9 +1229,21 @@ def doi_command(
 
 def resolve_remote_pdf(identifier: str) -> dict:
     value = identifier.strip()
-    if value.isdigit() or (len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)):
+    if value.isdigit() or (
+        len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)
+    ):
         return api_get(f"/pdfs/{value}")
-    return api_get("/pdfs/by-doi", doi=value)
+    try:
+        return api_get("/pdfs/by-doi", doi=value)
+    except RuntimeError as direct_error:
+        rows = api_get("/pdfs/search", q=value, limit=2, offset=0)
+        if len(rows) == 1:
+            return api_get(f"/pdfs/{rows[0]['id']}")
+        if not rows:
+            raise direct_error
+        raise RuntimeError(
+            "DOI identifier matched multiple PDFs; use the PDF id or SHA-256 instead"
+        ) from direct_error
 
 
 def render_doi_correction_preview(result: dict) -> None:
