@@ -1,16 +1,20 @@
 import logging
 import re
 import subprocess
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote
 
 from pypdf import PdfReader
 
 logging.getLogger("pypdf").setLevel(logging.CRITICAL)
 
-DOI_SUFFIX_RE = r"[-._;()/:,A-Z0-9+%<>=&]+"
+DOI_SUFFIX_RE = r"[-._;()/:A-Z0-9]+"
 DOI_RE = re.compile(rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE})", re.IGNORECASE)
-STRICT_DOI_RE = re.compile(rf"^10\.\d{{4,9}}/{DOI_SUFFIX_RE}$", re.IGNORECASE)
+STRICT_DOI_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
+DOI_URL_PREFIX_RE = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
+PDF_OBJECT_DELIMITERS = (">>", "<<")
 REFERENCE_HEADING_RE = re.compile(r"(?im)^\s*(references|bibliography|works cited)\s*$")
 DOI_LABEL_RE = re.compile(r"\b(doi|digital object identifier|crossmark)\b", re.IGNORECASE)
 DOI_METADATA_PATTERNS = [
@@ -44,16 +48,21 @@ class DoiEvidence:
 
 
 def normalize_doi(value: str) -> str:
-    doi = value.strip()
-    doi = re.sub(r"^https?://(dx\.)?doi\.org/", "", doi, flags=re.IGNORECASE)
+    doi = unicodedata.normalize("NFKC", value.strip())
+    if DOI_URL_PREFIX_RE.match(doi):
+        doi = DOI_URL_PREFIX_RE.sub("", doi)
+        doi = unquote(doi)
     doi = re.sub(r"^doi:\s*", "", doi, flags=re.IGNORECASE)
+    delimiter_positions = [doi.find(token) for token in PDF_OBJECT_DELIMITERS if token in doi]
+    if delimiter_positions:
+        doi = doi[: min(position for position in delimiter_positions if position >= 0)]
     doi = re.sub(r"</[a-z][^>\s]*.*$", "", doi, flags=re.IGNORECASE)
     doi = re.sub(r"\)/[a-z][a-z0-9_-].*$", ")", doi, flags=re.IGNORECASE)
     doi = doi.strip().rstrip(TRAILING_PUNCTUATION)
     while doi.endswith(")") and doi.count(")") > doi.count("("):
         doi = doi[:-1]
     doi = doi.lower()
-    if not STRICT_DOI_RE.fullmatch(doi):
+    if not STRICT_DOI_RE.fullmatch(doi) or any(char.isspace() for char in doi):
         raise ValueError("Invalid DOI")
     return doi
 
@@ -132,12 +141,8 @@ def find_filename_doi_from_name(filename: str) -> DoiCandidate | None:
     return None
 
 
-def doi_loose_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", normalize_doi(value), flags=re.IGNORECASE)
-
-
 def doi_matches(left: str, right: str) -> bool:
-    return normalize_doi(left) == normalize_doi(right) or doi_loose_key(left) == doi_loose_key(right)
+    return normalize_doi(left) == normalize_doi(right)
 
 
 def unique_dois(candidates: list[DoiCandidate], sources: set[str] | None = None) -> list[str]:
@@ -286,6 +291,40 @@ def metadata_candidates(raw_text: str) -> list[DoiCandidate]:
     return candidates
 
 
+def annotation_uri_candidates(reader: PdfReader) -> list[DoiCandidate]:
+    candidates = []
+    for page_index, page in enumerate(reader.pages[:3], start=1):
+        try:
+            annotations = page.get("/Annots") or []
+        except Exception:
+            continue
+        for annotation_ref in annotations:
+            try:
+                annotation = annotation_ref.get_object()
+                action = annotation.get("/A")
+                if action is not None and hasattr(action, "get_object"):
+                    action = action.get_object()
+                uri = action.get("/URI") if action else None
+            except Exception:
+                continue
+            if not isinstance(uri, str) or not DOI_URL_PREFIX_RE.match(uri.strip()):
+                continue
+            try:
+                doi = normalize_doi(uri)
+            except ValueError:
+                continue
+            candidates.append(
+                DoiCandidate(
+                    doi,
+                    "pdf-metadata",
+                    f"annotation-uri-page-{page_index}",
+                    94,
+                    uri[:220],
+                )
+            )
+    return candidates
+
+
 def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
     candidates = []
     try:
@@ -334,18 +373,19 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
     for candidate in scan_with_pdftotext(path):
         add(candidate)
 
-    raw = path.read_bytes()
-    raw_text = raw.decode("latin-1", errors="ignore")
-    for candidate in metadata_candidates(raw_text):
-        add(candidate)
-
-    raw_head = raw_text[:250_000]
-    for candidate in candidates_from_text(raw_head, "pdf-content", "raw-head")[:5]:
+    try:
+        with path.open("rb") as handle:
+            raw_head = handle.read(512_000).decode("latin-1", errors="ignore")
+    except OSError:
+        raw_head = ""
+    for candidate in metadata_candidates(raw_head):
         add(candidate)
 
     try:
         reader = PdfReader(str(path))
         for candidate in document_info_candidates(reader):
+            add(candidate)
+        for candidate in annotation_uri_candidates(reader):
             add(candidate)
         page_texts = [page.extract_text() or "" for page in reader.pages[:3]]
     except Exception:
