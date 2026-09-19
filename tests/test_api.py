@@ -311,7 +311,7 @@ def test_automatic_resolution_falls_back_from_filename_to_pdf_content(
 
     detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": correct_doi})
     verification = json.loads(detail.json()["doi_evidence"])["verification"]
-    assert verification[0]["reason"] == "DOI not found in Crossref"
+    assert verification[0]["reason"] == "DOI not found by metadata providers"
     assert verification[1]["accepted"] is True
 
 
@@ -349,7 +349,7 @@ def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
     assert response.json()["pdf"]["doi"] == correct_doi
     detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": correct_doi})
     attempts = json.loads(detail.json()["doi_evidence"])["verification"]
-    assert attempts[0]["reason"] == "Crossref title does not match the PDF"
+    assert attempts[0]["reason"] == "Metadata title does not match the PDF"
     assert attempts[1]["accepted"] is True
 
 
@@ -400,7 +400,7 @@ def test_unverified_publisher_url_doi_requires_confirmation(
     )
 
     assert response.status_code == 422
-    assert "publisher download URL" in response.json()["detail"]
+    assert "No DOI candidate could be verified" in response.json()["detail"]
     assert client.get("/pdfs", headers=headers).json() == []
     assert list((tmp_path / "storage" / "objects").rglob("*.pdf")) == []
 
