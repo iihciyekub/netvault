@@ -30,6 +30,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     main = importlib.import_module("netvault_server.server.main")
     crossref = importlib.import_module("netvault_server.server.crossref")
     main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    doi_correction = importlib.import_module("netvault_server.server.doi_correction")
 
     def fake_crossref_metadata(doi: str):
         return crossref.CrossrefMetadata(
@@ -42,8 +43,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             resource_url=f"https://doi.org/{doi}",
         )
 
-    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref_metadata)
-    monkeypatch.setattr(main, "fetch_crossref_metadata", fake_crossref_metadata)
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fake_crossref_metadata)
+    monkeypatch.setattr(doi_correction, "fetch_doi_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
         yield test_client
 
@@ -288,7 +289,7 @@ def test_automatic_resolution_falls_back_from_filename_to_pdf_content(
             title="AI-Augmented Content Validation in Behavioral Research",
         )
 
-    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref)
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fake_crossref)
     response = upload(
         client,
         headers,
@@ -334,7 +335,7 @@ def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
             return crossref.CrossrefMetadata(status="ok", title="An Unrelated Article")
         return crossref.CrossrefMetadata(status="ok", title="A Reliable Paper Title")
 
-    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref)
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fake_crossref)
     response = upload(
         client,
         headers,
@@ -385,7 +386,7 @@ def test_unverified_publisher_url_doi_requires_confirmation(
     main_helpers = importlib.import_module("netvault_server.server.main_helpers")
     monkeypatch.setattr(
         main_helpers,
-        "fetch_crossref_metadata",
+        "fetch_doi_metadata",
         lambda _doi: crossref.CrossrefMetadata(status="not_found"),
     )
 
@@ -565,7 +566,7 @@ def test_force_upload_replaces_pdf_and_crossref_metadata_for_regular_user(
     main_helpers = importlib.import_module("netvault_server.server.main_helpers")
     monkeypatch.setattr(
         main_helpers,
-        "fetch_crossref_metadata",
+        "fetch_doi_metadata",
         lambda doi: crossref.CrossrefMetadata(
             status="ok",
             title="Current Crossref Title",
@@ -629,7 +630,7 @@ def test_force_upload_requires_successful_crossref(
     main_helpers = importlib.import_module("netvault_server.server.main_helpers")
     monkeypatch.setattr(
         main_helpers,
-        "fetch_crossref_metadata",
+        "fetch_doi_metadata",
         lambda _doi: crossref.CrossrefMetadata(status="unavailable"),
     )
     unavailable = upload(
