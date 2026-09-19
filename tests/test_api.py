@@ -732,6 +732,56 @@ def test_admin_can_atomically_correct_doi_and_preserve_history(client: TestClien
         assert db.query(models.DownloadRecord).filter_by(pdf_id=original["id"]).count() == 1
 
 
+def test_admin_can_correct_legacy_malformed_doi_without_replacing_pdf(
+    client: TestClient,
+) -> None:
+    admin_headers = login(client, "admin", "admin-pass")
+    uploaded = upload(client, admin_headers)
+    assert uploaded.status_code == 200
+    original = uploaded.json()["pdf"]
+    malformed = "10.1287/msom.2021.1032)>>/border"
+    corrected = "10.1287/msom.2021.1032"
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        pdf = db.get(models.Pdf, original["id"])
+        pdf.doi = malformed
+        db.commit()
+
+    preview = client.post(
+        f"/admin/pdfs/{original['id']}/correct-doi",
+        headers=admin_headers,
+        json={
+            "doi": corrected,
+            "reason": "Remove PDF object syntax from DOI",
+            "expected_sha256": original["sha256"],
+            "expected_current_doi": malformed,
+            "dry_run": True,
+        },
+    )
+    assert preview.status_code == 200
+    assert preview.json()["previous_doi"] == malformed
+    assert preview.json()["new_doi"] == corrected
+
+    applied = client.post(
+        f"/admin/pdfs/{original['id']}/correct-doi",
+        headers=admin_headers,
+        json={
+            "doi": corrected,
+            "reason": "Remove PDF object syntax from DOI",
+            "expected_sha256": original["sha256"],
+            "expected_current_doi": malformed,
+        },
+    )
+    assert applied.status_code == 200
+    assert applied.json()["new_doi"] == corrected
+    detail = client.get("/pdfs/by-doi", headers=admin_headers, params={"doi": corrected})
+    assert detail.status_code == 200
+    assert detail.json()["id"] == original["id"]
+    assert detail.json()["sha256"] == original["sha256"]
+
+
 def test_doi_correction_rejects_conflicts_and_non_admins(client: TestClient) -> None:
     admin_headers = login(client, "admin", "admin-pass")
     first = upload(client, admin_headers)
