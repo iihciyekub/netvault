@@ -1,6 +1,5 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-import json
 import os
 from pathlib import Path
 import logging
@@ -18,13 +17,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from netvault_server import __version__
 from netvault_server.server.config import get_settings
-from netvault_server.server.crossref import fetch_crossref_metadata
 from netvault_server.server.database import Base, engine, get_db
 from netvault_server.server.deps import get_current_user, require_admin
 from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.doi import normalize_doi
-from netvault_server.server.main_helpers import apply_crossref_metadata, pdf_to_read, process_upload
+from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.migrations import run_migrations
+from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf_doi_service
 from netvault_server.server.models import (
     Pdf,
     PdfDoiCorrection,
@@ -568,104 +567,18 @@ def correct_pdf_doi(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> PdfDoiCorrectionResponse:
-    pdf = db.scalar(select(Pdf).where(Pdf.id == pdf_id).with_for_update())
-    if pdf is None or pdf.is_deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF not found")
-    try:
-        new_doi = normalize_doi(payload.doi)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    if new_doi == pdf.doi:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The PDF already uses this DOI",
-        )
-    if not payload.reason.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide a correction reason",
-        )
-    if payload.expected_sha256 and payload.expected_sha256.lower() != pdf.sha256:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The PDF changed after the correction was prepared",
-        )
-    target = db.scalar(select(Pdf).where(Pdf.doi == new_doi).with_for_update())
-    if target is not None and target.id != pdf.id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"DOI {new_doi} already belongs to PDF #{target.id}",
-        )
-    metadata = fetch_crossref_metadata(new_doi)
-    if metadata.status != "ok":
-        error_status = (
-            status.HTTP_404_NOT_FOUND
-            if metadata.status == "not_found"
-            else status.HTTP_503_SERVICE_UNAVAILABLE
-        )
-        raise HTTPException(
-            status_code=error_status,
-            detail=f"DOI correction could not verify Crossref metadata: {metadata.status}",
-        )
-    previous_doi = pdf.doi
-    if payload.dry_run:
-        return PdfDoiCorrectionResponse(
-            pdf_id=pdf.id,
-            previous_doi=previous_doi,
-            new_doi=new_doi,
-            sha256=pdf.sha256,
-            title=metadata.title,
-            dry_run=True,
-        )
-
-    previous_state = json.dumps(
-        {
-            "doi": pdf.doi,
-            "doi_source": pdf.doi_source,
-            "doi_evidence": pdf.doi_evidence,
-            "title": pdf.title,
-            "authors": pdf.authors,
-            "container_title": pdf.container_title,
-            "publisher": pdf.publisher,
-            "published_year": pdf.published_year,
-            "crossref_status": pdf.crossref_status,
-            "crossref_url": pdf.crossref_url,
-        },
-        ensure_ascii=False,
+    result = correct_pdf_doi_service(
+        db,
+        admin,
+        pdf_id,
+        payload.doi,
+        payload.reason,
+        expected_sha256=payload.expected_sha256,
+        expected_current_doi=payload.expected_current_doi,
+        allow_title_mismatch=payload.allow_title_mismatch,
+        dry_run=payload.dry_run,
     )
-    correction = PdfDoiCorrection(
-        pdf_id=pdf.id,
-        old_doi=previous_doi,
-        new_doi=new_doi,
-        reason=payload.reason.strip(),
-        previous_state=previous_state,
-        corrected_by_id=admin.id,
-    )
-    db.add(correction)
-    db.flush()
-    pdf.doi = new_doi
-    pdf.doi_source = "admin-corrected"
-    pdf.doi_evidence = json.dumps(
-        {
-            "source": "admin-corrected",
-            "correction_id": correction.id,
-            "corrected_from": previous_doi,
-            "reason": correction.reason,
-        },
-        ensure_ascii=False,
-    )
-    apply_crossref_metadata(pdf, metadata, overwrite=True)
-    db.commit()
-    invalidate_stats_cache()
-    db.refresh(pdf)
-    return PdfDoiCorrectionResponse(
-        pdf_id=pdf.id,
-        previous_doi=previous_doi,
-        new_doi=pdf.doi,
-        sha256=pdf.sha256,
-        title=pdf.title,
-        correction_id=correction.id,
-    )
+    return PdfDoiCorrectionResponse(**result)
 
 
 @app.get(
