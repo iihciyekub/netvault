@@ -290,6 +290,19 @@ nv doi ./paper.pdf --remove
 nv upload ./paper.pdf --refresh-doi
 ```
 
+If a PDF is already stored under the wrong DOI, administrators can correct only its identity and
+metadata without replacing the PDF file, SHA-256, aliases, upload history, or download history:
+
+```bash
+nv correct-doi 56240 10.1287/msom.2021.1032 \
+  --reason "Incorrect DOI extracted from PDF syntax"
+```
+
+The command previews the canonical DOI and fresh metadata first, then asks for confirmation.
+The same correction workflow is available to administrators from the PDF search page in the Web
+UI through **Correct DOI**.
+
+
 If you only want DOI indexing and PDF storage, skip Crossref:
 
 ```bash
@@ -303,14 +316,15 @@ DOI extraction uses NetVault's smart resolver:
 - filename DOI values, including `10.1016_j.chb.2015.03.041.pdf`
 - publisher filename patterns such as Springer `s12144-024-...`, PLOS `journal.pone...`, and Frontiers `fpsyg-...`
 - visible text from the first three PDF pages, with reference-list DOI values heavily down-ranked
-- raw PDF text fallback for unusual encodings
+- structured DOI links from PDF annotations
+- bounded metadata fallback for unusual PDF encodings, without scanning arbitrary raw PDF objects
 - confidence scoring when multiple DOI candidates are present
 
-For automatic uploads, the server treats the client result as a hint. It tries filename,
-PDF-metadata, and first-three-page candidates in order, verifies each DOI with Crossref, and
-checks the normalized Crossref title against extractable PDF text before accepting it. A failed
-filename candidate therefore falls back to PDF metadata or page content instead of causing a
-client/server DOI conflict.
+For online uploads, the server treats client DOI values as hints, including explicit `--doi`
+and SHA-bound download-index identities. It verifies candidates against Crossref, falls back to
+DOI.org citation metadata when Crossref explicitly has no record, and checks the metadata title
+against extractable PDF text before accepting it. A failed filename candidate therefore falls
+back to metadata or page content instead of causing a client/server DOI conflict.
 
 Inspect DOI resolution before upload:
 
