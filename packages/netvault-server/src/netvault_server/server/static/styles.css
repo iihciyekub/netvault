@@ -2054,3 +2054,124 @@ ul {
     font-size: 11px;
   }
 }
+
+
+/* DOI correction */
+.doi-correct-trigger {
+  white-space: nowrap;
+}
+
+.doi-correction-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.doi-correction-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(4px);
+}
+
+.doi-dialog-shell {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.doi-dialog-header,
+.doi-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.doi-dialog-header h2,
+.doi-dialog-header p {
+  margin: 0;
+}
+
+.doi-current-card {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  overflow-wrap: anywhere;
+}
+
+.doi-current-card small {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.doi-dialog-shell textarea {
+  resize: vertical;
+  min-height: 78px;
+}
+
+.doi-verify-result,
+.doi-history-list {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.doi-verify-result {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-subtle);
+}
+
+.doi-verify-result[data-state="ok"] {
+  border-color: color-mix(in srgb, #2e8b57 45%, var(--line));
+}
+
+.doi-verify-result[data-state="warning"] {
+  border-color: color-mix(in srgb, #b7791f 55%, var(--line));
+}
+
+.doi-verify-result[data-state="error"] {
+  border-color: color-mix(in srgb, #c53b3b 55%, var(--line));
+}
+
+.doi-history {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.doi-history summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.doi-history-list {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.doi-override {
+  align-items: flex-start;
+}
+
+@media (max-width: 640px) {
+  .doi-dialog-shell {
+    padding: 16px;
+  }
+
+  .doi-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .doi-dialog-actions .button {
+    width: 100%;
+  }
+}
