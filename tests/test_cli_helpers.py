@@ -111,7 +111,20 @@ def test_doi_suffix_preserves_additional_slashes() -> None:
 
 
 def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
-    assert netvault.doi.DOI_RESOLVER_VERSION == 3
+    assert netvault.doi.DOI_RESOLVER_VERSION == 4
+
+
+def test_doi_parser_stops_before_pdf_object_syntax() -> None:
+    text = "https://doi.org/10.1287/msom.2021.1032)>>/Border"
+    assert netvault.doi.find_dois_in_text(text) == ["10.1287/msom.2021.1032"]
+
+
+def test_doi_identity_does_not_ignore_punctuation() -> None:
+    assert netvault.doi.doi_matches("10.1234/a-b", "10.1234/ab") is False
+
+
+def test_doi_url_is_percent_decoded_once() -> None:
+    assert netvault.doi.normalize_doi("https://doi.org/10.1234/a%2Fb") == "10.1234/a/b"
 
 
 def test_update_command_uses_uv_for_uv_tool_install(monkeypatch) -> None:
