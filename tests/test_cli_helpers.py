@@ -1044,4 +1044,7 @@ def test_smart_doi_rejects_publisher_download_url_suffix(tmp_path: Path) -> None
 
     assert evidence.status == "ok"
     assert evidence.doi == "10.1108/mbr-10-2023-0163"
-    assert any(candidate.embedded_publisher_url for candidate in evidence.candidates)
+    assert all(
+        candidate.doi != "10.1108/mbr-10-2023-0163/11288746/mbr-10-2023-0163en.pdf"
+        for candidate in evidence.candidates
+    )
