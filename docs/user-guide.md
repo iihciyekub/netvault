@@ -256,6 +256,22 @@ If the resolver is still wrong or ambiguous, override it:
 nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
 ```
 
+Online explicit DOI values are still verified against registry metadata and available PDF text;
+they are not a bypass around server-side identity checks.
+
+If an administrator later discovers that an already stored PDF has the wrong DOI, correct the
+identity without re-uploading the PDF:
+
+```bash
+nv correct-doi 56240 10.1287/msom.2021.1032 \
+  --reason "Verified DOI from the publisher record"
+```
+
+Use a PDF id, SHA-256, or current DOI as the first argument. The command previews the change before
+applying it. The PDF bytes, SHA-256, aliases, and upload/download history remain unchanged while
+the DOI and registry metadata are refreshed.
+
+
 ## List And Search
 
 List available PDFs:
