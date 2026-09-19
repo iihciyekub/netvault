@@ -611,6 +611,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "data-doi-correct" in pdfs_with_query.text
     assert "data-doi-dialog" in pdfs_with_query.text
     assert "doi-copy-button" in pdfs_with_query.text
+    assert 'class="paper-id"' in pdfs_with_query.text
+    assert "PDF ID " in pdfs_with_query.text
     assert "data-copy=" in pdfs_with_query.text
 
     publisher_search = client.get("/web/pdfs", params={"q": "NetVault Press"})
