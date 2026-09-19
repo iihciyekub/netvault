@@ -26,8 +26,9 @@ from netvault_server.server.journal_filters import (
     reset_user_journal_filter,
     save_user_journal_filter,
 )
+from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf_doi_service
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
-from netvault_server.server.models import Pdf, User, UserRole
+from netvault_server.server.models import Pdf, PdfDoiCorrection, User, UserRole
 from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.security import (
     DUMMY_PASSWORD_HASH,
@@ -472,6 +473,86 @@ def pdfs_page(
             "error": error,
         },
     )
+
+
+@router.post("/web/admin/pdfs/{pdf_id}/correct-doi/preview", include_in_schema=False)
+def web_preview_doi_correction(
+    pdf_id: int,
+    request: Request,
+    doi: str = Form(...),
+    reason: str = Form(...),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> dict:
+    validate_csrf(request, csrf_token_value)
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    return correct_pdf_doi_service(
+        db,
+        admin,
+        pdf_id,
+        doi,
+        reason,
+        dry_run=True,
+    )
+
+
+@router.post("/web/admin/pdfs/{pdf_id}/correct-doi", include_in_schema=False)
+def web_apply_doi_correction(
+    pdf_id: int,
+    request: Request,
+    doi: str = Form(...),
+    reason: str = Form(...),
+    expected_sha256: str = Form(...),
+    expected_current_doi: str = Form(...),
+    allow_title_mismatch: bool = Form(False),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> dict:
+    validate_csrf(request, csrf_token_value)
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    return correct_pdf_doi_service(
+        db,
+        admin,
+        pdf_id,
+        doi,
+        reason,
+        expected_sha256=expected_sha256,
+        expected_current_doi=expected_current_doi,
+        allow_title_mismatch=allow_title_mismatch,
+        dry_run=False,
+    )
+
+
+@router.get("/web/admin/pdfs/{pdf_id}/doi-corrections", include_in_schema=False)
+def web_doi_correction_history(
+    pdf_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    rows = db.execute(
+        select(PdfDoiCorrection, User)
+        .join(User, User.id == PdfDoiCorrection.corrected_by_id)
+        .where(PdfDoiCorrection.pdf_id == pdf_id)
+        .order_by(PdfDoiCorrection.corrected_at.desc(), PdfDoiCorrection.id.desc())
+    ).all()
+    return [
+        {
+            "id": correction.id,
+            "old_doi": correction.old_doi,
+            "new_doi": correction.new_doi,
+            "reason": correction.reason,
+            "corrected_by": user.username,
+            "corrected_at": correction.corrected_at.isoformat(),
+        }
+        for correction, user in rows
+    ]
 
 
 @router.get("/web/cli", response_class=HTMLResponse, include_in_schema=False)
