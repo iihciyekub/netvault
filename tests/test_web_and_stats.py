@@ -76,6 +76,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     main = importlib.import_module("netvault_server.server.main")
     crossref = importlib.import_module("netvault_server.server.crossref")
     main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    doi_correction = importlib.import_module("netvault_server.server.doi_correction")
 
     def fake_crossref_metadata(doi: str):
         return crossref.CrossrefMetadata(
@@ -88,7 +89,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             resource_url=f"https://doi.org/{doi}",
         )
 
-    monkeypatch.setattr(main_helpers, "fetch_crossref_metadata", fake_crossref_metadata)
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fake_crossref_metadata)
+    monkeypatch.setattr(doi_correction, "fetch_doi_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
         yield test_client
 
