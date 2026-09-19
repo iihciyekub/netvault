@@ -892,6 +892,203 @@
     if (cancelButton) cancelButton.hidden = true;
   };
 
+  const doiCorrectionDialog = () => qs("[data-doi-dialog]");
+
+  const setDoiCorrectionStatus = (dialog, text, state = "") => {
+    const result = qs("[data-doi-result]", dialog);
+    if (!result) return;
+    result.hidden = !text;
+    result.textContent = text || "";
+    result.dataset.state = state;
+  };
+
+  const requestDoiCorrection = async (url, body) => {
+    const response = await fetch(url, {
+      method: "POST",
+      body,
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
+    if (!response.ok) {
+      let detail = response.statusText || "Request failed";
+      try {
+        const payload = await response.json();
+        detail = payload.detail || detail;
+      } catch (_) {}
+      throw new Error(detail);
+    }
+    return response.json();
+  };
+
+  const loadDoiCorrectionHistory = async (dialog) => {
+    const target = qs("[data-doi-history]", dialog);
+    const url = dialog.dataset.historyUrl;
+    if (!target || !url) return;
+    target.textContent = "Loading...";
+    try {
+      const response = await fetch(url, { credentials: "same-origin" });
+      if (!response.ok) throw new Error("Unable to load history");
+      const rows = await response.json();
+      if (!rows.length) {
+        target.textContent = "No previous DOI corrections.";
+        return;
+      }
+      target.textContent = rows
+        .map((row) => `${row.old_doi} → ${row.new_doi}\n${row.reason} · ${row.corrected_by}`)
+        .join("\n\n");
+    } catch (error) {
+      target.textContent = error.message || "Unable to load history";
+    }
+  };
+
+  const openDoiCorrection = (button) => {
+    const dialog = doiCorrectionDialog();
+    if (!dialog) return;
+    dialog.dataset.previewUrl = button.dataset.previewUrl || "";
+    dialog.dataset.applyUrl = button.dataset.applyUrl || "";
+    dialog.dataset.historyUrl = button.dataset.historyUrl || "";
+    dialog.dataset.verified = "false";
+    const current = button.dataset.currentDoi || "";
+    const sha = button.dataset.sha256 || "";
+    const title = button.dataset.pdfTitle || "PDF";
+    const currentLabel = qs("[data-doi-current]", dialog);
+    const titleLabel = qs("[data-doi-paper-title]", dialog);
+    const shaLabel = qs("[data-doi-sha-label]", dialog);
+    const shaInput = qs("[data-doi-sha]", dialog);
+    const currentInput = qs("[data-doi-current-hidden]", dialog);
+    const doiInput = qs("[data-doi-input]", dialog);
+    const reasonInput = qs("[data-doi-reason]", dialog);
+    const apply = qs("[data-doi-apply]", dialog);
+    const override = qs("[data-doi-override]", dialog);
+    const overrideRow = qs("[data-doi-override-row]", dialog);
+    if (currentLabel) currentLabel.textContent = current;
+    if (titleLabel) titleLabel.textContent = title;
+    if (shaLabel) shaLabel.textContent = `SHA-256: ${sha}`;
+    if (shaInput) shaInput.value = sha;
+    if (currentInput) currentInput.value = current;
+    if (doiInput) doiInput.value = "";
+    if (reasonInput) reasonInput.value = "";
+    if (apply) apply.disabled = true;
+    if (override) override.checked = false;
+    if (overrideRow) overrideRow.hidden = true;
+    setDoiCorrectionStatus(dialog, "");
+    loadDoiCorrectionHistory(dialog);
+    dialog.showModal();
+    if (doiInput) doiInput.focus();
+  };
+
+  const verifyDoiCorrection = async (dialog) => {
+    const form = qs("[data-doi-form]", dialog);
+    const doiInput = qs("[data-doi-input]", dialog);
+    const reasonInput = qs("[data-doi-reason]", dialog);
+    const apply = qs("[data-doi-apply]", dialog);
+    const overrideRow = qs("[data-doi-override-row]", dialog);
+    const override = qs("[data-doi-override]", dialog);
+    if (!form || !doiInput || !reasonInput) return;
+    if (!doiInput.value.trim() || !reasonInput.value.trim()) {
+      setDoiCorrectionStatus(dialog, "New DOI and reason are required.", "error");
+      return;
+    }
+    if (apply) apply.disabled = true;
+    dialog.dataset.verified = "false";
+    setDoiCorrectionStatus(dialog, "Verifying DOI and PDF metadata...", "loading");
+    const body = new FormData();
+    body.set("csrf_token", new FormData(form).get("csrf_token") || "");
+    body.set("doi", doiInput.value.trim());
+    body.set("reason", reasonInput.value.trim());
+    try {
+      const result = await requestDoiCorrection(dialog.dataset.previewUrl, body);
+      const score = result.title_match_score == null
+        ? "unavailable"
+        : `${Math.round(Number(result.title_match_score) * 100)}%`;
+      setDoiCorrectionStatus(
+        dialog,
+        [
+          `Canonical DOI: ${result.new_doi}`,
+          `Metadata: ${result.metadata_provider || "crossref"}`,
+          `Title: ${result.title || "-"}`,
+          `Journal: ${result.container_title || "-"}`,
+          `Year: ${result.published_year || "-"}`,
+          `PDF title match: ${score}`,
+        ].join("\n"),
+        result.requires_title_override ? "warning" : "ok"
+      );
+      dialog.dataset.verified = "true";
+      dialog.dataset.previewSha = result.sha256 || "";
+      dialog.dataset.previewCurrentDoi = result.previous_doi || "";
+      if (overrideRow) overrideRow.hidden = !result.requires_title_override;
+      if (override) override.checked = false;
+      if (apply) apply.disabled = Boolean(result.requires_title_override);
+    } catch (error) {
+      if (overrideRow) overrideRow.hidden = true;
+      setDoiCorrectionStatus(dialog, error.message || "DOI verification failed.", "error");
+    }
+  };
+
+  const applyDoiCorrection = async (dialog) => {
+    if (dialog.dataset.verified !== "true") return;
+    const form = qs("[data-doi-form]", dialog);
+    const doiInput = qs("[data-doi-input]", dialog);
+    const reasonInput = qs("[data-doi-reason]", dialog);
+    const override = qs("[data-doi-override]", dialog);
+    const apply = qs("[data-doi-apply]", dialog);
+    if (!form || !doiInput || !reasonInput) return;
+    const body = new FormData();
+    body.set("csrf_token", new FormData(form).get("csrf_token") || "");
+    body.set("doi", doiInput.value.trim());
+    body.set("reason", reasonInput.value.trim());
+    body.set("expected_sha256", dialog.dataset.previewSha || "");
+    body.set("expected_current_doi", dialog.dataset.previewCurrentDoi || "");
+    if (override?.checked) body.set("allow_title_mismatch", "true");
+    if (apply) apply.disabled = true;
+    setDoiCorrectionStatus(dialog, "Applying correction...", "loading");
+    try {
+      const result = await requestDoiCorrection(dialog.dataset.applyUrl, body);
+      setDoiCorrectionStatus(
+        dialog,
+        `Corrected: ${result.previous_doi} → ${result.new_doi}`,
+        "ok"
+      );
+      pageCache.clear();
+      dialog.close();
+      fetchPage(window.location.href, {}, false);
+    } catch (error) {
+      if (apply) apply.disabled = false;
+      setDoiCorrectionStatus(dialog, error.message || "DOI correction failed.", "error");
+    }
+  };
+
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-doi-correct]");
+    if (trigger) {
+      event.preventDefault();
+      openDoiCorrection(trigger);
+      return;
+    }
+    const close = event.target.closest("[data-doi-close]");
+    if (close) {
+      doiCorrectionDialog()?.close();
+      return;
+    }
+    const verify = event.target.closest("[data-doi-verify]");
+    if (verify) {
+      verifyDoiCorrection(verify.closest("[data-doi-dialog]"));
+      return;
+    }
+    const apply = event.target.closest("[data-doi-apply]");
+    if (apply) {
+      applyDoiCorrection(apply.closest("[data-doi-dialog]"));
+    }
+  });
+
+  document.addEventListener("change", (event) => {
+    const override = event.target.closest("[data-doi-override]");
+    if (!override) return;
+    const dialog = override.closest("[data-doi-dialog]");
+    const apply = qs("[data-doi-apply]", dialog);
+    if (apply) apply.disabled = !override.checked;
+  });
+
   document.addEventListener("click", (event) => {
     const filterMenu = event.target.closest("details.filter-menu");
     const filterSummary = event.target.closest("details.filter-menu > summary");
