@@ -48,6 +48,20 @@
       <div class="pdf-actions paper-result-actions">
         <a class="button pdf-action" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
         <a class="button primary pdf-action" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
+        {% if user.role == "admin" %}
+        <button
+          class="button pdf-action doi-correct-trigger"
+          type="button"
+          data-doi-correct
+          data-pdf-id="{{ pdf.id }}"
+          data-current-doi="{{ pdf.doi }}"
+          data-pdf-title="{{ pdf.title or pdf.original_name }}"
+          data-sha256="{{ pdf.sha256 }}"
+          data-preview-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi/preview') }}"
+          data-apply-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi') }}"
+          data-history-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/doi-corrections') }}"
+        ><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>Correct DOI</span></button>
+        {% endif %}
       </div>
     </article>
     {% else %}
@@ -63,5 +77,48 @@
 {% endif %}
 {% else %}
 <div class="empty-state"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>Search by DOI or Crossref metadata.</div>
+{% endif %}
+
+{% if user.role == "admin" %}
+<dialog class="doi-correction-dialog" data-doi-dialog>
+  <form method="dialog" class="doi-dialog-shell" data-doi-form>
+    <div class="doi-dialog-header">
+      <div>
+        <p class="eyebrow">Admin identity correction</p>
+        <h2>Correct DOI</h2>
+      </div>
+      <button class="icon-button" type="button" data-doi-close aria-label="Close DOI correction"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="expected_sha256" data-doi-sha>
+    <input type="hidden" name="expected_current_doi" data-doi-current-hidden>
+    <div class="doi-current-card">
+      <strong data-doi-paper-title>PDF</strong>
+      <span data-doi-current></span>
+      <small data-doi-sha-label></small>
+    </div>
+    <label>
+      New DOI
+      <input name="doi" data-doi-input autocomplete="off" placeholder="10.xxxx/..." required>
+    </label>
+    <label>
+      Reason
+      <textarea name="reason" data-doi-reason rows="3" required placeholder="Why is this DOI being corrected?"></textarea>
+    </label>
+    <div class="doi-verify-result" data-doi-result hidden></div>
+    <label class="check doi-override" data-doi-override-row hidden>
+      <input type="checkbox" name="allow_title_mismatch" value="true" data-doi-override>
+      I independently verified this DOI despite the title mismatch.
+    </label>
+    <details class="doi-history" data-doi-history-wrap>
+      <summary>Correction history</summary>
+      <div data-doi-history class="doi-history-list">No correction history loaded.</div>
+    </details>
+    <div class="doi-dialog-actions">
+      <button class="button" type="button" data-doi-verify><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verify</span></button>
+      <button class="button primary" type="button" data-doi-apply disabled><i class="fa-solid fa-pen" aria-hidden="true"></i><span>Apply correction</span></button>
+    </div>
+  </form>
+</dialog>
 {% endif %}
 {% endblock %}
