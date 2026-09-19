@@ -17,6 +17,10 @@ DOI_URL_PREFIX_RE = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
 PDF_OBJECT_DELIMITERS = (">>", "<<")
 REFERENCE_HEADING_RE = re.compile(r"(?im)^\s*(references|bibliography|works cited)\s*$")
 DOI_LABEL_RE = re.compile(r"\b(doi|digital object identifier|crossmark)\b", re.IGNORECASE)
+RAW_EXPLICIT_DOI_RE = re.compile(
+    rf"(?:\bdoi\b\s*:?\s*|https?://(?:dx\.)?doi\.org/)(10\.\d{{4,9}}/{DOI_SUFFIX_RE})",
+    re.IGNORECASE,
+)
 DOI_METADATA_PATTERNS = [
     re.compile(
         r"(?:prism:doi|crossmark:DOI|pdfx:doi|dc:identifier|WPS-ARTICLEDOI)"
@@ -251,6 +255,25 @@ def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
     return candidates_from_text(result.stdout, "pdf-content", "pdftotext")
 
 
+def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
+    candidates = []
+    for match in RAW_EXPLICIT_DOI_RE.finditer(raw_text):
+        try:
+            doi = normalize_doi(match.group(1))
+        except ValueError:
+            continue
+        candidates.append(
+            DoiCandidate(
+                doi,
+                "pdf-content",
+                "raw-explicit",
+                88,
+                candidate_context(raw_text, match.start(1), match.end(1)),
+            )
+        )
+    return candidates
+
+
 def metadata_candidates(raw_text: str) -> list[DoiCandidate]:
     candidates = []
     for pattern in DOI_METADATA_PATTERNS:
@@ -359,6 +382,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         raw_head = ""
     for candidate in metadata_candidates(raw_head):
         add(candidate)
+    for candidate in raw_explicit_candidates(raw_head):
+        add(candidate)
 
     try:
         reader = PdfReader(str(path))
@@ -395,11 +420,42 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
     doi = None
     source = None
     if filename_doi:
-        metadata_conflict = next((metadata_doi for metadata_doi in metadata_dois if not doi_matches(filename_doi, metadata_doi)), None)
+        metadata_conflict = next(
+            (
+                metadata_doi
+                for metadata_doi in metadata_dois
+                if not doi_matches(filename_doi, metadata_doi)
+            ),
+            None,
+        )
         if metadata_conflict:
-            return DoiEvidence("conflict", None, None, candidates, "Filename DOI conflicts with PDF metadata DOI")
-        doi = filename_matched or filename_doi
-        source = "filename" if not filename_matched else choose_source(candidates, doi)
+            return DoiEvidence(
+                "conflict",
+                None,
+                None,
+                candidates,
+                "Filename DOI conflicts with PDF metadata DOI",
+            )
+        if filename_matched:
+            doi = filename_matched
+            source = choose_source(candidates, doi)
+        else:
+            strong_content = [
+                candidate
+                for candidate in candidates
+                if candidate.source == "pdf-content" and candidate.score >= 80
+            ]
+            strong_content.sort(key=lambda candidate: candidate.score, reverse=True)
+            if strong_content and (
+                len(strong_content) == 1
+                or strong_content[0].score - strong_content[1].score >= 18
+                or strong_content[0].doi == strong_content[1].doi
+            ):
+                doi = strong_content[0].doi
+                source = strong_content[0].source
+            else:
+                doi = filename_doi
+                source = "filename"
     elif metadata_dois:
         if len(metadata_dois) == 1:
             doi = metadata_dois[0]
