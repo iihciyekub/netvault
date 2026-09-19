@@ -10,7 +10,7 @@ from pypdf import PdfReader
 
 logging.getLogger("pypdf").setLevel(logging.CRITICAL)
 
-DOI_SUFFIX_RE = r"[-._;()/:A-Z0-9]+"
+DOI_SUFFIX_RE = r"[-._;()/:,A-Z0-9+%=&]+"
 DOI_RE = re.compile(rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE})", re.IGNORECASE)
 STRICT_DOI_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
 DOI_URL_PREFIX_RE = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
