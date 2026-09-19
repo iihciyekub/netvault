@@ -448,7 +448,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Vault summary" in dashboard.text
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
-    assert "Info" in dashboard.text
+    assert "Help" in dashboard.text
     assert "fa-chart-column" in dashboard.text
     assert "fa-magnifying-glass" in dashboard.text
     assert "fa-cloud-arrow-up" in dashboard.text
@@ -490,7 +490,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv upload ./papers" in cli_page.text
     assert "data-copy" in cli_page.text
     assert 'class="command-timeline"' in cli_page.text
-    assert cli_page.text.count('class="timeline-node"') == 4
+    assert cli_page.text.count('class="timeline-node"') == 5
     assert "Step 01" in cli_page.text
     assert "Step 04" in cli_page.text
     assert "fa-cloud-arrow-down" in cli_page.text
@@ -501,7 +501,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "syntax-path" in cli_page.text
     info_page = client.get("/web/info")
     assert info_page.status_code == 200
-    assert '<h1 class="sr-only">About NetVault</h1>' in info_page.text
+    assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
     assert "0.7.17" in info_page.text
     assert "app.js?v=0.7.17-ui24" in info_page.text

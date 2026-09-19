@@ -57,7 +57,7 @@
     <div class="timeline-node" aria-hidden="true"><i class="fa-solid fa-cloud-arrow-down"></i></div>
     <header class="command-card-head">
       <span class="step-label">Step 03</span>
-      <h2>Get PDFs</h2>
+      <h2>Download</h2>
     </header>
     <div class="command-card-body">
       <p>Download by one DOI, many DOI values, or a text file. Downloads run in parallel and resume automatically.</p>
@@ -104,6 +104,32 @@
           <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example" aria-label="Copy DOI upload command"><span data-copy-label>Copy</span></button>
         </div>
       </div>
+    </div>
+  </article>
+
+  <article class="command-card">
+    <div class="timeline-node" aria-hidden="true"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+    <header class="command-card-head">
+      <span class="step-label">Step 05</span>
+      <h2>Advanced DOI tools</h2>
+    </header>
+    <div class="command-card-body">
+      <p>Admin-only tools for finding suspicious DOI identities and safely correcting the DOI attached to an existing PDF without replacing the PDF file.</p>
+      <div class="command-list">
+        <div class="command-row">
+          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">doi-audit</span> <span class="syntax-option">--limit</span> <span class="syntax-value">500</span></code>
+          <button class="copy-button" type="button" data-copy="nv doi-audit --limit 500" aria-label="Copy DOI audit command"><span data-copy-label>Copy</span></button>
+        </div>
+        <div class="command-row">
+          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">correct-doi</span> <span class="syntax-value">56240</span> <span class="syntax-doi">10.1287/msom.2021.1032</span> <span class="syntax-option">--reason</span> <span class="syntax-value">&quot;Incorrect PDF DOI extraction&quot;</span> <span class="syntax-option">--dry-run</span></code>
+          <button class="copy-button" type="button" data-copy="nv correct-doi 56240 10.1287/msom.2021.1032 --reason &quot;Incorrect PDF DOI extraction&quot; --dry-run" aria-label="Copy DOI correction preview command"><span data-copy-label>Copy</span></button>
+        </div>
+        <div class="command-row">
+          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">correct-doi</span> <span class="syntax-value">56240</span> <span class="syntax-doi">10.1287/msom.2021.1032</span> <span class="syntax-option">--reason</span> <span class="syntax-value">&quot;Verified against the PDF&quot;</span></code>
+          <button class="copy-button" type="button" data-copy="nv correct-doi 56240 10.1287/msom.2021.1032 --reason &quot;Verified against the PDF&quot;" aria-label="Copy DOI correction command"><span data-copy-label>Copy</span></button>
+        </div>
+      </div>
+      <p>Use a current DOI, PDF id, or SHA-256 as the first argument. The command previews metadata before applying the correction and keeps the PDF file, SHA-256, aliases, and correction history unchanged. Use <code>--allow-title-mismatch</code> only after independently verifying the DOI.</p>
     </div>
   </article>
 </section>

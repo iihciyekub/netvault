@@ -33,7 +33,7 @@
           {% if user.role.value == "admin" %}
           <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" {% if request.url.path == '/web/admin' %}aria-current="page"{% endif %} href="{{ path_for('/web/admin') }}"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i><span>Admin</span></a>
           {% endif %}
-          <a class="{% if request.url.path == '/web/info' %}active{% endif %}" {% if request.url.path == '/web/info' %}aria-current="page"{% endif %} href="{{ path_for('/web/info') }}"><i class="fa-solid fa-circle-info fa-fw" aria-hidden="true"></i><span>Info</span></a>
+          <a class="{% if request.url.path == '/web/info' %}active{% endif %}" {% if request.url.path == '/web/info' %}aria-current="page"{% endif %} href="{{ path_for('/web/info') }}"><i class="fa-solid fa-circle-question fa-fw" aria-hidden="true"></i><span>Help</span></a>
         </nav>
         <form method="post" action="{{ path_for('/web/logout') }}" class="logout">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
