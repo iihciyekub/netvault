@@ -693,7 +693,7 @@ def test_web_admin_can_preview_and_apply_doi_correction(client: TestClient) -> N
     )
     assert preview.status_code == 200
     plan = preview.json()
-    assert plan["previous_doi"] == DOI
+    assert plan["previous_doi"] == "10.1234/web.test"
     assert plan["new_doi"] == corrected_doi
     assert plan["dry_run"] is True
 
