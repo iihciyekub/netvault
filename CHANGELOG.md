@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.17 - 2026-09-19
+
+- Harden DOI Resolver v4 against PDF object-syntax contamination such as `)>>/Border`,
+  preserve punctuation-significant DOI identity, structurally inspect DOI annotation links,
+  and restrict raw-PDF fallback to explicit DOI labels and DOI.org URLs.
+- Verify online DOI identities with Crossref plus a limited DOI.org metadata fallback,
+  and apply the same PDF-title verification to explicit and download-index DOI claims.
+- Add administrator `nv correct-doi` and `nv doi-audit` workflows that correct DOI identity
+  and refresh metadata without replacing PDF bytes, SHA-256 aliases, or upload/download history.
+- Add the Web `Correct DOI` preview/apply/history workflow with admin/CSRF protection,
+  title-mismatch confirmation, duplicate-target checks, and stale DOI/SHA guards.
+
 ## 0.7.16 - 2026-07-22
 
 - Resolve automatic DOI candidates in filename, PDF metadata, and first-three-page order,
