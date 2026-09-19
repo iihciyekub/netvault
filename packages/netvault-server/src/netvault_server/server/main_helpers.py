@@ -363,6 +363,11 @@ async def process_upload(
                 explicit_doi=doi,
                 filename=file.filename,
             )
+            if not no_crossref and evidence.status == "ok":
+                evidence, verified_metadata, verification = await verify_automatic_doi(
+                    evidence,
+                    evidence_path,
+                )
         if doi_source is not None and not automatic_resolution and evidence.status == "ok":
             evidence = replace(evidence, source=doi_source)
         if evidence.status == "conflict":
