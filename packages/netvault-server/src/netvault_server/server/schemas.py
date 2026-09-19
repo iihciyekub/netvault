@@ -96,15 +96,26 @@ class PdfDoiCorrectionRequest(BaseModel):
         max_length=64,
         pattern=r"^[0-9a-fA-F]{64}$",
     )
+    expected_current_doi: str | None = Field(default=None, min_length=1, max_length=255)
+    allow_title_mismatch: bool = False
     dry_run: bool = False
 
 
 class PdfDoiCorrectionResponse(BaseModel):
     pdf_id: int
     previous_doi: str
+    requested_doi: str
     new_doi: str
     sha256: str
     title: str | None = None
+    authors: str | None = None
+    container_title: str | None = None
+    published_year: int | None = None
+    crossref_status: str = "ok"
+    metadata_provider: str = "crossref"
+    title_match_score: float | None = None
+    title_match_status: str = "unavailable"
+    requires_title_override: bool = False
     correction_id: int | None = None
     dry_run: bool = False
 
