@@ -599,6 +599,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "primary pdf-action" in pdfs_with_query.text
     assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
     assert "data-no-pjax" in pdfs_with_query.text
+    assert "Correct DOI" in pdfs_with_query.text
+    assert "data-doi-correct" in pdfs_with_query.text
+    assert "data-doi-dialog" in pdfs_with_query.text
 
     publisher_search = client.get("/web/pdfs", params={"q": "NetVault Press"})
     assert publisher_search.status_code == 200
@@ -665,6 +668,50 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
         assert names == ["10.1234_web.test.pdf", "netvault-manifest.tsv"]
         assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
         assert b"10.1234/web.test" in archive.read("netvault-manifest.tsv")
+
+
+def test_web_admin_can_preview_and_apply_doi_correction(client: TestClient) -> None:
+    headers = login_headers(client)
+    uploaded = client.post(
+        "/pdfs/upload",
+        headers=headers,
+        files={"file": ("doi-correct.pdf", PDF_BYTES, "application/pdf")},
+    )
+    assert uploaded.status_code == 200
+    pdf = uploaded.json()["pdf"]
+
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    corrected_doi = "10.1234/web.corrected"
+    preview = client.post(
+        f"/web/admin/pdfs/{pdf['id']}/correct-doi/preview",
+        data={
+            "csrf_token": csrf,
+            "doi": corrected_doi,
+            "reason": "Manual DOI verification",
+        },
+    )
+    assert preview.status_code == 200
+    plan = preview.json()
+    assert plan["previous_doi"] == DOI
+    assert plan["new_doi"] == corrected_doi
+    assert plan["dry_run"] is True
+
+    applied = client.post(
+        f"/web/admin/pdfs/{pdf['id']}/correct-doi",
+        data={
+            "csrf_token": csrf,
+            "doi": corrected_doi,
+            "reason": "Manual DOI verification",
+            "expected_sha256": plan["sha256"],
+            "expected_current_doi": plan["previous_doi"],
+        },
+    )
+    assert applied.status_code == 200
+    assert applied.json()["new_doi"] == corrected_doi
+    detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": corrected_doi})
+    assert detail.status_code == 200
+    assert detail.json()["sha256"] == pdf["sha256"]
 
 
 def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClient) -> None:
