@@ -323,7 +323,7 @@ async def process_upload(
             if not no_crossref and (
                 not pdf_by_sha.title or pdf_by_sha.crossref_status in (None, "pending", "unavailable", "skipped")
             ):
-                metadata = await run_in_threadpool(fetch_crossref_metadata, pdf_by_sha.doi)
+                metadata = await run_in_threadpool(fetch_doi_metadata, pdf_by_sha.doi)
                 apply_crossref_metadata(pdf_by_sha, metadata)
             add_upload_record(pdf_by_sha, file, size, user, db, idempotency_key)
             db.commit()
@@ -398,7 +398,7 @@ async def process_upload(
             )
         if force and pdf_by_doi is not None:
             metadata = verified_metadata or await run_in_threadpool(
-                fetch_crossref_metadata,
+                fetch_doi_metadata,
                 normalized_doi,
             )
             if metadata.status != "ok":
@@ -504,7 +504,7 @@ async def process_upload(
             pdf.doi_evidence = doi_evidence_json(evidence, verification)
         if not no_crossref and (created_pdf or not pdf.title or pdf.crossref_status in (None, "pending", "unavailable")):
             metadata = verified_metadata or await run_in_threadpool(
-                fetch_crossref_metadata,
+                fetch_doi_metadata,
                 normalized_doi,
             )
             apply_crossref_metadata(pdf, metadata)
