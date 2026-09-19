@@ -277,18 +277,21 @@ def extract_pdf_text(path: Path) -> str:
 
 
 def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
+    reference_match = REFERENCE_HEADING_RE.search(raw_text)
+    reference_start = reference_match.start() if reference_match else None
     candidates = []
     for match in RAW_EXPLICIT_DOI_RE.finditer(raw_text):
         try:
             doi = normalize_doi(match.group(1))
         except ValueError:
             continue
+        in_references = reference_start is not None and match.start(1) >= reference_start
         candidates.append(
             DoiCandidate(
                 doi,
                 "pdf-content",
                 "raw-explicit",
-                88,
+                30 if in_references else 88,
                 candidate_context(raw_text, match.start(1), match.end(1)),
             )
         )
