@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from netvault_server.server.crossref import CrossrefMetadata, fetch_crossref_metadata
+from netvault_server.server.crossref import CrossrefMetadata, fetch_doi_metadata
 from netvault_server.server.doi import (
     DoiCandidate,
     extract_pdf_text,
@@ -181,30 +181,31 @@ async def verify_automatic_doi(
     candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
 
     for candidate in candidates:
-        metadata = await run_in_threadpool(fetch_crossref_metadata, candidate.doi)
+        metadata = await run_in_threadpool(fetch_doi_metadata, candidate.doi)
         attempt = {
             "doi": candidate.doi,
             "source": candidate.source,
-            "crossref_status": metadata.status,
+            "metadata_status": metadata.status,
+            "metadata_provider": metadata.provider,
         }
         if metadata.status == "unavailable":
             crossref_unavailable = True
             attempt["accepted"] = False
-            attempt["reason"] = "Crossref unavailable"
+            attempt["reason"] = "DOI metadata provider unavailable"
             attempts.append(attempt)
             continue
         if metadata.status != "ok":
             attempt["accepted"] = False
-            attempt["reason"] = "DOI not found in Crossref"
+            attempt["reason"] = "DOI not found by metadata providers"
             attempts.append(attempt)
             continue
 
         match_score = title_match_score(metadata.title, pdf_text)
-        attempt["crossref_title"] = metadata.title
+        attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
         if match_score is not None and match_score < 0.88:
             attempt["accepted"] = False
-            attempt["reason"] = "Crossref title does not match the PDF"
+            attempt["reason"] = "Metadata title does not match the PDF"
             attempts.append(attempt)
             continue
 
@@ -212,7 +213,7 @@ async def verify_automatic_doi(
             canonical_doi = normalize_doi(metadata.canonical_doi or candidate.doi)
         except ValueError:
             attempt["accepted"] = False
-            attempt["reason"] = "Crossref returned an invalid canonical DOI"
+            attempt["reason"] = "Metadata provider returned an invalid canonical DOI"
             attempts.append(attempt)
             continue
         attempt["accepted"] = True
@@ -233,10 +234,10 @@ async def verify_automatic_doi(
     if crossref_unavailable:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Crossref was unavailable and no DOI candidate could be verified",
+            detail="DOI metadata provider was unavailable and no candidate could be verified",
         )
     publisher_url = any(candidate.embedded_publisher_url for candidate in candidates)
-    detail = "No DOI candidate could be verified against Crossref and the PDF title"
+    detail = "No DOI candidate could be verified against metadata and the PDF title"
     if publisher_url:
         detail += "; a candidate appeared only in a publisher download URL"
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
