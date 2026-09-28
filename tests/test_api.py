@@ -230,6 +230,84 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     assert len(stored_objects) == 1
 
 
+def test_verified_duplicate_doi_with_new_sha_is_skipped_and_registered_as_alias(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    headers = login(client, "admin", "admin-pass")
+    doi = "10.5555/verified.duplicate"
+    title = "Verified Duplicate Article"
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    main_helpers = importlib.import_module("netvault_server.server.main_helpers")
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+
+    monkeypatch.setattr(main_helpers, "extract_pdf_text", lambda _path: title)
+    monkeypatch.setattr(
+        main_helpers,
+        "fetch_doi_metadata",
+        lambda _doi: crossref.CrossrefMetadata(
+            status="ok",
+            canonical_doi=doi,
+            title=title,
+            container_title="System",
+            publisher="Elsevier BV",
+            published_year=2026,
+        ),
+    )
+
+    first_content = (
+        b"%PDF-1.4\nVerified Duplicate Article\n"
+        b"DOI: 10.5555/verified.duplicate\n%%EOF\n"
+    )
+    alternate_content = (
+        b"%PDF-1.4\nVerified Duplicate Article\n"
+        b"DOI: 10.5555/verified.duplicate\nalternate rendering\n%%EOF\n"
+    )
+    first = upload(
+        client,
+        headers,
+        name="first.pdf",
+        content=first_content,
+        doi=doi,
+        doi_source="pdf-content",
+    )
+    assert first.status_code == 200
+
+    second = upload(
+        client,
+        headers,
+        name="alternate.pdf",
+        content=alternate_content,
+        doi=doi,
+        doi_source="pdf-content",
+    )
+    assert second.status_code == 200
+    assert second.json()["deduplicated"] is True
+    assert second.json()["pdf"]["id"] == first.json()["pdf"]["id"]
+
+    alternate_sha = hashlib.sha256(alternate_content).hexdigest()
+    with database.SessionLocal() as db:
+        alias = db.query(models.PdfFileAlias).filter_by(sha256=alternate_sha).one()
+        assert alias.pdf_id == first.json()["pdf"]["id"]
+        assert alias.source == "automatic-doi-verified"
+        assert alias.asserted_by_id is not None
+
+    third = upload(
+        client,
+        headers,
+        name="alternate-again.pdf",
+        content=alternate_content,
+        doi=doi,
+        doi_source="pdf-content",
+    )
+    assert third.status_code == 200
+    assert third.json()["deduplicated"] is True
+    assert third.json()["pdf"]["id"] == first.json()["pdf"]["id"]
+    assert len(list((tmp_path / "storage" / "objects").rglob("*.pdf"))) == 1
+
+
 def test_exact_doi_search_falls_back_to_related_malformed_identifier(client: TestClient) -> None:
     headers = login(client, "admin", "admin-pass")
     correct_doi = "10.1108/mbr-10-2023-0163"

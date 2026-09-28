@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.18 - 2026-09-28
+
+- Treat verified uploads for an already stored DOI as successful skips instead of upload
+  failures, while recording alternate SHA-256 values as auditable aliases without storing
+  duplicate PDF bytes.
+- Make automatic DOI alias registration idempotent and persist its source and asserting user,
+  preventing PostgreSQL NOT NULL and duplicate-alias errors.
+- Report server-confirmed duplicates in `nv upload` as `already stored: N skipped` and keep
+  alias-persistence optimization failures out of the normal user-facing upload result.
+
 ## 0.7.17 - 2026-09-19
 
 - Harden DOI Resolver v4 against PDF object-syntax contamination such as `)>>/Border`,

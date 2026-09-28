@@ -460,7 +460,15 @@ async def process_upload(
             and verified_metadata is not None
             and not force
         ):
-            db.add(PdfFileAlias(pdf_id=pdf_by_doi.id, sha256=sha256))
+            if alias_pdf_id is None:
+                db.add(
+                    PdfFileAlias(
+                        pdf_id=pdf_by_doi.id,
+                        sha256=sha256,
+                        source="automatic-doi-verified",
+                        asserted_by_id=user.id,
+                    )
+                )
             add_upload_record(pdf_by_doi, file, size, user, db, idempotency_key)
             db.commit()
             if staged_path is not None:

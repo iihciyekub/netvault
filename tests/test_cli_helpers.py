@@ -687,6 +687,46 @@ def test_upload_no_index_uses_existing_pdf_resolver(
     assert doi_checks == [[]]
 
 
+def test_upload_reports_server_duplicate_as_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        user_cli,
+        "extract_doi_evidence",
+        lambda *args, **kwargs: DoiEvidence(
+            "ok", "10.1234/server.duplicate", "pdf-content", [], None
+        ),
+    )
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI: 10.1234/server.duplicate\n%%EOF\n")
+    monkeypatch.setattr(
+        user_cli,
+        "upload_pdf",
+        lambda path, **kwargs: {
+            "pdf": {
+                "doi": kwargs["doi"],
+                "sha256": "a" * 64,
+                "original_name": "already-stored.pdf",
+                "title": "Already stored",
+            },
+            "deduplicated": True,
+        },
+    )
+
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--no-index"])
+
+    assert result.exit_code == 0, result.output
+    assert "already stored: 1 skipped" in result.output
+    assert "deduped" not in result.output
+    assert "failed" not in result.output
+
+
 def test_manual_identity_cache_survives_file_rename(tmp_path: Path, monkeypatch) -> None:
     hash_cache_path = tmp_path / "hash-cache.json"
     identity_cache_path = tmp_path / "identity-cache.json"

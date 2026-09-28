@@ -876,7 +876,6 @@ def upload_command(
 
     uploaded = 0
     replaced = 0
-    deduped = 0
     skipped = 0
     failed: list[tuple[Path, str]] = []
     latest_pdf: dict | None = None
@@ -1073,11 +1072,10 @@ def upload_command(
         if aliases_to_register:
             try:
                 register_pdf_aliases(aliases_to_register)
-            except (RuntimeError, requests.RequestException) as exc:
-                # Alias persistence is an optimization. The DOI duplicate has
-                # already been safely identified, so a legacy server or transient
-                # failure must not turn a successful skip into an upload failure.
-                console.print(f"warning: could not register PDF aliases: {exc}")
+            except (RuntimeError, requests.RequestException):
+                # Alias persistence is only an optimization. The DOI duplicate is
+                # already known to exist, so keep the user-facing result as skipped.
+                pass
 
         if not new_pdfs:
             progress.update(
@@ -1104,7 +1102,7 @@ def upload_command(
                 if result.get("replaced"):
                     replaced += 1
                 elif result["deduplicated"]:
-                    deduped += 1
+                    skipped += 1
                 else:
                     uploaded += 1
             except (RuntimeError, OSError, requests.RequestException) as exc:
@@ -1121,8 +1119,6 @@ def upload_command(
     ]
     if replaced:
         parts.append(f"{replaced} replaced")
-    if deduped:
-        parts.append(f"{deduped} deduped")
     if doi_cache_hits:
         parts.append(f"{doi_cache_hits} DOI cache hits")
     if doi_scans:
