@@ -78,6 +78,16 @@ services:
       - "traefik.http.middlewares.netvault-web-redirect.redirectregex.regex=^https?://([^/]+)/web(.*)"
       - "traefik.http.middlewares.netvault-web-redirect.redirectregex.replacement=https://$${1}${NETVAULT_BASE_PATH:-/nv}/web$${2}"
       - "traefik.http.middlewares.netvault-web-redirect.redirectregex.permanent=true"
+      - "traefik.http.routers.netvault-root-redirect.rule=Host(`${APP_HOST:?APP_HOST is required}`) && Path(`/`)"
+      - "traefik.http.routers.netvault-root-redirect.entrypoints=web,websecure"
+      - "traefik.http.routers.netvault-root-redirect.priority=95"
+      - "traefik.http.routers.netvault-root-redirect.tls=true"
+      - "traefik.http.routers.netvault-root-redirect.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.netvault-root-redirect.middlewares=netvault-root-redirect"
+      - "traefik.http.routers.netvault-root-redirect.service=noop@internal"
+      - "traefik.http.middlewares.netvault-root-redirect.redirectregex.regex=^https?://([^/]+)/?$"
+      - "traefik.http.middlewares.netvault-root-redirect.redirectregex.replacement=https://$${1}${NETVAULT_BASE_PATH:-/nv}/web"
+      - "traefik.http.middlewares.netvault-root-redirect.redirectregex.permanent=true"
     networks:
       - netvault-internal
       - iiaide-data
