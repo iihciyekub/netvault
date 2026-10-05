@@ -94,3 +94,26 @@ def test_doi_metadata_falls_back_when_crossref_has_no_record(monkeypatch) -> Non
     assert metadata.status == "ok"
     assert metadata.provider == "doi.org"
     assert metadata.title == "Repository Object"
+
+
+def test_crossref_title_search_preserves_verification_fields(monkeypatch):
+    from netvault_server.server import crossref
+
+    class FakeSession:
+        def get(self, url, **kwargs):
+            assert url == 'https://api.crossref.org/works'
+            assert kwargs['params']['query.title'] == 'Article title'
+            assert kwargs['params']['rows'] == 5
+            return SimpleNamespace(ok=True, json=lambda: {'message': {'items': [{
+                'DOI': '10.1234/article', 'title': ['Article title'], 'type': 'journal-article',
+                'container-title': ['Journal'], 'author': [{'family': 'Corbin'}],
+                'published': {'date-parts': [[1990]]},
+            }]}})
+
+    monkeypatch.setattr(crossref, '_session', lambda: FakeSession())
+    result = crossref.search_crossref_metadata('Article title')[0]
+    assert result.canonical_doi == '10.1234/article'
+    assert result.work_type == 'journal-article'
+    assert result.container_title == 'Journal'
+    assert result.authors == 'Corbin'
+    assert result.published_year == 1990

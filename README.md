@@ -196,6 +196,10 @@ When a local file has the DOI of an existing vault item but a different SHA-256,
 the CLI also registers that digest as a server-side alias. Later uploads from
 this or another machine can then skip the file during the initial SHA-256 check.
 
+Automatically discovered indexes skip invalid entries with one warning and use
+independent PDF extraction for those files. Valid SHA-bound entries remain usable.
+An explicitly supplied `--index-file` remains strict; stale hashes still fail.
+
 When a PDF directory contains `pdf-download-index.json`, `nv upload` first looks
 for a version 1 record whose `sha256` matches the locally computed PDF digest. A
 valid matching record supplies the DOI without parsing DOI text from the PDF. A
@@ -325,6 +329,11 @@ and SHA-bound download-index identities. It verifies candidates against Crossref
 DOI.org citation metadata when Crossref explicitly has no record, and checks the metadata title
 against extractable PDF text before accepting it. A failed filename candidate therefore falls
 back to metadata or page content instead of causing a client/server DOI conflict.
+
+When automatic candidates are missing or cannot be verified, a document-metadata
+title can trigger a bounded Crossref search. NetVault accepts only an unambiguous
+article whose title, journal, year and author are corroborated in the PDF. Journal
+and issue DOIs are excluded from automatic article resolution.
 
 Inspect DOI resolution before upload:
 

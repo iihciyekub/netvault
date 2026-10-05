@@ -564,8 +564,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.19" in info_page.text
-    assert "app.js?v=0.7.19-ui24" in info_page.text
+    assert "0.7.20" in info_page.text
+    assert "app.js?v=0.7.20-ui24" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -630,6 +630,10 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'placeholder="Choose a journal name..."' in dashboard.text
     assert 'id="journal-list-options"' in dashboard.text
     assert 'placeholder="Filter journal names..."' in dashboard.text
+    assert "Search a journal name or initials, such as IJIR." in dashboard.text
+    assert "Open in Web of Science" in dashboard.text
+    assert "data-journal-context-menu" in dashboard.text
+    assert "data-journal-wos-link" in dashboard.text
     assert 'data-journal-name="Web Journal"' in dashboard.text
     assert 'data-journal-name="Another Journal"' in dashboard.text
     assert "data-journal-row=" in dashboard.text

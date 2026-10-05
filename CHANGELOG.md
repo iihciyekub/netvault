@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.20 - 2026-10-05
+
+- Ignore invalid entries in automatically discovered download indexes, warn once, and
+  independently resolve affected PDFs instead of failing an entire upload batch.
+- Send missing DOI hints without an invalid source flag, exclude journal/container
+  DOIs, and invalidate older automatic DOI caches.
+- Recover absent or obsolete printed DOIs through Crossref title search only when
+  article title, journal, publication year and author match the PDF unambiguously.
+- Filter dashboard journals by initials that omit function words, with 200 ms
+  debouncing, and add an accessible right-click Open in Web of Science menu.
+
 ## 0.7.19 - 2026-10-05
 
 - Persist browser logins for 400 days and renew authenticated visits, upgrading valid

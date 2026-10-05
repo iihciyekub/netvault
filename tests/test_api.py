@@ -1001,3 +1001,50 @@ def test_rejects_unauthenticated_non_pdf_and_non_admin_delete(client: TestClient
     listed = client.get("/pdfs", headers=bob_headers)
     assert listed.status_code == 200
     assert listed.json() == []
+
+
+@pytest.mark.parametrize('printed_doi', [None, '10.1234/obsolete'])
+def test_upload_title_fallback_requires_article_corroboration(client, monkeypatch, printed_doi):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    title = 'Grounded theory research procedures and evaluative criteria'
+    monkeypatch.setattr(helpers, 'extract_pdf_title', lambda path: title)
+    monkeypatch.setattr(helpers, 'extract_pdf_text', lambda path: title + '\nJuliet Corbin\nQualitative Sociology 1990')
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(status='not_found'))
+    metadata = crossref.CrossrefMetadata(status='ok', canonical_doi='10.1007/BF00988593',
+        title=title, authors='Juliet Corbin', container_title='Qualitative Sociology',
+        published_year=1990, work_type='journal-article')
+    # An identical title from a different journal must not win by search rank.
+    from dataclasses import replace
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [
+        replace(metadata, canonical_doi='10.1234/translation', container_title='Another Journal'), metadata])
+    content = b'%PDF-1.4\n' + (f'DOI: {printed_doi}\n'.encode() if printed_doi else b'') + b'%%EOF'
+    response = upload(client, login(client, 'admin', 'admin-pass'), content=content)
+    assert response.status_code == 200, response.text
+    assert response.json()['pdf']['doi'] == '10.1007/bf00988593'
+
+
+@pytest.mark.parametrize('ambiguous', [False, True])
+def test_title_fallback_rejects_uncorroborated_or_ambiguous_results(client, monkeypatch, ambiguous):
+    from dataclasses import replace
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    title = 'Grounded theory research procedures and evaluative criteria'
+    monkeypatch.setattr(helpers, 'extract_pdf_title', lambda path: title)
+    monkeypatch.setattr(helpers, 'extract_pdf_text', lambda path: title + '\nJuliet Corbin\nQualitative Sociology 1990')
+    metadata = crossref.CrossrefMetadata(status='ok', canonical_doi='10.1234/one', title=title,
+        authors='Juliet Corbin', container_title='Qualitative Sociology' if ambiguous else 'Wrong Journal',
+        published_year=1990, work_type='journal-article')
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [metadata, replace(metadata, canonical_doi='10.1234/two')])
+    response = upload(client, login(client, 'admin', 'admin-pass'), content=b'%PDF-1.4\n%%EOF')
+    assert response.status_code == 422
+
+
+def test_container_doi_is_rejected_even_when_journal_title_matches(client, monkeypatch):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    monkeypatch.setattr(helpers, 'extract_pdf_text', lambda path: 'NetVault Journal and a completely different article title')
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(
+        status='ok', title='NetVault Journal', work_type='journal'))
+    response = upload(client, login(client, 'admin', 'admin-pass'))
+    assert response.status_code == 422

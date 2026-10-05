@@ -1270,6 +1270,38 @@ tr:last-child td { border-bottom: 0; }
   transition: outline-color 0.06s ease, border-color 0.06s ease;
 }
 
+.heat-journal:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.journal-context-menu {
+  position: fixed;
+  z-index: 100;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.journal-context-menu a {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.journal-context-menu a:hover,
+.journal-context-menu a:focus-visible {
+  background: #f3f4f6;
+}
+
 .heat-cell:hover {
   outline: 2px solid rgba(0, 0, 0, 0.18);
   outline-offset: 1px;

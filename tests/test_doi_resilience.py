@@ -77,3 +77,15 @@ def test_bad_page_does_not_discard_good_pages_or_stronger_evidence(resolver, tmp
     assert main.detail == 'pypdf-page-1'
     if hasattr(resolver, 'extract_pdf_text'):
         assert 'Article title' in resolver.extract_pdf_text(pdf)
+
+
+def test_journal_doi_does_not_conflict_with_article(resolver, tmp_path):
+    pdf = tmp_path / 'article.pdf'
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({'/WPS-JOURNALDOI': '10.1111/(ISSN)1540-4781', '/DOI': '10.1111/modl.70031'})
+    writer.write(pdf)
+    evidence = resolver.extract_doi_evidence(pdf)
+    assert evidence.status == 'ok'
+    assert evidence.doi == '10.1111/modl.70031'
+    assert not any('(issn)' in candidate.doi for candidate in evidence.candidates)
