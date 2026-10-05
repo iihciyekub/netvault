@@ -120,6 +120,10 @@ cached; pass `--refresh-doi` when you want to retry them.
 
 ### Download index files
 
+Automatically discovered indexes skip invalid entries with one warning and use
+independent PDF extraction for those files. Valid SHA-bound entries remain usable.
+An explicitly supplied `--index-file` remains strict; stale hashes still fail.
+
 If a PDF's immediate directory contains `pdf-download-index.json`, NetVault can
 use the downloader's DOI record before reading DOI text from the PDF. The JSON
 file must use version 1, declare `SHA-256`, and contain a `records` array. Each
@@ -350,6 +354,12 @@ The web UI uses the same username and password as the CLI. It provides dashboard
 statistics, PDF listing/search, browser upload, and DOI-based download.
 
 ### Editable journal filters
+
+Type a journal name or initials in the dashboard filter. Initials omit function
+words: `IJIR` matches International Journal of Intercultural Relations. Results
+update locally 200 ms after typing stops; Enter applies immediately. Right-click
+a journal name, or press Shift+F10 while it is focused, and select **Open in Web
+of Science** to search its full publication name in a new tab.
 
 The dashboard includes All, UTD24, FT50, ABS 4*, ABS 4, ABS 3, ABS 2, ABS 1,
 and Custom filters. Custom is always shown last.

@@ -111,7 +111,7 @@ def test_doi_suffix_preserves_additional_slashes() -> None:
 
 
 def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
-    assert netvault.doi.DOI_RESOLVER_VERSION == 5
+    assert netvault.doi.DOI_RESOLVER_VERSION == 6
 
 
 def test_doi_parser_stops_before_pdf_object_syntax() -> None:
@@ -970,6 +970,7 @@ def test_upload_retries_local_no_doi_and_lets_server_resolve(tmp_path: Path, mon
     assert second.exit_code == 0, second.output
     assert len(scans) == 2
     assert all(call["doi"] is None for call in uploads)
+    assert all(call["doi_source"] is None for call in uploads)
     assert "1 DOI scans" in second.output
     assert "uploaded: 1" in second.output
 
@@ -1094,3 +1095,66 @@ def test_smart_doi_rejects_publisher_download_url_suffix(tmp_path: Path) -> None
         candidate.doi != "10.1108/mbr-10-2023-0163/11288746/mbr-10-2023-0163en.pdf"
         for candidate in evidence.candidates
     )
+
+
+def test_bad_index_row_does_not_block_unrelated_uploads(tmp_path, monkeypatch):
+    monkeypatch.setattr(user_cli, 'HASH_CACHE_PATH', tmp_path / 'hash-cache.json')
+    monkeypatch.setattr(user_cli, 'IDENTITY_CACHE_PATH', tmp_path / 'identity-cache.json')
+    monkeypatch.setattr(user_cli, 'ensure_logged_in', lambda: None)
+    monkeypatch.setattr(user_cli, 'get_existing_pdfs_by_sha256', lambda *args, **kwargs: {})
+    monkeypatch.setattr(user_cli, 'get_existing_pdfs_by_doi', lambda *args, **kwargs: {})
+    bad = tmp_path / 'bad-index-entry.pdf'
+    bad.write_bytes(b'%PDF-1.4\nDOI: 10.1016/j.actpsy.2025.106071\n%%EOF\n')
+    good = tmp_path / 'good-index-entry.pdf'
+    good.write_bytes(b'%PDF-1.4\nvalid PDF with DOI only in index\n%%EOF\n')
+    index_path = tmp_path / 'pdf-download-index.json'
+    write_download_index(index_path, good, '10.5555/good.index')
+    payload = json.loads(index_path.read_text())
+    bad_record = dict(payload['records'][0], doi='10/1016_j_actpsy_2025_106071',
+                      filename=bad.name, size=bad.stat().st_size, sha256=file_sha256(bad))
+    payload['records'].insert(0, bad_record)
+    index_path.write_text(json.dumps(payload))
+    uploads = []
+
+    def upload(path, **kwargs):
+        uploads.append(kwargs)
+        return {'deduplicated': False, 'pdf': {'doi': kwargs['doi'], 'original_name': path.name}}
+
+    monkeypatch.setattr(user_cli, 'upload_pdf', upload)
+    result = CliRunner().invoke(user_cli.app, ['upload', str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert {item['doi'] for item in uploads} == {'10.1016/j.actpsy.2025.106071', '10.5555/good.index'}
+    assert '1 download index hits' in result.output
+    assert '1 DOI scans' in result.output
+    assert result.output.count('warning:') == 1
+    assert 'uploaded: 2' in result.output
+    with pytest.raises(DownloadIndexError, match='invalid DOI'):
+        load_download_index(index_path)
+
+
+def test_unreadable_automatic_index_falls_back_but_explicit_index_is_strict(tmp_path):
+    pdf = tmp_path / 'paper.pdf'
+    pdf.write_bytes(b'%PDF-1.4\nDOI: 10.5555/from.pdf\n%%EOF')
+    index = tmp_path / 'pdf-download-index.json'
+    index.write_text('{broken json')
+    warnings = []
+    resolver = DownloadIndexResolver((index.name,), warning_callback=warnings.append)
+    for _ in range(2):
+        assert resolver.resolve(pdf, file_sha256(pdf), pdf.stat().st_size) is None
+    assert len(warnings) == 1
+    strict = DownloadIndexResolver((index.name,), explicit_path=index)
+    with pytest.raises(DownloadIndexError, match='could not read'):
+        strict.resolve(pdf, file_sha256(pdf), pdf.stat().st_size)
+
+
+def test_conflicting_duplicate_index_records_are_quarantined(tmp_path):
+    pdf = tmp_path / 'paper.pdf'
+    pdf.write_bytes(b'%PDF-1.4\n%%EOF')
+    index = tmp_path / 'pdf-download-index.json'
+    write_download_index(index, pdf, '10.5555/first')
+    payload = json.loads(index.read_text())
+    payload['records'].append(dict(payload['records'][0], doi='10.5555/different'))
+    index.write_text(json.dumps(payload))
+    loaded = load_download_index(index, strict=False)
+    assert loaded.resolve(pdf, file_sha256(pdf), pdf.stat().st_size) is None
+    assert loaded.warnings

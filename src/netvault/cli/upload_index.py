@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from collections.abc import Callable
 import json
 from pathlib import Path
 import re
@@ -48,6 +49,7 @@ class DownloadIndex:
     updated_at: str
     records_by_sha256: dict[str, DownloadIndexRecord]
     records_by_filename: dict[str, DownloadIndexRecord]
+    warnings: tuple[str, ...] = ()
 
     def resolve(self, pdf_path: Path, sha256: str, size: int) -> DownloadIndexMatch | None:
         normalized_sha256 = sha256.lower()
@@ -148,7 +150,7 @@ def _parse_record(raw: object, path: Path, index: int) -> DownloadIndexRecord:
     )
 
 
-def load_download_index(path: Path) -> DownloadIndex:
+def load_download_index(path: Path, *, strict: bool = True) -> DownloadIndex:
     try:
         if path.stat().st_size > MAX_DOWNLOAD_INDEX_BYTES:
             raise DownloadIndexError(
@@ -185,31 +187,53 @@ def load_download_index(path: Path) -> DownloadIndex:
 
     by_sha256: dict[str, DownloadIndexRecord] = {}
     by_filename: dict[str, DownloadIndexRecord] = {}
+    warnings = []
+    rejected_sha256 = set()
+    rejected_filenames = set()
     for index, raw_record in enumerate(records):
-        record = _parse_record(raw_record, path, index)
+        try:
+            record = _parse_record(raw_record, path, index)
+        except DownloadIndexError as exc:
+            if strict:
+                raise
+            warnings.append(str(exc))
+            continue
         existing_sha = by_sha256.get(record.sha256)
         if existing_sha is not None:
-            raise _record_error(
+            error = _record_error(
                 path,
                 index,
                 f"duplicates SHA-256 from filename {existing_sha.filename}",
             )
+            if strict:
+                raise error
+            warnings.append(str(error))
+            rejected_sha256.add(record.sha256)
         existing_filename = by_filename.get(record.filename)
         if existing_filename is not None:
-            raise _record_error(
+            error = _record_error(
                 path,
                 index,
                 f"duplicates filename with SHA-256 {existing_filename.sha256}",
             )
+            if strict:
+                raise error
+            warnings.append(str(error))
+            rejected_filenames.add(record.filename)
         by_sha256[record.sha256] = record
         by_filename[record.filename] = record
 
+    safe_records = [
+        record for record in by_sha256.values()
+        if record.sha256 not in rejected_sha256 and record.filename not in rejected_filenames
+    ]
     return DownloadIndex(
         path=path,
         version=version,
         updated_at=updated_at,
-        records_by_sha256=by_sha256,
-        records_by_filename=by_filename,
+        records_by_sha256={record.sha256: record for record in safe_records},
+        records_by_filename={record.filename: record for record in safe_records},
+        warnings=tuple(warnings),
     )
 
 
@@ -220,10 +244,12 @@ class DownloadIndexResolver:
         *,
         explicit_path: Path | None = None,
         enabled: bool = True,
+        warning_callback: Callable[[str], None] | None = None,
     ) -> None:
         self.index_names = index_names
         self.explicit_path = explicit_path.resolve() if explicit_path is not None else None
         self.enabled = enabled
+        self.warning_callback = warning_callback
         self._cache: dict[Path, DownloadIndex | DownloadIndexError] = {}
 
     def _discover(self, pdf_path: Path) -> Path | None:
@@ -240,23 +266,35 @@ class DownloadIndexResolver:
             )
         return existing[0] if existing else None
 
-    def _load(self, path: Path) -> DownloadIndex:
+    def _load(self, path: Path) -> DownloadIndex | None:
         resolved = path.resolve()
         cached = self._cache.get(resolved)
         if isinstance(cached, DownloadIndexError):
-            raise cached
+            if self.explicit_path is not None:
+                raise cached
+            return None
         if cached is not None:
             return cached
         try:
-            loaded = load_download_index(resolved)
+            loaded = load_download_index(resolved, strict=self.explicit_path is not None)
         except DownloadIndexError as exc:
             self._cache[resolved] = exc
-            raise
+            if self.explicit_path is not None:
+                raise
+            if self.warning_callback:
+                self.warning_callback(f"Ignoring unusable download index; using PDF extraction: {exc}")
+            return None
         self._cache[resolved] = loaded
+        if loaded.warnings and self.warning_callback:
+            self.warning_callback(
+                f"Ignored {len(loaded.warnings)} invalid download index entries in {resolved}; "
+                f"affected PDFs will use independent DOI extraction. First issue: {loaded.warnings[0]}"
+            )
         return loaded
 
     def resolve(self, pdf_path: Path, sha256: str, size: int) -> DownloadIndexMatch | None:
         index_path = self._discover(pdf_path)
         if index_path is None:
             return None
-        return self._load(index_path).resolve(pdf_path, sha256, size)
+        index = self._load(index_path)
+        return index.resolve(pdf_path, sha256, size) if index is not None else None

@@ -25,6 +25,7 @@ class CrossrefMetadata:
     resource_url: str | None = None
     fetched_at: datetime | None = None
     provider: str = "crossref"
+    work_type: str | None = None
 
 
 def _first(values: list[Any] | None) -> Any | None:
@@ -107,6 +108,7 @@ def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
         resource_url=message.get("URL"),
         fetched_at=fetched_at,
         provider="crossref",
+        work_type=message.get("type"),
     )
 
 
@@ -173,6 +175,7 @@ def fetch_doi_org_metadata(doi: str) -> CrossrefMetadata:
         resource_url=message.get("URL") if isinstance(message.get("URL"), str) else f"https://doi.org/{doi}",
         fetched_at=fetched_at,
         provider="doi.org",
+        work_type=message.get("type"),
     )
 
 
@@ -184,3 +187,27 @@ def fetch_doi_metadata(doi: str) -> CrossrefMetadata:
     if fallback.status == "unavailable":
         return fallback
     return fallback
+
+
+def search_crossref_metadata(title: str) -> list[CrossrefMetadata]:
+    settings = get_settings()
+    params = {"query.title": title[:500], "rows": 5}
+    if settings.crossref_mailto:
+        params["mailto"] = settings.crossref_mailto
+    fetched_at = datetime.now(timezone.utc)
+    try:
+        response = _session().get(
+            "https://api.crossref.org/works", params=params,
+            headers={"User-Agent": settings.crossref_user_agent}, timeout=(3.05, 10),
+        )
+        if not response.ok:
+            return [CrossrefMetadata(status="unavailable", fetched_at=fetched_at)]
+        items = response.json()["message"]["items"]
+        return [CrossrefMetadata(
+            status="ok", canonical_doi=item.get("DOI"), title=_first(item.get("title")),
+            authors=_authors(item), container_title=_first(item.get("container-title")),
+            publisher=item.get("publisher"), published_year=_published_year(item),
+            resource_url=item.get("URL"), fetched_at=fetched_at, work_type=item.get("type"),
+        ) for item in items]
+    except (requests.RequestException, KeyError, TypeError, ValueError):
+        return [CrossrefMetadata(status="unavailable", fetched_at=fetched_at)]

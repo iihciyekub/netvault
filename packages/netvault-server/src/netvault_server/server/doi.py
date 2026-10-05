@@ -297,6 +297,17 @@ def extract_pdf_text(path: Path) -> str:
         return ""
 
 
+def extract_pdf_title(path: Path) -> str | None:
+    """Use document title metadata only; never guess from a downloaded filename."""
+    try:
+        title = (PdfReader(str(path)).metadata or {}).get("/Title")
+    except Exception:
+        return None
+    if isinstance(title, str) and len(title.strip()) >= 12 and len(title.split()) >= 3:
+        return title.strip()
+    return None
+
+
 def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
     reference_match = REFERENCE_HEADING_RE.search(raw_text)
     reference_start = reference_match.start() if reference_match else None
@@ -379,7 +390,7 @@ def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
     except Exception:
         return candidates
     for key, value in metadata.items():
-        if not isinstance(value, str):
+        if not isinstance(value, str) or re.search(r"(?:journal|issue|volume).*doi", str(key), re.I):
             continue
         for doi in find_dois_in_text(value):
             candidates.append(
@@ -433,6 +444,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
     positions = {}
 
     def add(candidate: DoiCandidate) -> None:
+        if "/(issn)" in candidate.doi.casefold():
+            return
         key = (candidate.doi, candidate.source)
         if key in positions:
             index = positions[key]

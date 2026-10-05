@@ -112,13 +112,14 @@
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">
-      <label class="sr-only" for="journal-name-filter">Filter journals by name</label>
+      <label class="sr-only" for="journal-name-filter">Filter journals by name or initials</label>
       <div class="heatmap-filter-field">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
         <input
           id="journal-name-filter"
           type="search"
           placeholder="Filter journal names..."
+          title="Search a journal name or initials, such as IJIR."
           autocomplete="off"
           spellcheck="false"
           aria-controls="journal-year-heatmap"
@@ -169,7 +170,7 @@
         <div class="heat-total-head">Total</div>
         {% for row in journal_year.rows %}
           {% set journal_row = loop.index0 %}
-          <div class="heat-journal" data-journal-row="{{ journal_row }}" data-journal-name="{{ row.journal }}" data-journal-total="{{ row.total }}" data-tip="{{ row.journal }}">{{ row.journal }}</div>
+          <div class="heat-journal" tabindex="0" aria-haspopup="menu" data-journal-row="{{ journal_row }}" data-journal-name="{{ row.journal }}" data-journal-total="{{ row.total }}" data-tip="{{ row.journal }}">{{ row.journal }}</div>
           {% for cell in row.cells %}
             {% if cell.count > 0 %}
             <button
@@ -192,4 +193,7 @@
     <div class="empty-state">No journal-year data.</div>
     {% endif %}
 </section>
+<div class="journal-context-menu" data-journal-context-menu role="menu" aria-label="Journal actions" hidden>
+  <a href="https://www.webofscience.com/" data-journal-wos-link role="menuitem" target="_blank" rel="noopener noreferrer" data-no-pjax><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>Open in Web of Science</span></a>
+</div>
 {% endblock %}

@@ -29,7 +29,7 @@ DOI_METADATA_PATTERNS = [
     )
 ]
 DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 5
+DOI_RESOLVER_VERSION = 6
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -358,7 +358,7 @@ def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
     except Exception:
         return candidates
     for key, value in metadata.items():
-        if not isinstance(value, str):
+        if not isinstance(value, str) or re.search(r"(?:journal|issue|volume).*doi", str(key), re.I):
             continue
         for doi in find_dois_in_text(value):
             candidates.append(
@@ -412,6 +412,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
     positions = {}
 
     def add(candidate: DoiCandidate) -> None:
+        if "/(issn)" in candidate.doi.casefold():
+            return
         key = (candidate.doi, candidate.source)
         if key in positions:
             index = positions[key]

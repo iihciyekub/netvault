@@ -10,10 +10,11 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from netvault_server.server.crossref import CrossrefMetadata, fetch_doi_metadata
+from netvault_server.server.crossref import CrossrefMetadata, fetch_doi_metadata, search_crossref_metadata
 from netvault_server.server.doi import (
     DoiCandidate,
     extract_pdf_text,
+    extract_pdf_title,
     extract_doi_evidence,
     normalize_doi,
 )
@@ -103,6 +104,8 @@ def doi_evidence_json(evidence, verification: list[dict] | None = None) -> str:
 
 def _normalized_title_text(value: str) -> str:
     value = html.unescape(unicodedata.normalize("NFKC", value)).casefold()
+    value = re.sub(r"<[^>]+>", "", value)
+    value = re.sub(r"[‐‑‒–—]", "-", value)
     value = re.sub(r"-\s+", "", value)
     return " ".join(re.findall(r"[\w]+", value, flags=re.UNICODE))
 
@@ -200,6 +203,10 @@ async def verify_automatic_doi(
             attempts.append(attempt)
             continue
 
+        if metadata.work_type in {"journal", "journal-volume", "journal-issue", "book-series", "periodical"}:
+            attempt.update(accepted=False, reason="DOI identifies a publication container, not an article")
+            attempts.append(attempt)
+            continue
         match_score = title_match_score(metadata.title, pdf_text)
         attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
@@ -230,6 +237,49 @@ async def verify_automatic_doi(
             replace(metadata, canonical_doi=canonical_doi),
             attempts,
         )
+
+    # Search only for automatic identities. Require title, journal, year and author
+    # corroboration in the PDF, and reject ambiguous matches rather than picking rank 1.
+    document_title = await run_in_threadpool(extract_pdf_title, path)
+    if document_title and not any(c.source == "explicit" for c in candidates) and (
+        title_match_score(document_title, pdf_text) or 0
+    ) >= 0.98:
+        results = await run_in_threadpool(search_crossref_metadata, document_title)
+        accepted = {}
+        normalized_pdf = _normalized_title_text(pdf_text).replace(" ", "")
+        for metadata in results:
+            if metadata.status == "unavailable":
+                crossref_unavailable = True
+                continue
+            exact_title = SequenceMatcher(None, _normalized_title_text(document_title),
+                                          _normalized_title_text(metadata.title or "")).ratio()
+            journal = _normalized_title_text(metadata.container_title or "").replace(" ", "")
+            author_names = [name.strip().split()[-1] for name in (metadata.authors or "").split(";") if name.strip()]
+            pdf_words = set(_normalized_title_text(pdf_text).split())
+            author_match = any(_normalized_title_text(name) in pdf_words for name in author_names)
+            corroborated = (metadata.work_type == "journal-article" and exact_title >= 0.98
+                            and (title_match_score(metadata.title, pdf_text) or 0) >= 0.98
+                            and len(journal) >= 8 and journal in normalized_pdf
+                            and metadata.published_year is not None
+                            and re.search(rf"\b{metadata.published_year}\b", pdf_text) is not None
+                            and author_match)
+            attempt = {"doi": metadata.canonical_doi, "source": "crossref-title",
+                       "metadata_title": metadata.title, "title_match_score": exact_title,
+                       "accepted": False, "corroborated": corroborated}
+            attempts.append(attempt)
+            if corroborated:
+                try:
+                    canonical = normalize_doi(metadata.canonical_doi or "")
+                except ValueError:
+                    continue
+                accepted[canonical] = (metadata, attempt)
+        if len(accepted) == 1:
+            canonical, (metadata, attempt) = next(iter(accepted.items()))
+            attempt["accepted"] = True
+            candidate = DoiCandidate(canonical, "pdf-metadata", "crossref-title", 98, document_title)
+            return (replace(evidence, status="ok", doi=canonical, source="pdf-metadata",
+                            candidates=[*evidence.candidates, candidate], reason=None),
+                    replace(metadata, canonical_doi=canonical), attempts)
 
     if crossref_unavailable:
         raise HTTPException(
@@ -345,7 +395,9 @@ async def process_upload(
                     client_doi = normalize_doi(doi)
                 except ValueError as exc:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-            if not evidence.candidates and not client_doi:
+            if not evidence.candidates and not client_doi and (
+                no_crossref or not extract_pdf_title(evidence_path)
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=evidence.reason or "No DOI found in PDF. Pass --doi DOI when uploading.",

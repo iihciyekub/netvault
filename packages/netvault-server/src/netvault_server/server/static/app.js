@@ -14,6 +14,7 @@
   const clientHashMaxBytes = 32 * 1024 * 1024;
   const activeUploadRequests = new Set();
   let journalFilterTimer = null;
+  let journalMenuTarget = null;
   let journalLimitTimer = null;
   let journalLimitRequest = null;
 
@@ -104,6 +105,8 @@
   };
 
   const applyPageState = (state, url, push) => {
+    closeJournalMenu();
+    window.clearTimeout(journalFilterTimer);
     const currentMain = qs(mainSelector);
     const currentTopbar = qs(".topbar");
     if (!currentMain) {
@@ -498,6 +501,12 @@
   };
 
   const normalizedJournalText = (value) => value.normalize("NFKC").toLocaleLowerCase();
+  const journalStopWords = new Set([
+    "a", "an", "the", "and", "or", "of", "for", "in", "on", "at", "to", "by", "with", "from", "as",
+  ]);
+  const journalInitials = (value) => (normalizedJournalText(value).match(/[\p{L}\p{N}]+/gu) || [])
+    .filter((word) => !journalStopWords.has(word))
+    .map((word) => Array.from(word)[0]).join("");
 
   const journalRows = (heatmap) => {
     if (journalRowsCache.has(heatmap)) return journalRowsCache.get(heatmap);
@@ -509,6 +518,7 @@
     });
     const rows = qsa(".heat-journal[data-journal-name]", heatmap).map((label) => ({
       name: normalizedJournalText(label.dataset.journalName || label.textContent || ""),
+      initials: journalInitials(label.dataset.journalName || label.textContent || ""),
       label: label.dataset.journalName || label.textContent || "",
       total: Number(label.dataset.journalTotal || 0),
       elements: elementsByRow.get(label.dataset.journalRow) || [label],
@@ -561,10 +571,13 @@
     if (!heatmap) return;
     const input = qs("[data-journal-filter]", panel);
     const query = normalizedJournalText(input ? input.value.trim() : "");
+    const initialsQuery = query.replace(/[\s.-]/g, "");
+    const isInitialsQuery = /^[\p{L}\p{N}]{2,}$/u.test(initialsQuery);
     const rows = journalRows(heatmap);
     let visibleCount = 0;
     rows.forEach((row) => {
-      const visible = !query || row.name.includes(query);
+      const visible = !query || row.name.includes(query)
+        || (isInitialsQuery && row.initials.includes(initialsQuery));
       row.elements.forEach((element) => {
         element.hidden = !visible;
       });
@@ -583,12 +596,41 @@
 
   const scheduleJournalFilter = (input) => {
     window.clearTimeout(journalFilterTimer);
-    journalFilterTimer = window.setTimeout(() => applyJournalFilters(input.closest(".heatmap-panel")), 300);
+    if (input.dataset.composing === "true") return;
+    journalFilterTimer = window.setTimeout(() => applyJournalFilters(input.closest(".heatmap-panel")), 200);
   };
 
   const flushJournalFilter = (input) => {
     window.clearTimeout(journalFilterTimer);
+    if (input.dataset.composing === "true") return;
     applyJournalFilters(input.closest(".heatmap-panel"));
+  };
+
+  const closeJournalMenu = (restoreFocus = false) => {
+    const menu = qs("[data-journal-context-menu]");
+    if (menu) menu.hidden = true;
+    if (restoreFocus && journalMenuTarget?.isConnected) journalMenuTarget.focus({ preventScroll: true });
+    journalMenuTarget = null;
+  };
+
+  const openJournalMenu = (target, event) => {
+    const menu = qs("[data-journal-context-menu]");
+    const link = qs("[data-journal-wos-link]", menu);
+    const name = (target.dataset.journalName || "").replace(/\s+/g, " ").trim();
+    if (!menu || !link || !name) return;
+    closeJournalMenu();
+    hideTooltip();
+    const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
+    link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
+    journalMenuTarget = target;
+    menu.hidden = false;
+    const rect = target.getBoundingClientRect();
+    const keyboard = event.type === "keydown" || (!event.clientX && !event.clientY);
+    const x = keyboard ? rect.left : event.clientX;
+    const y = keyboard ? rect.bottom : event.clientY;
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))}px`;
+    link.focus({ preventScroll: true });
   };
 
   const journalLimitValue = (input) => {
@@ -1164,11 +1206,40 @@
   });
 
   document.addEventListener("contextmenu", (event) => {
+    const journal = event.target.closest(".heat-journal[data-journal-name]");
+    if (journal) {
+      event.preventDefault();
+      closeFilterMenus();
+      openJournalMenu(journal, event);
+      return;
+    }
+    closeJournalMenu();
     const tab = event.target.closest("[data-journal-list-edit]");
     if (!tab) return;
     event.preventDefault();
     closeFilterMenus();
     openJournalListEditor(tab);
+  });
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest("[data-journal-context-menu]")) closeJournalMenu();
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-journal-wos-link]")) closeJournalMenu();
+  });
+  document.addEventListener("scroll", () => closeJournalMenu(), true);
+  window.addEventListener("resize", () => closeJournalMenu());
+  document.addEventListener("compositionstart", (event) => {
+    if (event.target.matches("[data-journal-filter]")) {
+      event.target.dataset.composing = "true";
+      window.clearTimeout(journalFilterTimer);
+    }
+  });
+  document.addEventListener("compositionend", (event) => {
+    if (event.target.matches("[data-journal-filter]")) {
+      delete event.target.dataset.composing;
+      scheduleJournalFilter(event.target);
+    }
   });
 
   document.addEventListener("toggle", (event) => {
@@ -1257,6 +1328,13 @@
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeJournalMenu(true);
+    if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+        && event.target.closest(".heat-journal[data-journal-name]")) {
+      event.preventDefault();
+      openJournalMenu(event.target.closest(".heat-journal[data-journal-name]"), event);
+      return;
+    }
     if (event.key === "Escape") closeFilterMenus();
     if (
       (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))

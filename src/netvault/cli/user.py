@@ -876,6 +876,7 @@ def upload_command(
         index_names,
         explicit_path=index_file,
         enabled=not no_index and (configured_index_enabled or index_file is not None),
+        warning_callback=lambda message: console.print(f"warning: {message}", style="yellow", highlight=False),
     )
 
     uploaded = 0
@@ -1104,7 +1105,7 @@ def upload_command(
                 result = upload_pdf(
                     pdf_path,
                     doi=dois_by_path[pdf_path],
-                    doi_source=doi_sources_by_path[pdf_path],
+                    doi_source=doi_sources_by_path[pdf_path] if dois_by_path[pdf_path] else None,
                     no_crossref=no_crossref,
                     force=force,
                     sha256=sha256,
