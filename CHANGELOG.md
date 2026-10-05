@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.21 - 2026-10-05
+
+- Publish a version-only maintenance release with synchronized CLI and server
+  package versions, retaining the DOI upload and journal dashboard fixes from 0.7.20.
+
 ## 0.7.20 - 2026-10-05
 
 - Ignore invalid entries in automatically discovered download indexes, warn once, and
