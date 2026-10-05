@@ -295,7 +295,11 @@ def cached_identity(identities: dict[str, dict], sha256: str) -> dict | None:
         return None
     if identity.get("source") == "user" and identity.get("status") == "confirmed":
         return identity
-    if identity.get("resolver_version") == DOI_RESOLVER_VERSION:
+    if (
+        identity.get("resolver_version") == DOI_RESOLVER_VERSION
+        and identity.get("status") == "ok"
+        and isinstance(identity.get("doi"), str)
+    ):
         return identity
     return None
 
@@ -946,7 +950,7 @@ def upload_command(
             else:
                 new_pdfs.append(pdf_path)
 
-        dois_by_path: dict[Path, str] = {}
+        dois_by_path: dict[Path, str | None] = {}
         doi_sources_by_path: dict[Path, str] = {}
         upload_candidates: list[Path] = []
         progress.reset(
@@ -1012,6 +1016,13 @@ def upload_command(
                     doi_scans += 1
 
                 extracted = identity.get("doi")
+                if identity.get("status") == "no-doi":
+                    # The server has its own parsers. A failed local scan must not
+                    # prevent it from examining the actual document.
+                    dois_by_path[pdf_path] = None
+                    doi_sources_by_path[pdf_path] = "pdf-content"
+                    upload_candidates.append(pdf_path)
+                    continue
                 if identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
                     reason = identity.get("reason") or "No DOI found"
                     failed.append(

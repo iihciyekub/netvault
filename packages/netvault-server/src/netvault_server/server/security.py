@@ -103,9 +103,13 @@ def activity_is_allowed(
         return True
 
 
-def create_access_token(username: str, token_version: int = 0) -> str:
+def create_access_token(
+    username: str, token_version: int = 0, *, expires_minutes: int | None = None
+) -> str:
     settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_minutes)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=expires_minutes if expires_minutes is not None else settings.access_token_minutes
+    )
     payload = {"sub": username, "ver": token_version, "exp": expires_at}
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 

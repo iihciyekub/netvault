@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.19 - 2026-10-05
+
+- Persist browser logins for 400 days and renew authenticated visits, upgrading valid
+  existing sessions while preserving logout and account revocation.
+- Strengthen PDF DOI extraction with decoded compressed XMP, page-level error
+  recovery, conservative wrapped-token repair, and the strongest available evidence.
+- Retry unsuccessful local DOI scans and send PDFs without a local DOI to the server
+  for independent extraction and metadata/title verification.
+- Include Poppler in the server image so the alternate PDF text parser is available
+  in production, with matching CLI/server regression coverage.
+
 ## 0.7.18 - 2026-09-28
 
 - Treat verified uploads for an already stored DOI as successful skips instead of upload

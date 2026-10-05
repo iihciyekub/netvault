@@ -139,6 +139,21 @@ def set_csrf_cookie(response: HTMLResponse | RedirectResponse, token: str) -> No
         httponly=True,
         samesite="lax",
         secure=get_settings().secure_cookies,
+        max_age=get_settings().web_session_days * 86400,
+    )
+
+
+def set_login_cookie(response: HTMLResponse | RedirectResponse, user: User) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        TOKEN_COOKIE,
+        create_access_token(
+            user.username, user.token_version, expires_minutes=settings.web_session_days * 1440
+        ),
+        max_age=settings.web_session_days * 86400,
+        httponly=True,
+        samesite="lax",
+        secure=settings.secure_cookies,
     )
 
 
@@ -176,6 +191,8 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
+    if user := context.get("user"):
+        set_login_cookie(response, user)
     return response
 
 
@@ -233,7 +250,12 @@ def root() -> Any:
 
 
 @router.get("/web/login", response_class=HTMLResponse, include_in_schema=False)
-def login_page(request: Request) -> Any:
+def login_page(request: Request, db: Session = Depends(get_db)) -> Any:
+    if user := get_cookie_user(request, db):
+        response = redirect("/web")
+        set_login_cookie(response, user)
+        set_csrf_cookie(response, csrf_token(request))
+        return response
     return render(request, "login.html", {"error": None})
 
 
@@ -261,13 +283,7 @@ def login_submit(
         user.password_hash = hash_password(password)
         db.commit()
     response = redirect("/web")
-    response.set_cookie(
-        TOKEN_COOKIE,
-        create_access_token(user.username, user.token_version),
-        httponly=True,
-        samesite="lax",
-        secure=get_settings().secure_cookies,
-    )
+    set_login_cookie(response, user)
     set_csrf_cookie(response, csrf_token(request))
     return response
 

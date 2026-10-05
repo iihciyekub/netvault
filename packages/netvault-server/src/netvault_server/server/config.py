@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     storage_root: Path = Field(default=Path("./storage"), validation_alias="NETVAULT_STORAGE_ROOT")
     secret_key: str = Field(default="dev-secret-change-me", validation_alias="NETVAULT_SECRET_KEY")
     access_token_minutes: int = Field(default=60 * 24 * 7, validation_alias="NETVAULT_TOKEN_MINUTES")
+    web_session_days: int = Field(
+        default=400, ge=1, le=400, validation_alias="NETVAULT_WEB_SESSION_DAYS"
+    )
     # Keep enough headroom for multipart framing below Cloudflare's 100 MB
     # Free/Pro request limit. Operators on larger plans can override this.
     max_pdf_bytes: int = Field(default=95 * 1024 * 1024, validation_alias="NETVAULT_MAX_PDF_BYTES")
