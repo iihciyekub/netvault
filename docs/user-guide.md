@@ -63,6 +63,18 @@ The login token is valid for 7 days by default. The server administrator can
 change this with `NETVAULT_TOKEN_MINUTES`. If `nv upload` has no valid login, it
 will ask for the server, username, and password before uploading.
 
+Browser logins persist for 400 days by default and renew when an authenticated
+page is visited. Valid existing logins are upgraded automatically. Administrators
+can shorten this with `NETVAULT_WEB_SESSION_DAYS` (1–400). Logging out, disabling
+the account, or resetting its password still invalidates the session.
+
+PDF DOI resolution reads document information, decoded XMP metadata, DOI links,
+and text from the first three pages using both Poppler and pypdf. A damaged page
+does not discard readable pages, and wrapped DOI tokens are repaired before
+candidate scoring. The server verifies automatic candidates against DOI metadata
+and the PDF title. If local extraction finds no DOI, the CLI still sends the PDF
+for server extraction; unsuccessful local results are retried on the next upload.
+
 Logout:
 
 ```bash

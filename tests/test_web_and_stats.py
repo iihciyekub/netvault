@@ -47,6 +47,19 @@ def test_metadata_markup_preserves_allowed_inline_tags() -> None:
     assert rendered == "A <em>safe</em> plain &amp; value"
 
 
+def test_crossref_metadata_markup_is_safely_rendered() -> None:
+    web = importlib.import_module("netvault_server.server.web")
+
+    rendered = str(
+        web.render_metadata(
+            'Finance &amp; CO<sup class="source">2</sup> <jats:italic>Review</jats:italic>'
+            '<img src=x onerror=alert(1)>'
+        )
+    )
+
+    assert rendered == "Finance &amp; CO<sup>2</sup> <em>Review</em>"
+
+
 def test_ft50_default_filter_uses_ceibs_50_journal_list() -> None:
     filters = importlib.import_module("netvault_server.server.journal_filters")
 
@@ -119,6 +132,54 @@ def web_login(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.history
     assert response.history[0].status_code == 303
+
+
+def test_web_session_persists_and_renews_legacy_login(client: TestClient) -> None:
+    from jose import jwt
+    from datetime import datetime, timezone
+
+    web = importlib.import_module("netvault_server.server.web")
+    security = importlib.import_module("netvault_server.server.security")
+    old_token = security.create_access_token("admin")
+    old_exp = jwt.get_unverified_claims(old_token)["exp"]
+    client.cookies.set(web.TOKEN_COOKIE, old_token)
+    page = client.get("/web/login", follow_redirects=False)
+    assert page.status_code == 303
+    assert page.headers["location"].endswith("/web")
+    headers = page.headers.get_list("set-cookie")
+    assert len(headers) == 2
+    assert all("Max-Age=34560000" in header and "HttpOnly" in header for header in headers)
+    new_exp = jwt.get_unverified_claims(page.cookies[web.TOKEN_COOKIE])["exp"]
+    assert new_exp > old_exp + 390 * 86400
+    assert abs(new_exp - datetime.now(timezone.utc).timestamp() - 400 * 86400) < 5
+    dashboard = client.get("/web")
+    assert dashboard.status_code == 200
+    assert any("netvault_token=" in header and "Max-Age=34560000" in header
+               for header in dashboard.headers.get_list("set-cookie"))
+
+
+def test_expired_or_revoked_web_login_is_not_renewed(client: TestClient) -> None:
+    from jose import jwt
+
+    web = importlib.import_module("netvault_server.server.web")
+    config = importlib.import_module("netvault_server.server.config")
+    token = jwt.encode({"sub": "admin", "ver": 0, "exp": 1},
+                       config.get_settings().secret_key, algorithm="HS256")
+    client.cookies.set(web.TOKEN_COOKIE, token)
+    expired = client.get("/web/login")
+    assert "Log in to NetVault" in expired.text
+    assert not any(header.startswith(web.TOKEN_COOKIE + "=")
+                   for header in expired.headers.get_list("set-cookie"))
+    client.cookies.clear()
+    web_login(client)
+    token = client.cookies[web.TOKEN_COOKIE]
+    logout = client.post("/web/logout", data={"csrf_token": client.cookies[web.CSRF_COOKIE]})
+    assert logout.status_code == 200
+    client.cookies.set(web.TOKEN_COOKIE, token)
+    revoked = client.get("/web/login")
+    assert "Log in to NetVault" in revoked.text
+    assert not any(header.startswith(web.TOKEN_COOKIE + "=")
+                   for header in revoked.headers.get_list("set-cookie"))
 
 
 def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
@@ -503,8 +564,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.18" in info_page.text
-    assert "app.js?v=0.7.18-ui24" in info_page.text
+    assert "0.7.19" in info_page.text
+    assert "app.js?v=0.7.19-ui24" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -615,6 +676,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "PDF ID " in pdfs_with_query.text
     assert "data-copy=" in pdfs_with_query.text
 
+
+    assert 'class="copy-button doi-copy-button"' in pdfs_with_query.text
+    assert 'data-copy="10.1234/web.test"' in pdfs_with_query.text
+    assert 'aria-label="Copy DOI"' in pdfs_with_query.text
+
     publisher_search = client.get("/web/pdfs", params={"q": "NetVault Press"})
     assert publisher_search.status_code == 200
     assert "10.1234/web.test" in publisher_search.text
@@ -724,6 +790,42 @@ def test_web_admin_can_preview_and_apply_doi_correction(client: TestClient) -> N
     detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": corrected_doi})
     assert detail.status_code == 200
     assert detail.json()["sha256"] == pdf["sha256"]
+
+
+def test_pdf_search_decodes_and_sanitizes_crossref_markup(client: TestClient) -> None:
+    web_login(client)
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        db.add(
+            models.Pdf(
+                doi="10.1234/markup.test",
+                doi_source="manual",
+                sha256="7" * 64,
+                original_name="markup.pdf",
+                title='CO<sup class="source">2</sup> markets',
+                authors="A &amp; B",
+                container_title="Finance &amp; Economics",
+                publisher='<img src=x onerror="alert(1)">Safe Publisher',
+                published_year=2026,
+                crossref_status="ok",
+                size=12,
+                storage_path="objects/77/markup.pdf",
+                uploaded_by_id=admin.id,
+            )
+        )
+        db.commit()
+
+    result = client.get("/web/pdfs", params={"q": "10.1234/markup.test"})
+
+    assert result.status_code == 200
+    assert "CO<sup>2</sup> markets" in result.text
+    assert "A &amp; B" in result.text
+    assert "Finance &amp; Economics" in result.text
+    assert "&amp;amp;" not in result.text
+    assert "onerror" not in result.text
+    assert "Safe Publisher" in result.text
 
 
 def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClient) -> None:

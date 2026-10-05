@@ -7,7 +7,10 @@ WORKDIR /app
 
 COPY packages/netvault-server ./packages/netvault-server
 
-RUN pip install --no-cache-dir ./packages/netvault-server
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir ./packages/netvault-server
 
 EXPOSE 8000
 

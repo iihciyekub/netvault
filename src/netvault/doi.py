@@ -29,7 +29,7 @@ DOI_METADATA_PATTERNS = [
     )
 ]
 DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 4
+DOI_RESOLVER_VERSION = 5
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -177,6 +177,23 @@ def candidate_context(text: str, start: int, end: int, width: int = 90) -> str:
     return context[:220]
 
 
+def repair_doi_line_wraps(text: str) -> str:
+    # Join only DOI tokens, never arbitrary PDF prose or adjacent reference titles.
+    text = unicodedata.normalize("NFKC", text).replace("\u00ad", "").replace("\u200b", "")
+    text = re.sub(r"\b(10\.\d{4,9}/)[ \t]*\r?\n[ \t]*(?=[A-Z0-9])", r"\1", text, flags=re.I)
+    pattern = re.compile(
+        rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE}[-/_.])[ \t]*\r?\n[ \t]*"
+        rf"([A-Z0-9]{DOI_SUFFIX_RE})(?=\s|$)",
+        re.I,
+    )
+    # Require punctuation or numbers in the continuation to avoid swallowing prose.
+    for _ in range(3):
+        text = pattern.sub(
+            lambda m: m[1] + m[2] if re.search(r"[0-9/_.-]", m[2]) else m[0], text
+        )
+    return text
+
+
 def embedded_in_publisher_url(text: str, match: re.Match[str]) -> bool:
     before = text[max(0, match.start() - 500) : match.start()]
     url_match = re.search(r"https?://([^/\s<>'\"]+)[^\s<>'\"]*$", before, re.IGNORECASE)
@@ -210,6 +227,7 @@ def score_text_candidate(
 
 
 def candidates_from_text(text: str, source: str, detail: str, page: int | None = None) -> list[DoiCandidate]:
+    text = repair_doi_line_wraps(text)
     reference_match = REFERENCE_HEADING_RE.search(text)
     reference_start = reference_match.start() if reference_match else None
     candidates = []
@@ -252,7 +270,10 @@ def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
         return []
     if result.returncode != 0 or not result.stdout:
         return []
-    return candidates_from_text(result.stdout, "pdf-content", "pdftotext")
+    candidates = []
+    for index, text in enumerate(result.stdout.split("\f")[:3], start=1):
+        candidates.extend(candidates_from_text(text, "pdf-content", f"pdftotext-page-{index}", page=index))
+    return candidates
 
 
 def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
@@ -352,6 +373,28 @@ def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
     return candidates
 
 
+def decoded_xmp_candidates(reader: PdfReader) -> list[DoiCandidate]:
+    try:
+        xmp = reader.xmp_metadata
+        if xmp is None:
+            return []
+        text = xmp.stream.get_data().decode("utf-8", errors="replace")
+    except Exception:
+        return []
+    return metadata_candidates(text)
+
+
+def readable_pages(reader: PdfReader) -> list[tuple[int, str]]:
+    texts = []
+    for index in range(min(3, len(reader.pages))):
+        try:
+            text = reader.pages[index].extract_text() or ""
+        except Exception:
+            continue
+        texts.append((index + 1, text))
+    return texts
+
+
 def extract_doi_from_pdf(path: Path) -> str | None:
     evidence = extract_doi_evidence(path)
     return evidence.doi if evidence.status == "ok" else None
@@ -366,13 +409,16 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         return DoiEvidence("ok", doi, "explicit", [DoiCandidate(doi, "explicit", "--doi")])
 
     candidates: list[DoiCandidate] = []
-    seen = set()
+    positions = {}
 
     def add(candidate: DoiCandidate) -> None:
         key = (candidate.doi, candidate.source)
-        if key in seen:
+        if key in positions:
+            index = positions[key]
+            if candidate.score > candidates[index].score:
+                candidates[index] = candidate
             return
-        seen.add(key)
+        positions[key] = len(candidates)
         candidates.append(candidate)
 
     for candidate in scan_with_pdftotext(path):
@@ -392,12 +438,14 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         reader = PdfReader(str(path))
         for candidate in document_info_candidates(reader):
             add(candidate)
+        for candidate in decoded_xmp_candidates(reader):
+            add(candidate)
         for candidate in annotation_uri_candidates(reader):
             add(candidate)
-        page_texts = [page.extract_text() or "" for page in reader.pages[:3]]
+        page_texts = readable_pages(reader)
     except Exception:
         page_texts = []
-    for index, text in enumerate(page_texts, start=1):
+    for index, text in page_texts:
         for candidate in candidates_from_text(text, "pdf-content", f"pypdf-page-{index}", page=index):
             add(candidate)
 

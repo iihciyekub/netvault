@@ -111,7 +111,7 @@ def test_doi_suffix_preserves_additional_slashes() -> None:
 
 
 def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
-    assert netvault.doi.DOI_RESOLVER_VERSION == 4
+    assert netvault.doi.DOI_RESOLVER_VERSION == 5
 
 
 def test_doi_parser_stops_before_pdf_object_syntax() -> None:
@@ -938,34 +938,40 @@ def test_upload_force_rejects_no_crossref(tmp_path: Path, monkeypatch) -> None:
     assert "--force cannot be combined with --no-crossref" in no_crossref.output
 
 
-def test_upload_caches_no_doi_result_until_refresh(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setattr("netvault.cli.user.HASH_CACHE_PATH", tmp_path / "hash-cache.json")
-    monkeypatch.setattr("netvault.cli.user.IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+def test_upload_retries_local_no_doi_and_lets_server_resolve(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
     monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
     monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *args, **kwargs: {})
     monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lambda *args, **kwargs: {})
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
-    monkeypatch.setattr(
-        user_cli,
-        "extract_doi_evidence",
-        lambda *args, **kwargs: DoiEvidence("no-doi", None, None, [], "No DOI found"),
-    )
+    scans = []
+    uploads = []
 
+    def extract(*args, **kwargs):
+        scans.append(args)
+        return DoiEvidence("no-doi", None, None, [], "No DOI found")
+
+    def server_upload(path, **kwargs):
+        uploads.append(kwargs)
+        if len(uploads) == 1:
+            raise RuntimeError("Server could not resolve DOI")
+        return {"deduplicated": False, "pdf": {
+            "doi": "10.1080/19463014.2018.1437759", "original_name": path.name,
+        }}
+
+    monkeypatch.setattr(user_cli, "extract_doi_evidence", extract)
+    monkeypatch.setattr(user_cli, "upload_pdf", server_upload)
     first = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
-
-    assert first.exit_code == 1, first.output
-    assert "1 DOI scans" in first.output
-
-    def fail_extract(*args, **kwargs):
-        raise AssertionError("cached no-doi result should skip DOI extraction")
-
-    monkeypatch.setattr(user_cli, "extract_doi_evidence", fail_extract)
     second = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
 
-    assert second.exit_code == 1, second.output
-    assert "1 DOI cache hits" in second.output
-    assert "DOI scans" not in second.output
+    assert first.exit_code == 1, first.output
+    assert second.exit_code == 0, second.output
+    assert len(scans) == 2
+    assert all(call["doi"] is None for call in uploads)
+    assert "1 DOI scans" in second.output
+    assert "uploaded: 1" in second.output
 
 
 def test_existing_sha_skips_doi_extraction(monkeypatch) -> None:
