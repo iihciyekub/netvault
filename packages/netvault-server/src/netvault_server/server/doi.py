@@ -288,7 +288,7 @@ def extract_pdf_text(path: Path) -> str:
         return text
     try:
         reader = PdfReader(str(path))
-        return "\n".join(text for _, text in readable_pages(reader))
+        return _joined_page_texts(readable_pages(reader))
     except Exception:
         return ""
 
@@ -299,7 +299,7 @@ def extract_pdf_title(path: Path) -> str | None:
         title = (PdfReader(str(path)).metadata or {}).get("/Title")
     except Exception:
         return None
-    if isinstance(title, str) and len(title.strip()) >= 12 and len(title.split()) >= 3:
+    if isinstance(title, str) and sum(character.isalnum() for character in title) >= 2:
         return title.strip()
     return None
 
@@ -423,6 +423,12 @@ def readable_pages(reader: PdfReader) -> list[tuple[int, str]]:
     return texts
 
 
+def _joined_page_texts(pages: list[tuple[int, str]]) -> str:
+    """Preserve page boundaries and damaged-page gaps for first-page verification."""
+    texts = dict(pages)
+    return "\f".join(texts.get(index, "") for index in range(1, max(texts, default=0) + 1))
+
+
 def extract_doi_from_pdf(path: Path) -> str | None:
     evidence = extract_doi_evidence(path)
     return evidence.doi if evidence.status == "ok" else None
@@ -481,7 +487,7 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
             add(candidate)
 
     if not pdf_text.strip():
-        pdf_text = "\n".join(text for _, text in page_texts)
+        pdf_text = _joined_page_texts(page_texts)
 
     def resolved(*args) -> DoiEvidence:
         return DoiEvidence(*args, pdf_text=pdf_text)

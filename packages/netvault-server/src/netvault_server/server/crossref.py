@@ -11,6 +11,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from netvault_server.server.config import get_settings
+from netvault_server.server.doi import normalize_doi
 
 _local = threading.local()
 _request_condition = threading.Condition()
@@ -19,7 +20,7 @@ _next_request = 0.0
 
 
 @contextmanager
-def _request_slot(*, search: bool = False):
+def _request_slot(*, search: bool = False, secondary: bool = False):
     """Share metadata concurrency/rate limits across upload and web threads in this server process.
 
     Public requests use one slot; configured polite requests use three.
@@ -28,8 +29,8 @@ def _request_slot(*, search: bool = False):
     """
     global _active_requests, _next_request
     polite = bool(get_settings().crossref_mailto)
-    limit = 3 if polite else 1
-    rate = (3 if polite else 1) if search else (10 if polite else 5)
+    limit = 1 if secondary else (3 if polite else 1)
+    rate = 1 if secondary else ((3 if polite else 1) if search else (10 if polite else 5))
     with _request_condition:
         while True:
             delay = _next_request - monotonic()
@@ -47,7 +48,7 @@ def _request_slot(*, search: bool = False):
 
 
 def _limited_get(url: str, **kwargs):
-    with _request_slot(search=url.endswith("/works")):
+    with _request_slot(search=url.endswith("/works"), secondary=url.startswith("https://api.semanticscholar.org/")):
         return _session().get(url, **kwargs)
 
 
@@ -217,14 +218,51 @@ def fetch_doi_org_metadata(doi: str) -> CrossrefMetadata:
     )
 
 
+def fetch_semantic_scholar_metadata(doi: str) -> CrossrefMetadata:
+    """Recover a DOI-indexed paper only after both registry providers report 404."""
+    fetched_at = datetime.now(timezone.utc)
+    missing = CrossrefMetadata(status="not_found", fetched_at=fetched_at, provider="semantic-scholar")
+    unavailable = CrossrefMetadata(status="unavailable", fetched_at=fetched_at, provider="semantic-scholar")
+    try:
+        response = _limited_get(
+            f"https://api.semanticscholar.org/graph/v1/paper/DOI:{quote(doi, safe='')}",
+            params={"fields": "title,authors,venue,year,externalIds,url,publicationTypes"},
+            headers={"User-Agent": get_settings().crossref_user_agent}, timeout=(3.05, 10),
+        )
+        if response.status_code == 404:
+            return missing
+        if not response.ok:
+            return unavailable
+        message = response.json()
+        # Never substitute a related paper or infer a DOI from a search result.
+        canonical = normalize_doi(message["externalIds"]["DOI"])
+        if canonical != normalize_doi(doi):
+            return missing
+        title = message.get("title")
+        authors = "; ".join(a["name"] for a in message.get("authors", []) if isinstance(a.get("name"), str))
+        year = message.get("year")
+        if not isinstance(title, str) or not title.strip() or not authors or type(year) is not int:
+            return missing
+    except requests.RequestException:
+        return unavailable
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return unavailable
+    return CrossrefMetadata(
+        status="ok", canonical_doi=canonical, title=title, authors=authors,
+        container_title=message.get("venue") or None, published_year=year,
+        resource_url=message.get("url"), fetched_at=fetched_at, provider="semantic-scholar",
+        work_type="journal-article" if "JournalArticle" in (message.get("publicationTypes") or []) else None,
+    )
+
+
 def fetch_doi_metadata(doi: str) -> CrossrefMetadata:
     metadata = fetch_crossref_metadata(doi)
     if metadata.status != "not_found":
         return metadata
     fallback = fetch_doi_org_metadata(doi)
-    if fallback.status == "unavailable":
+    if fallback.status != "not_found":
         return fallback
-    return fallback
+    return fetch_semantic_scholar_metadata(doi)
 
 
 def search_crossref_metadata(title: str) -> list[CrossrefMetadata]:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.26 - 2026-10-11
+
+- Accept short article titles such as "OTC Discount" during DOI verification when
+  they exactly match a standalone heading near the start of the PDF's first page.
+- Require exact heading evidence for short titles, excluding body/reference-only
+  occurrences, later pages and fuzzy or substring matches.
+- Preserve short PDF title metadata for verified title-search recovery instead of
+  requiring at least 12 characters and three words.
+- Recover DOI-indexed Semantic Scholar metadata only when both Crossref and DOI.org
+  explicitly report no record. Require an identical DOI and corroborate the title,
+  author and year on the PDF's first page; record the actual verification provider.
+
 ## 0.7.25 - 2026-10-11
 
 - Upload with three bounded concurrent requests by default, preparing DOI identities

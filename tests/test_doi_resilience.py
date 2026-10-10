@@ -5,6 +5,38 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, NameObject
 
 
+@pytest.mark.parametrize("title", ["OTC Discount", "Risk", "AI"])
+def test_short_pdf_metadata_titles_are_available_for_verification(tmp_path, title):
+    from netvault_server.server.doi import extract_pdf_title
+    pdf = tmp_path / "article.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({"/Title": title})
+    writer.write(pdf)
+    assert extract_pdf_title(pdf) == title
+
+
+@pytest.mark.parametrize("first_page", ["First page", None])
+def test_fallback_text_keeps_later_pages_out_of_first_page_verification(tmp_path, monkeypatch, first_page):
+    from types import SimpleNamespace
+    from netvault_server.server import doi
+
+    def damaged():
+        raise ValueError("Unreadable page")
+
+    reader = SimpleNamespace(pages=[
+        SimpleNamespace(extract_text=(lambda: first_page) if first_page is not None else damaged),
+        SimpleNamespace(extract_text=lambda: "Later Article Title\nDOI: 10.1287/example"),
+    ])
+    monkeypatch.setattr(doi, "_pdftotext", lambda path: "")
+    monkeypatch.setattr(doi, "PdfReader", lambda path: reader)
+    path = tmp_path / "article.pdf"
+    path.write_bytes(b"%PDF-1.4")
+    expected = (first_page or "") + "\fLater Article Title\nDOI: 10.1287/example"
+    assert doi.extract_pdf_text(path) == expected
+    assert doi.extract_doi_evidence(path).pdf_text == expected
+
+
 @pytest.fixture(params=['netvault.doi', 'netvault_server.server.doi'])
 def resolver(request):
     return importlib.import_module(request.param)

@@ -343,6 +343,13 @@ DOI.org citation metadata when Crossref explicitly has no record, and checks the
 against extractable PDF text before accepting it. A failed filename candidate therefore falls
 back to metadata or page content instead of causing a client/server DOI conflict.
 
+If both registry providers report no record, a DOI-indexed Semantic Scholar record
+can recover the identity. Its DOI must match exactly, and its title, an author and
+publication year must be corroborated before the abstract on the PDF's first page.
+The evidence records this verification provider. Provider outages do not trigger
+this fallback. Short titles such as "OTC Discount" require an exact standalone
+heading on the first page rather than a fuzzy or body-text match.
+
 When automatic candidates are missing or cannot be verified, a document-metadata
 title can trigger a bounded Crossref search. NetVault accepts only an unambiguous
 article whose title, journal, year and author are corroborated in the PDF. Journal

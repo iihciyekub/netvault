@@ -116,12 +116,33 @@ def title_match_score(title: str | None, pdf_text: str) -> float | None:
     """Return a deterministic title match score, or None when PDF text is unavailable."""
     normalized_title = _normalized_title_text(title or "")
     normalized_pdf = _normalized_title_text(pdf_text)
-    if len(normalized_title.replace(" ", "")) < 12:
+    compact_title = normalized_title.replace(" ", "")
+    if len(compact_title) < 2:
         return 0.0
+    if len(compact_title) < 12:
+        # Short article titles are legitimate, but a substring or fuzzy match
+        # could just be a term in the body or a cited title. Require an exact
+        # standalone heading near the start of the first page instead.
+        header_lines = []
+        for line in pdf_text.split("\f", 1)[0].splitlines():
+            normalized_line = _normalized_title_text(line)
+            if not normalized_line:
+                continue
+            if re.match(
+                r"^(?:\d+\s+)?(?:abstract|introduction|references|bibliography)\b",
+                normalized_line,
+            ):
+                break
+            header_lines.append(normalized_line)
+            if len(header_lines) >= 40:
+                break
+        headings = header_lines + [
+            f"{first} {second}" for first, second in zip(header_lines, header_lines[1:])
+        ]
+        return 1.0 if normalized_title in headings else 0.0
     if len(normalized_pdf.replace(" ", "")) < 40:
         return None
 
-    compact_title = normalized_title.replace(" ", "")
     compact_pdf = normalized_pdf.replace(" ", "")
     if compact_title in compact_pdf:
         return 1.0
@@ -212,6 +233,24 @@ async def verify_automatic_doi(
         match_score = await run_in_threadpool(title_match_score, metadata.title, pdf_text)
         attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
+        if metadata.provider == "semantic-scholar":
+            # An index record is weaker than registry metadata: require an exact
+            # first-page title plus independent author and year corroboration.
+            first_page = pdf_text.split("\f", 1)[0]
+            header = re.split(r"(?im)^\s*(?:abstract|references|bibliography)\b", first_page, maxsplit=1)[0]
+            header_words = set(_normalized_title_text(header).split())
+            names = [name.strip().split()[-1] for name in (metadata.authors or "").split(";") if name.strip()]
+            corroborated = (
+                (await run_in_threadpool(title_match_score, metadata.title, header) or 0) >= 0.98
+                and any(_normalized_title_text(name) in header_words for name in names)
+                and metadata.published_year is not None
+                and re.search(rf"\b{metadata.published_year}\b", header) is not None
+            )
+            attempt["corroborated"] = corroborated
+            if not corroborated:
+                attempt.update(accepted=False, reason="Indexed DOI requires a matching first-page title, author and year")
+                attempts.append(attempt)
+                continue
         if match_score is not None and match_score < 0.88:
             attempt["accepted"] = False
             attempt["reason"] = "Metadata title does not match the PDF"

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 
 def test_metadata_requests_share_three_polite_slots(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
@@ -171,3 +173,58 @@ def test_crossref_title_search_preserves_verification_fields(monkeypatch):
     assert result.container_title == 'Journal'
     assert result.authors == 'Corbin'
     assert result.published_year == 1990
+
+
+@pytest.mark.parametrize("registry_status,resolver_status,expected", [
+    ("not_found", "not_found", "semantic-scholar"),
+    ("not_found", "ok", "doi.org"),
+    ("not_found", "unavailable", "doi.org"),
+    ("unavailable", "not_found", "crossref"),
+    ("ok", "not_found", "crossref"),
+])
+def test_secondary_index_is_used_only_after_two_explicit_missing_records(
+    monkeypatch, registry_status, resolver_status, expected,
+):
+    from netvault_server.server import crossref
+    calls = []
+    monkeypatch.setattr(crossref, "fetch_crossref_metadata", lambda doi: crossref.CrossrefMetadata(
+        status=registry_status, provider="crossref"))
+    monkeypatch.setattr(crossref, "fetch_doi_org_metadata", lambda doi: crossref.CrossrefMetadata(
+        status=resolver_status, provider="doi.org"))
+
+    def secondary(doi):
+        calls.append(doi)
+        return crossref.CrossrefMetadata(status="ok", provider="semantic-scholar")
+
+    monkeypatch.setattr(crossref, "fetch_semantic_scholar_metadata", secondary)
+    assert crossref.fetch_doi_metadata("10.1287/mnsc.2018.3045").provider == expected
+    assert bool(calls) == (expected == "semantic-scholar")
+
+
+@pytest.mark.parametrize("returned_doi,expected", [
+    ("10.1287/MNSC.2018.3045", "ok"), ("10.1287/mnsc.2018.other", "not_found"),
+])
+def test_secondary_metadata_requires_the_same_doi(monkeypatch, returned_doi, expected):
+    from netvault_server.server import crossref
+    monkeypatch.setattr(crossref, "_limited_get", lambda url, **kwargs: SimpleNamespace(
+        status_code=200, ok=True, json=lambda: {
+            "externalIds": {"DOI": returned_doi}, "title": "Corporate Investment Efficiency",
+            "authors": [{"name": "Yiwei Dou"}], "year": 2019, "venue": "Management Science",
+            "url": "https://www.semanticscholar.org/paper/example", "publicationTypes": ["JournalArticle"],
+        },
+    ))
+    metadata = crossref.fetch_semantic_scholar_metadata("10.1287/mnsc.2018.3045")
+    assert metadata.status == expected
+    assert metadata.provider == "semantic-scholar"
+    if expected == "ok":
+        assert metadata.canonical_doi == "10.1287/mnsc.2018.3045"
+        assert metadata.authors == "Yiwei Dou"
+        assert metadata.published_year == 2019
+        assert metadata.work_type == "journal-article"
+
+
+@pytest.mark.parametrize("status,expected", [(404, "not_found"), (429, "unavailable"), (503, "unavailable")])
+def test_secondary_metadata_preserves_provider_failures(monkeypatch, status, expected):
+    from netvault_server.server import crossref
+    monkeypatch.setattr(crossref, "_limited_get", lambda *args, **kwargs: SimpleNamespace(status_code=status, ok=False))
+    assert crossref.fetch_semantic_scholar_metadata("10.1287/example").status == expected

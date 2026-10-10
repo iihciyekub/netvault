@@ -507,6 +507,76 @@ def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
     assert attempts[1]["accepted"] is True
 
 
+@pytest.mark.parametrize("pdf_text,expected", [
+    ("Management Science\nOTC Discount\nArticle authors\nAbstract. Article body", 1.0),
+    ("Management Science\nOTC\nDiscount\nArticle authors\nAbstract. Article body", 1.0),
+    ("Management Science\nOTC: DISCOUNT\nArticle authors", 1.0),
+    ("Management Science\nAnother Article\nAbstract. We document an OTC discount.", 0.0),
+    ("Management Science\nAnother Article\nAbstract. Article body\nOTC Discount", 0.0),
+    ("Another Article\nReferences\nOTC Discount", 0.0),
+    ("Another Article\nArticle authors\fOTC Discount\nSecond page", 0.0),
+    ("Management Science\nOTC Discounting\nArticle authors", 0.0),
+    ("", 0.0),
+])
+def test_short_titles_require_exact_first_page_headings(pdf_text, expected):
+    from netvault_server.server.main_helpers import title_match_score
+    assert title_match_score("OTC Discount", pdf_text) == expected
+
+
+@pytest.mark.parametrize("matches", [True, False])
+def test_upload_verifies_short_article_titles(client, monkeypatch, matches):
+    from netvault_server.server import main_helpers, crossref
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", lambda doi: crossref.CrossrefMetadata(
+        status="ok", canonical_doi=doi, title="OTC Discount", work_type="journal-article",
+    ))
+    pdf_text = (
+        "Management Science\nOTC Discount\nArticle authors\nAbstract. This article has a short title."
+        if matches else
+        "Management Science\nAnother Article\nArticle authors\nAbstract. We cite OTC Discount here."
+    )
+    monkeypatch.setattr(main_helpers, "extract_pdf_text", lambda path: pdf_text)
+    response = upload(client, login(client, "admin", "admin-pass"))
+    assert response.status_code == (200 if matches else 422), response.text
+    if matches:
+        assert response.json()["pdf"]["doi"] == DOI
+        assert response.json()["pdf"]["title"] == "OTC Discount"
+
+
+@pytest.mark.parametrize("case,expected", [
+    ("matching", 200), ("wrong_title", 422), ("wrong_author", 422),
+    ("wrong_year", 422), ("body_only", 422), ("later_page", 422), ("no_text", 422),
+])
+def test_indexed_metadata_requires_corroborated_first_page_identity(client, monkeypatch, case, expected):
+    from netvault_server.server import main_helpers, crossref
+    title = "The Effect of Financial Reporting Quality on Corporate Investment Efficiency"
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", lambda doi: crossref.CrossrefMetadata(
+        status="ok", canonical_doi=doi, title=title, authors="Yiwei Dou; Franco Wong; Baohua Xin",
+        published_year=2019, provider="semantic-scholar", work_type="journal-article",
+    ))
+    heading = f"Management Science\n{title}\nYiwei Dou\nPublished 2019\n"
+    text = heading + "Abstract. An article about investment efficiency."
+    if case == "wrong_title":
+        text = text.replace(title, "A Different Article About Corporate Finance")
+    elif case == "wrong_author":
+        text = text.replace("Yiwei Dou", "Another Author")
+    elif case == "wrong_year":
+        text = text.replace("2019", "2026")
+    elif case == "body_only":
+        text = "Another Article\nAbstract.\n" + heading
+    elif case == "later_page":
+        text = "Another Article\f" + heading
+    elif case == "no_text":
+        text = ""
+    monkeypatch.setattr(main_helpers, "extract_pdf_text", lambda path: text)
+    response = upload(client, login(client, "admin", "admin-pass"))
+    assert response.status_code == expected, response.text
+    if expected == 200:
+        detail = client.get("/pdfs/by-doi", headers=login(client, "admin", "admin-pass"), params={"doi": DOI})
+        proof = json.loads(detail.json()["doi_evidence"])["verification"][-1]
+        assert proof["metadata_provider"] == "semantic-scholar"
+        assert proof["accepted"] and proof["corroborated"]
+
+
 def test_title_match_normalizes_line_breaks_punctuation_and_case() -> None:
     main_helpers = importlib.import_module("netvault_server.server.main_helpers")
 
