@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.24 - 2026-10-10
+
+- Identify equivalent complete PDF page content even when byte hashes and registered
+  DOIs differ, retaining one copy and moving extras to `duplicates/` with `--rename`.
+- Compare decoded page objects/resources while ignoring document metadata and
+  verified standalone Wiley download notices; preserve differences in body text,
+  fonts, images, annotations, page geometry/order, and optional-content settings.
+- Record `moved_content_duplicate` (or its preview status), page-content fingerprints,
+  and retained file paths/hashes in CSV while preserving each file's original DOI.
+- Keep unsupported PDFs on the existing hash/DOI rules and verify retained files
+  before collecting content duplicates, including across nested directories.
+
 ## 0.7.23 - 2026-10-10
 
 - With `nv identify --rename`, also collect same-DOI filename conflicts with

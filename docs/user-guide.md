@@ -102,7 +102,8 @@ nv identify ~/Downloads/papers --rename
 ```
 
 No destination arguments are required. Under the directory where you run the
-command, `duplicates/` receives identical extra copies and same-DOI filename
+command, `duplicates/` receives identical extra copies, equivalent page content,
+and same-DOI filename
 conflicts with different hashes. `unidentifys/` receives
 retained PDFs whose hashes have no DOI match on the server. These are relative to
 the command's current working directory, even when the scanned directory is
@@ -139,6 +140,22 @@ compete for the same filename. Identical copies without
 a server match are also collected: one copy goes to `unidentifys/`, the others
 to `duplicates/`, and the CSV records the retained copy's final path.
 
+PDFs with different byte hashes can also contain the same complete page content.
+The command compares page objects and decoded resources, ignoring document metadata,
+object numbers, stream compression, and verified standalone Wiley download notices.
+Fonts, images, annotations, page geometry/order, and optional-content settings remain
+part of the comparison. This is a conservative comparison, not a text-only similarity
+check. Unreadable, encrypted, empty, attached-file, or unsupported cyclic PDFs receive
+no content fingerprint and still use the existing hash/DOI rules.
+
+For equivalent pages, one server-matched, correctly named copy is preferred, then
+the first sorted absolute path. Extra versions move to `duplicates/` with status
+`moved_content_duplicate`, even when their registered DOIs differ. Each CSV row retains
+its own server DOI and actual byte hash, and records the retained PDF's path/hash.
+No DOI suffix is stripped: `_2`, `_3`, etc. can be valid parts of registered DOIs.
+Content duplicates are collected before applying the unmatched-file rule, across
+the full recursively scanned directory. Both archive directories remain excluded.
+
 Both collection directories may be inside the scan directory and are excluded
 from scanning, including subsequent runs. They cannot equal or contain the scan
 directory, or overlap each other. Original basenames are kept when collecting
@@ -166,10 +183,12 @@ and contain one row per scanned PDF, including unmatched files and failures:
 | `original_filename`, `original_path` | Name and absolute path before processing |
 | `filename`, `path` | Actual name and absolute path after processing |
 | `proposed_path` | Planned destination; preview runs leave `path` unchanged |
-| `status` | `would_rename`, `would_move_duplicate`, `would_move_doi_conflict`, `would_move_unidentified`, `renamed`, `moved_duplicate`, `moved_doi_conflict`, `moved_unidentified`, `already_named`, `not_found`, `conflict`, or `error` |
+| `status` | `would_rename`, `would_move_duplicate`, `would_move_content_duplicate`, `would_move_doi_conflict`, `would_move_unidentified`, `renamed`, `moved_duplicate`, `moved_content_duplicate`, `moved_doi_conflict`, `moved_unidentified`, `already_named`, `not_found`, `conflict`, or `error` |
 | `match_status` | `matched`, `not_found`, or `error` |
 | `duplicate_of` | Actual path of the retained identical copy |
 | `conflict_with`, `conflict_with_sha256` | Path and local hash of the retained same-DOI file for a DOI conflict; the hashes differ |
+| `content_sha256` | Conservative page-content fingerprint, or empty when unavailable |
+| `content_duplicate_of`, `content_duplicate_of_sha256` | Actual path and byte hash of the retained PDF with equivalent page content |
 | `error` | Reason a file could not be processed |
 
 Without `--rename`, the command creates a report but does not move or rename PDFs.

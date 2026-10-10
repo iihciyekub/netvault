@@ -10,12 +10,14 @@ import re
 import shutil
 
 from netvault.doi import normalize_doi
+from netvault.cli.pdf_fingerprint import pdf_content_fingerprint
 
 
 CSV_FIELDS = (
     "sha256", "doi", "directory", "original_filename", "filename",
     "original_path", "path", "proposed_path", "status", "match_status",
-    "duplicate_of", "conflict_with", "conflict_with_sha256", "error",
+    "duplicate_of", "conflict_with", "conflict_with_sha256", "content_sha256",
+    "content_duplicate_of", "content_duplicate_of_sha256", "error",
 )
 
 
@@ -23,6 +25,7 @@ CSV_FIELDS = (
 class LocalPdf:
     path: Path
     sha256: str = ""
+    content_sha256: str = ""
     signature: tuple[int, int, int, int] | None = None
     doi: str = ""
     error: str = ""
@@ -164,7 +167,6 @@ def identify_pdfs(
 
     # Finish all network requests before touching PDFs. A network failure is not 'not found'.
     existing = lookup(pdf.sha256 for pdf in pdfs if not pdf.error)
-    groups: dict[str, list[LocalPdf]] = {}
     for pdf in pdfs:
         if pdf.error:
             continue
@@ -176,7 +178,39 @@ def identify_pdfs(
             except (KeyError, TypeError, ValueError) as exc:
                 pdf.error = f"Invalid DOI from server: {exc}"
                 continue
-        groups.setdefault(pdf.sha256, []).append(pdf)
+
+    if duplicates_to is not None:
+        content_cache: dict[str, str | None] = {}
+        for index, pdf in enumerate(pdfs, 1):
+            if not pdf.error:
+                try:
+                    if file_signature(pdf.path) != pdf.signature:
+                        raise RuntimeError("File changed since hashing; left in place")
+                    if pdf.sha256 not in content_cache:
+                        fingerprint = pdf_content_fingerprint(pdf.path)
+                        if file_signature(pdf.path) != pdf.signature:
+                            raise RuntimeError("File changed during content checking; left in place")
+                        content_cache[pdf.sha256] = fingerprint
+                    pdf.content_sha256 = content_cache[pdf.sha256] or ""
+                except (OSError, RuntimeError) as exc:
+                    pdf.error = str(exc)
+            if progress:
+                progress("Checking PDF content", index, len(pdfs))
+
+    groups: dict[str, list[LocalPdf]] = {}
+    content_groups: dict[str, list[LocalPdf]] = {}
+    for pdf in pdfs:
+        if not pdf.error:
+            groups.setdefault(pdf.sha256, []).append(pdf)
+            if pdf.content_sha256:
+                content_groups.setdefault(pdf.content_sha256, []).append(pdf)
+    content_keepers = {
+        fingerprint: min(group, key=lambda pdf: (
+            not bool(pdf.doi), bool(pdf.doi and pdf.path.name != doi_filename(pdf.doi)),
+            str(pdf.path),
+        ))
+        for fingerprint, group in content_groups.items()
+    }
 
     keepers = {}
     for sha256, group in groups.items():
@@ -185,14 +219,21 @@ def identify_pdfs(
             (pdf for pdf in group if pdf.doi and pdf.path.name == doi_filename(pdf.doi)),
             group[0],
         )
+        content_keeper = content_keepers.get(group[0].content_sha256)
+        if content_keeper is not None and content_keeper.sha256 == sha256:
+            keepers[sha256] = content_keeper
 
     report_path, report = open_report(directory, csv_path)
     counts: dict[str, int] = {}
     actual_paths = {id(pdf): pdf.path for pdf in pdfs}
     reserved: set[str] = set()
     destination_owners = {str(pdf.path).casefold(): pdf for pdf in pdfs if not pdf.error}
-    # Process keepers first so duplicate_of can contain their final paths.
-    ordered = sorted(pdfs, key=lambda pdf: keepers.get(pdf.sha256) is not pdf)
+    # Content keepers precede other hash keepers, which precede identical copies.
+    ordered = sorted(pdfs, key=lambda pdf: (
+        keepers.get(pdf.sha256) is not pdf,
+        pdf.content_sha256 in content_keepers
+        and content_keepers[pdf.content_sha256] is not pdf,
+    ))
     with report:
         writer = csv.DictWriter(report, fieldnames=CSV_FIELDS)
         writer.writeheader()
@@ -204,6 +245,11 @@ def identify_pdfs(
             current = pdf.path
             proposed = current
             duplicate_of = str(actual_paths[id(keeper)]) if duplicate else ""
+            content_keeper = content_keepers.get(pdf.content_sha256)
+            content_duplicate = (content_keeper is not None and content_keeper is not pdf
+                                 and content_keeper.sha256 != pdf.sha256)
+            content_duplicate_of = ""
+            content_duplicate_of_sha256 = ""
             doi_conflict = None
             conflict_with = ""
             conflict_with_sha256 = ""
@@ -214,6 +260,11 @@ def identify_pdfs(
                     if duplicate and duplicates_to is not None:
                         proposed = available_destination(duplicates_to, pdf, reserved)
                         status = "would_move_duplicate"
+                    elif content_duplicate and duplicates_to is not None:
+                        proposed = available_destination(duplicates_to, pdf, reserved)
+                        status = "would_move_content_duplicate"
+                        content_duplicate_of = str(actual_paths[id(content_keeper)])
+                        content_duplicate_of_sha256 = content_keeper.sha256
                     elif pdf.doi:
                         proposed = current.with_name(doi_filename(pdf.doi))
                         status = "already_named" if proposed == current else "would_rename"
@@ -253,12 +304,19 @@ def identify_pdfs(
                                     if (owner_path.is_symlink()
                                             or file_signature(owner_path) != doi_conflict.signature):
                                         raise RuntimeError("DOI conflict reference changed; source left in place")
+                                if status == "would_move_content_duplicate":
+                                    retained_path = actual_paths[id(content_keeper)]
+                                    if (retained_path.is_symlink()
+                                            or file_signature(retained_path) != content_keeper.signature):
+                                        raise RuntimeError("Content reference changed; source left in place")
                                 move_without_overwrite(current, proposed, pdf.sha256, hash_file)
                                 current = proposed
                                 actual_paths[id(pdf)] = current
                                 pdf.signature = file_signature(current)
                                 if duplicate and duplicates_to is not None:
                                     status = "moved_duplicate"
+                                elif content_duplicate:
+                                    status = "moved_content_duplicate"
                                 elif doi_conflict is not None:
                                     status = "moved_doi_conflict"
                                 elif not pdf.doi and unidentified_to is not None:
@@ -279,6 +337,9 @@ def identify_pdfs(
                 "match_status": "error" if pdf.error else ("matched" if pdf.doi else "not_found"),
                 "duplicate_of": duplicate_of, "conflict_with": conflict_with,
                 "conflict_with_sha256": conflict_with_sha256, "error": error,
+                "content_sha256": pdf.content_sha256,
+                "content_duplicate_of": content_duplicate_of,
+                "content_duplicate_of_sha256": content_duplicate_of_sha256,
             })
             report.flush()
             os.fsync(report.fileno())

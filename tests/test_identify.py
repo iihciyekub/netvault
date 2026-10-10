@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
+from test_pdf_fingerprint import make_pdf
 
 import netvault.cli.identify as identify
 import netvault.cli.user as cli
@@ -91,6 +92,76 @@ def test_conflicting_different_hashes_are_not_overwritten(tmp_path):
 
 
 @pytest.mark.parametrize("rename", [False, True])
+def test_content_duplicates_across_dois_and_directories_keep_one_file(tmp_path, rename):
+    retained = make_pdf(tmp_path / '10.1234_example.pdf', notice=True)
+    alternative = make_pdf(tmp_path / 'nested/10.1234_example_2.pdf',
+                           doi='10.1234/example_2', notice=True, metadata='other')
+    identical = alternative.with_name('copy.pdf')
+    identical.write_bytes(alternative.read_bytes())
+    unmatched = make_pdf(tmp_path / 'unknown.pdf', doi='10.1234/example_3',
+                         notice=True, metadata='unmatched')
+    mapping = {cli.file_sha256(retained): {'doi': DOI},
+               cli.file_sha256(alternative): {'doi': DOI + '_2'}}
+    report, counts = run(tmp_path, rename=rename, duplicates_to=tmp_path/'duplicates',
+                         unidentified_to=tmp_path/'unidentifys', lookup=lambda hashes: mapping)
+    rows = {row['original_path']: row for row in read_rows(report)}
+    status = 'moved_content_duplicate' if rename else 'would_move_content_duplicate'
+    assert counts == {'already_named': 1, status: 2,
+                      'moved_duplicate' if rename else 'would_move_duplicate': 1}
+    assert rows[str(alternative)]['doi'] == DOI + '_2'
+    assert rows[str(unmatched)]['doi'] == ''
+    assert rows[str(unmatched)]['match_status'] == 'not_found'
+    for path in (alternative, unmatched):
+        row = rows[str(path)]
+        assert row['content_duplicate_of'] == str(retained)
+        assert row['content_duplicate_of_sha256'] == cli.file_sha256(retained)
+        assert row['content_sha256'] == rows[str(retained)]['content_sha256']
+        assert row['duplicate_of'] == '' and row['conflict_with'] == ''
+        assert cli.file_sha256(Path(row['path'])) == row['sha256']
+    assert rows[str(identical)]['duplicate_of'] == rows[str(alternative)]['path']
+    assert retained.exists()
+    if rename:
+        assert not alternative.exists() and not identical.exists() and not unmatched.exists()
+        _, second_counts = run(tmp_path, rename=True, duplicates_to=tmp_path/'duplicates')
+        assert second_counts == {'already_named': 1}
+    else:
+        assert alternative.exists() and identical.exists() and unmatched.exists()
+        assert not (tmp_path/'duplicates').exists()
+
+
+def test_content_duplicate_reference_tracks_renamed_keeper(tmp_path):
+    first = make_pdf(tmp_path/'a.pdf', notice=True)
+    second = make_pdf(tmp_path/'b.pdf', metadata='second', notice=True)
+    report, counts = run(tmp_path, rename=True, duplicates_to=tmp_path/'duplicates')
+    rows = read_rows(report)
+    assert counts == {'renamed': 1, 'moved_content_duplicate': 1}
+    assert rows[1]['content_duplicate_of'] == rows[0]['path']
+    assert Path(rows[1]['content_duplicate_of']).exists()
+    assert not first.exists() and not second.exists()
+
+
+def test_changed_content_reference_retains_source(tmp_path, monkeypatch):
+    retained = make_pdf(tmp_path/'10.1234_example.pdf')
+    alternative = make_pdf(tmp_path/'b.pdf', metadata='alternative')
+    original = identify.file_signature
+    calls = 0
+
+    def signature(path):
+        nonlocal calls
+        if path == retained:
+            calls += 1
+            if calls == 5:
+                retained.write_bytes(b'%PDF-changed-reference')
+        return original(path)
+
+    monkeypatch.setattr(identify, 'file_signature', signature)
+    report, counts = run(tmp_path, rename=True, duplicates_to=tmp_path/'duplicates')
+    assert counts == {'already_named': 1, 'error': 1}
+    assert alternative.exists()
+    assert 'Content reference changed' in read_rows(report)[1]['error']
+
+
+@pytest.mark.parametrize("rename", [False, True])
 @pytest.mark.parametrize("already_named", [False, True])
 def test_doi_conflicts_are_collected_separately_from_hash_duplicates(tmp_path, rename, already_named):
     first = write_pdf(tmp_path, "10.1234_example.pdf" if already_named else "a.pdf", b"%PDF-first")
@@ -146,7 +217,7 @@ def test_changed_doi_conflict_reference_retains_source(tmp_path, monkeypatch):
         nonlocal calls
         if path == first:
             calls += 1
-            if calls == 3:
+            if calls == 5:
                 first.write_bytes(b"%PDF-reference changed")
         return original(path)
 
@@ -310,7 +381,7 @@ def test_changed_keeper_does_not_cause_duplicate_move(tmp_path, monkeypatch):
         nonlocal calls
         if path == keeper:
             calls += 1
-            if calls == 3:
+            if calls == 5:
                 keeper.write_bytes(b"%PDF-new keeper content")
         return original(path)
 
