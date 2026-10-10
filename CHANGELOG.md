@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.22 - 2026-10-10
+
+- Add `nv identify` to batch-match local PDF SHA-256 values against the server,
+  rename matched files by DOI, and export an auditable CSV with original/final paths.
+- With `--rename`, automatically collect identical extra copies into `duplicates/`
+  and unmatched retained PDFs into `unidentifys/` under the command's current directory.
+- Exclude both collection directories from repeated scans, preserve existing files
+  and reports, and verify copied hashes before completing cross-filesystem moves.
+- Handle alternate server hashes, DOI filename conflicts, and long Unicode filenames
+  while keeping CLI and server release versions synchronized.
+
 ## 0.7.21 - 2026-10-05
 
 - Publish a version-only maintenance release with synchronized CLI and server

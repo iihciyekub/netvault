@@ -93,13 +93,19 @@ The command scans `.pdf` and `.PDF` files recursively, computes their SHA-256
 values from their bytes, and queries the existing authenticated API in batches
 of up to 500 unique hashes. It also finds hashes registered as alternate versions
 of a server PDF. No PDFs are uploaded, no DOI is inferred from PDF text, and no
-CSL metadata is requested. An unmatched hash leaves the file unchanged.
+CSL metadata is requested. Without `--rename`, all PDFs remain unchanged.
 
-Apply DOI-based filenames in each PDF's original directory:
+Rename matched PDFs by DOI and automatically collect duplicates and unmatched PDFs:
 
 ```bash
 nv identify ~/Downloads/papers --rename
 ```
+
+No destination arguments are required. Under the directory where you run the
+command, `duplicates/` receives identical extra copies and `unidentifys/` receives
+retained PDFs whose hashes have no DOI match on the server. These are relative to
+the command's current working directory, even when the scanned directory is
+elsewhere. Collection directories are created when needed, only with `--rename`.
 
 For example, DOI `10.1177/00222437241234567` produces
 `10.1177_00222437241234567.pdf`. Path separators, Windows-reserved punctuation,
@@ -108,25 +114,30 @@ An existing destination or two DOIs mapping to the same filename produces a
 `conflict`; the source is kept and no file is overwritten. Very long DOI names
 produce an error rather than silently truncating the DOI.
 
-To collect byte-identical duplicates across all scanned subdirectories:
+To preview or apply all operations for PDFs in the current directory:
 
 ```bash
-# Preview both renames and duplicate moves.
-nv identify ~/Downloads/papers --duplicates-to ~/Downloads/duplicates
+# Preview renames and both kinds of collection moves.
+nv identify
 
-# Apply the previewed operations.
-nv identify ~/Downloads/papers --rename --duplicates-to ~/Downloads/duplicates
+# Rename and collect using the automatic directories.
+nv identify --rename
 ```
+
+An optional `--duplicates-to PATH` overrides only the duplicate destination.
 
 One copy per hash is retained. A copy already named for the DOI is preferred;
 otherwise the first absolute path in sorted order is retained. Other copies move
 to the duplicate directory using their original basenames. If a basename is
 already taken, a short hash and, when needed, a number are appended. Different
 PDF bytes sharing a DOI are not considered duplicates. Identical copies without
-a server match are also collected, with an empty DOI in the CSV.
+a server match are also collected: one copy goes to `unidentifys/`, the others
+to `duplicates/`, and the CSV records the retained copy's final path.
 
-The duplicate directory may be inside the scan directory and is excluded from
-scanning, including subsequent runs. It cannot equal or contain the scan directory.
+Both collection directories may be inside the scan directory and are excluded
+from scanning, including subsequent runs. They cannot equal or contain the scan
+directory, or overlap each other. Original basenames are kept when collecting
+unmatched PDFs; a hash and number prevent overwriting prior runs or same-name files.
 Symbolic links are skipped. Cross-filesystem moves verify the copied hash before
 removing the original file. Files changed after scanning are left in place.
 
@@ -150,7 +161,7 @@ and contain one row per scanned PDF, including unmatched files and failures:
 | `original_filename`, `original_path` | Name and absolute path before processing |
 | `filename`, `path` | Actual name and absolute path after processing |
 | `proposed_path` | Planned destination; preview runs leave `path` unchanged |
-| `status` | `would_rename`, `would_move_duplicate`, `renamed`, `moved_duplicate`, `already_named`, `not_found`, `conflict`, or `error` |
+| `status` | `would_rename`, `would_move_duplicate`, `would_move_unidentified`, `renamed`, `moved_duplicate`, `moved_unidentified`, `already_named`, `not_found`, `conflict`, or `error` |
 | `match_status` | `matched`, `not_found`, or `error` |
 | `duplicate_of` | Actual path of the retained identical copy |
 | `error` | Reason a file could not be processed |

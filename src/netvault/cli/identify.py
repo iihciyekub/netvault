@@ -42,7 +42,7 @@ def doi_filename(doi: str) -> str:
     return filename
 
 
-def scan_pdfs(directory: Path, duplicates_to: Path | None) -> list[LocalPdf]:
+def scan_pdfs(directory: Path, excluded_directories: set[Path]) -> list[LocalPdf]:
     pdfs = []
 
     def scan_error(error: OSError) -> None:
@@ -53,12 +53,25 @@ def scan_pdfs(directory: Path, duplicates_to: Path | None) -> list[LocalPdf]:
         directories[:] = sorted(
             name for name in directories
             if not (parent / name).is_symlink()
-            and (duplicates_to is None or (parent / name).resolve() != duplicates_to)
+            and (parent / name).resolve() not in excluded_directories
         )
         for name in sorted(filenames):
             if Path(name).suffix.lower() == ".pdf":
                 pdfs.append(LocalPdf(parent / name))
     return sorted(pdfs, key=lambda pdf: str(pdf.path))
+
+
+def available_destination(directory: Path, pdf: LocalPdf, reserved: set[str]) -> Path:
+    """Keep the original basename when collecting PDFs, without replacing files."""
+    destination = directory / pdf.path.name
+    counter = 1
+    while os.path.lexists(destination) or str(destination).casefold() in reserved:
+        ending = f"__{pdf.sha256[:8]}" + (f"-{counter}" if counter > 1 else "")
+        budget = 255 - len(f"{ending}.pdf".encode("utf-8"))
+        stem = pdf.path.stem.encode("utf-8")[:budget].decode("utf-8", errors="ignore")
+        destination = directory / f"{stem}{ending}.pdf"
+        counter += 1
+    return destination
 
 
 def move_without_overwrite(source: Path, destination: Path, sha256: str,
@@ -116,17 +129,25 @@ def identify_pdfs(
     csv_path: Path | None,
     hash_file: Callable[[Path], str],
     lookup: Callable[[Iterable[str]], dict[str, dict]],
+    unidentified_to: Path | None = None,
     progress: Callable[[str, int, int], None] | None = None,
 ) -> tuple[Path, dict[str, int]]:
     directory = directory.expanduser().resolve()
     duplicates_to = duplicates_to.expanduser().resolve() if duplicates_to else None
+    unidentified_to = unidentified_to.expanduser().resolve() if unidentified_to else None
     csv_path = csv_path.expanduser().absolute() if csv_path else None
-    if duplicates_to is not None:
-        if directory == duplicates_to or directory.is_relative_to(duplicates_to):
-            raise ValueError("Duplicate destination must not be the scan directory or its ancestor")
-        if duplicates_to.exists() and not duplicates_to.is_dir():
-            raise ValueError("Duplicate destination must be a directory")
-    pdfs = scan_pdfs(directory, duplicates_to)
+    for label, destination in (("Duplicate", duplicates_to), ("Unidentified", unidentified_to)):
+        if destination is not None:
+            if directory == destination or directory.is_relative_to(destination):
+                raise ValueError(f"{label} destination must not be the scan directory or its ancestor")
+            if destination.exists() and not destination.is_dir():
+                raise ValueError(f"{label} destination must be a directory")
+    if duplicates_to is not None and unidentified_to is not None:
+        if (duplicates_to.is_relative_to(unidentified_to)
+                or unidentified_to.is_relative_to(duplicates_to)):
+            raise ValueError("Duplicate and unidentified destinations must not overlap")
+    excluded = {path for path in (duplicates_to, unidentified_to) if path is not None}
+    pdfs = scan_pdfs(directory, excluded)
     for index, pdf in enumerate(pdfs, 1):
         try:
             if pdf.path.is_symlink() or not pdf.path.is_file():
@@ -187,22 +208,14 @@ def identify_pdfs(
             if not error:
                 try:
                     if duplicate and duplicates_to is not None:
-                        # Use original basenames; add hash/number only for destination conflicts.
-                        proposed = duplicates_to / current.name
-                        counter = 1
-                        while (os.path.lexists(proposed)
-                               or str(proposed).casefold() in reserved):
-                            ending = f"__{pdf.sha256[:8]}" + (f"-{counter}" if counter > 1 else "")
-                            budget = 255 - len(f"{ending}.pdf".encode("utf-8"))
-                            stem = current.stem.encode("utf-8")[:budget].decode(
-                                "utf-8", errors="ignore",
-                            )
-                            proposed = duplicates_to / f"{stem}{ending}.pdf"
-                            counter += 1
+                        proposed = available_destination(duplicates_to, pdf, reserved)
                         status = "would_move_duplicate"
                     elif pdf.doi:
                         proposed = current.with_name(doi_filename(pdf.doi))
                         status = "already_named" if proposed == current else "would_rename"
+                    elif unidentified_to is not None:
+                        proposed = available_destination(unidentified_to, pdf, reserved)
+                        status = "would_move_unidentified"
 
                     if proposed != current:
                         if (os.path.lexists(proposed)
@@ -223,7 +236,12 @@ def identify_pdfs(
                                 current = proposed
                                 actual_paths[id(pdf)] = current
                                 pdf.signature = file_signature(current)
-                                status = "moved_duplicate" if duplicate and duplicates_to else "renamed"
+                                if duplicate and duplicates_to is not None:
+                                    status = "moved_duplicate"
+                                elif not pdf.doi and unidentified_to is not None:
+                                    status = "moved_unidentified"
+                                else:
+                                    status = "renamed"
                 except FileExistsError:
                     status, error = "conflict", "Destination appeared during processing; source retained"
                 except (OSError, ValueError, RuntimeError) as exc:

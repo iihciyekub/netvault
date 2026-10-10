@@ -24,11 +24,13 @@ def read_rows(report: Path) -> list[dict]:
         return list(csv.DictReader(stream))
 
 
-def run(directory: Path, *, rename=False, duplicates_to=None, csv_path=None, lookup=None):
+def run(directory: Path, *, rename=False, duplicates_to=None, csv_path=None, lookup=None,
+        unidentified_to=None):
     return identify.identify_pdfs(
         directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
         hash_file=cli.file_sha256,
         lookup=lookup or (lambda hashes: {sha: {"doi": DOI} for sha in hashes}),
+        unidentified_to=unidentified_to,
     )
 
 
@@ -338,3 +340,141 @@ def test_bulk_query_chunks_hashes_without_uploading(monkeypatch):
     monkeypatch.setattr(cli, "api_post", post)
     assert len(cli.get_existing_pdfs_by_sha256(hashes, fallback=False)) == 1001
     assert sizes == [500, 500, 1]
+
+
+def test_cli_rename_automatically_collects_into_working_directory(tmp_path, monkeypatch):
+    working = tmp_path / "working"
+    working.mkdir()
+    source = tmp_path / "papers"
+    matched = write_pdf(source, "a.pdf")
+    write_pdf(source / "nested", "copy.pdf")
+    unmatched = write_pdf(source, "unknown.pdf", b"%PDF-not-on-server")
+    write_pdf(source / "nested", "unknown-copy.pdf", b"%PDF-not-on-server")
+    matched_sha = cli.file_sha256(matched)
+    monkeypatch.chdir(working)
+    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(cli, "api_post", lambda path, json: {
+        "existing": {matched_sha: {"doi": DOI}},
+    })
+    runner = CliRunner()
+    preview = runner.invoke(cli.app, ["identify", str(source)])
+    assert preview.exit_code == 0, preview.output
+    assert matched.exists() and unmatched.exists()
+    assert not (working / "duplicates").exists()
+    assert not (working / "unidentifys").exists()
+    preview_rows = read_rows(source / "netvault-index.csv")
+    assert sorted(row["status"] for row in preview_rows) == [
+        "would_move_duplicate", "would_move_duplicate", "would_move_unidentified", "would_rename",
+    ]
+
+    applied = runner.invoke(cli.app, ["identify", str(source), "--rename"])
+    assert applied.exit_code == 0, applied.output
+    rows = read_rows(source / "netvault-index-2.csv")
+    assert sorted(row["status"] for row in rows) == [
+        "moved_duplicate", "moved_duplicate", "moved_unidentified", "renamed",
+    ]
+    assert len(list((working / "duplicates").glob("*.pdf"))) == 2
+    assert len(list((working / "unidentifys").glob("*.pdf"))) == 1
+    assert not (source / "duplicates").exists()
+    assert not (source / "unidentifys").exists()
+    for row in rows:
+        actual = Path(row["path"])
+        assert actual.exists() and cli.file_sha256(actual) == row["sha256"]
+        assert row["directory"] == str(actual.parent)
+        if row["duplicate_of"]:
+            assert cli.file_sha256(Path(row["duplicate_of"])) == row["sha256"]
+        if row["status"] == "moved_unidentified":
+            assert actual.parent == working / "unidentifys"
+            assert row["doi"] == "" and row["match_status"] == "not_found"
+
+
+def test_default_scan_excludes_both_collection_directories_on_repeated_runs(tmp_path, monkeypatch):
+    first = write_pdf(tmp_path, "new.pdf", b"%PDF-new-unmatched")
+    old_unmatched = write_pdf(tmp_path / "unidentifys", "old.pdf", b"%PDF-old-unmatched")
+    old_duplicate = write_pdf(tmp_path / "duplicates", "old-copy.pdf", b"%PDF-old-duplicate")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
+    queried = []
+
+    def post(path, json):
+        queried.extend(json["sha256"])
+        return {"existing": {}}
+
+    monkeypatch.setattr(cli, "api_post", post)
+    result = CliRunner().invoke(cli.app, ["identify", "--rename"])
+    assert result.exit_code == 0, result.output
+    assert queried == [cli.file_sha256(tmp_path / "unidentifys/new.pdf")]
+    row, = read_rows(tmp_path / "netvault-index.csv")
+    assert row["status"] == "moved_unidentified"
+    assert not first.exists()
+    assert old_unmatched.read_bytes() == b"%PDF-old-unmatched"
+    assert old_duplicate.read_bytes() == b"%PDF-old-duplicate"
+    result = CliRunner().invoke(cli.app, ["identify", "--rename"])
+    assert result.exit_code == 0, result.output
+    assert read_rows(tmp_path / "netvault-index-2.csv") == []
+
+
+def test_unidentified_basename_collisions_keep_every_pdf(tmp_path):
+    source = tmp_path / "papers"
+    first = write_pdf(source, "paper.pdf", b"%PDF-one")
+    second = write_pdf(source / "nested", "paper.pdf", b"%PDF-two")
+    unidentified = tmp_path / "unidentifys"
+    old = write_pdf(unidentified, "paper.pdf", b"%PDF-prior-run")
+    report, counts = run(
+        source, rename=True, lookup=lambda hashes: {}, unidentified_to=unidentified,
+    )
+    assert counts == {"moved_unidentified": 2}
+    assert not first.exists() and not second.exists()
+    assert old.read_bytes() == b"%PDF-prior-run"
+    rows = read_rows(report)
+    assert len({row["path"] for row in rows}) == 2
+    for row in rows:
+        assert Path(row["path"]).parent == unidentified
+        assert cli.file_sha256(Path(row["path"])) == row["sha256"]
+
+
+def test_failed_unidentified_move_retains_source_and_tracks_duplicates(tmp_path, monkeypatch):
+    source = tmp_path / "papers"
+    first = write_pdf(source, "a.pdf")
+    duplicate = write_pdf(source, "b.pdf")
+    unidentified = tmp_path / "unidentifys"
+    original = identify.move_without_overwrite
+
+    def move(src, dst, sha256, hash_file):
+        if dst.parent == unidentified:
+            raise PermissionError("No write access")
+        return original(src, dst, sha256, hash_file)
+
+    monkeypatch.setattr(identify, "move_without_overwrite", move)
+    report, counts = run(
+        source, rename=True, lookup=lambda hashes: {}, unidentified_to=unidentified,
+        duplicates_to=tmp_path / "duplicates",
+    )
+    assert counts == {"error": 1, "moved_duplicate": 1}
+    rows = read_rows(report)
+    # The retained source is still present and is safely referenced by the duplicate.
+    assert first.exists() and not duplicate.exists()
+    assert rows[1]["duplicate_of"] == str(first)
+    assert rows[0]["path"] == str(first)
+
+
+def test_unidentified_destination_validation_prevents_all_moves(tmp_path):
+    pdf = write_pdf(tmp_path, "a.pdf")
+    with pytest.raises(ValueError, match="Unidentified.*ancestor"):
+        run(tmp_path, rename=True, unidentified_to=tmp_path)
+    with pytest.raises(ValueError, match="must not overlap"):
+        run(tmp_path, rename=True, unidentified_to=tmp_path / "output",
+            duplicates_to=tmp_path / "output/nested")
+    assert pdf.exists()
+
+
+def test_invalid_server_doi_is_an_error_not_an_unidentified_move(tmp_path):
+    pdf = write_pdf(tmp_path, "a.pdf")
+    report, counts = run(
+        tmp_path, rename=True, unidentified_to=tmp_path / "unidentifys",
+        lookup=lambda hashes: {sha: {"doi": "invalid"} for sha in hashes},
+    )
+    assert counts == {"error": 1}
+    assert pdf.exists()
+    assert not (tmp_path / "unidentifys").exists()
+    assert read_rows(report)[0]["match_status"] == "error"

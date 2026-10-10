@@ -90,7 +90,7 @@ Examples:
   nv upload ./paper.pdf ./papers
   nv check-pdfs ./papers
   nv doi ./paper.pdf --verbose
-  nv identify ./papers --rename --duplicates-to ./duplicates
+  nv identify ./papers --rename
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
   nv update
@@ -734,8 +734,9 @@ Examples:
 Notes:
   Scans PDFs recursively and looks up SHA-256 values without uploading files.
   Without --rename, only writes a CSV preview; no PDFs are renamed or moved.
-  --duplicates-to keeps one copy per hash across the scan and moves the others
-  only with --rename. The duplicate destination is excluded from scanning.
+  --rename names matched PDFs by DOI, moves identical extra copies to ./duplicates,
+  and moves unmatched retained PDFs to ./unidentifys, under the current working directory.
+  Both collection directories are excluded from scanning. --duplicates-to is optional.
   Existing PDFs and reports are never overwritten. CSV paths are absolute.
 """,
 )
@@ -744,9 +745,12 @@ def identify_command(
         Path("."), exists=True, file_okay=False, readable=True,
         help="Directory of PDFs to scan recursively.",
     ),
-    rename: bool = typer.Option(False, "--rename", help="Apply file renames and duplicate moves."),
+    rename: bool = typer.Option(
+        False, "--rename", help="Rename by DOI; collect duplicates and unidentified PDFs automatically.",
+    ),
     duplicates_to: Path | None = typer.Option(
-        None, "--duplicates-to", help="Keep one copy per SHA-256; move other copies here with --rename.",
+        Path("duplicates"), "--duplicates-to",
+        help="Optional duplicate destination (default: ./duplicates under the current directory).",
     ),
     csv_path: Path | None = typer.Option(
         None, "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
@@ -779,6 +783,7 @@ def identify_command(
             report, counts = identify_pdfs(
                 directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
                 hash_file=file_sha256, lookup=lookup, progress=update_progress,
+                unidentified_to=Path.cwd() / "unidentifys",
             )
     except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
         console.print(f"identify failed: {exc}")
@@ -787,7 +792,7 @@ def identify_command(
                               or "0 PDFs"))
     console.print(f"CSV: {report}")
     if not rename:
-        console.print("Preview only. Add --rename to apply renames and duplicate moves.")
+        console.print("Preview only. Add --rename to apply renames and collection moves.")
     if counts.get("error") or counts.get("conflict"):
         raise typer.Exit(1)
 
