@@ -193,7 +193,11 @@ def identify_pdfs(
                         while (os.path.lexists(proposed)
                                or str(proposed).casefold() in reserved):
                             ending = f"__{pdf.sha256[:8]}" + (f"-{counter}" if counter > 1 else "")
-                            proposed = duplicates_to / f"{current.stem[:80]}{ending}.pdf"
+                            budget = 255 - len(f"{ending}.pdf".encode("utf-8"))
+                            stem = current.stem.encode("utf-8")[:budget].decode(
+                                "utf-8", errors="ignore",
+                            )
+                            proposed = duplicates_to / f"{stem}{ending}.pdf"
                             counter += 1
                         status = "would_move_duplicate"
                     elif pdf.doi:

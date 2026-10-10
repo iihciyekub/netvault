@@ -155,6 +155,20 @@ def test_duplicate_of_tracks_renamed_keeper(tmp_path):
     assert Path(rows[1]["duplicate_of"]).exists()
 
 
+@pytest.mark.parametrize("stem", ["文" * 80, "📄" * 62])
+def test_duplicate_destination_names_fit_mac_limits_with_unicode(tmp_path, stem):
+    for folder in (tmp_path, tmp_path / "nested-a", tmp_path / "nested-b"):
+        write_pdf(folder, f"{stem}.pdf")
+    duplicates = tmp_path / "duplicates"
+    write_pdf(duplicates, f"{stem}.pdf", b"%PDF-existing destination")
+    report, counts = run(tmp_path, rename=True, duplicates_to=duplicates)
+    assert counts == {"renamed": 1, "moved_duplicate": 2}
+    moved = [row for row in read_rows(report) if row["status"] == "moved_duplicate"]
+    assert len({row["path"] for row in moved}) == 2
+    assert all(len(Path(row["path"]).name.encode("utf-8")) <= 255 for row in moved)
+    assert all(Path(row["path"]).exists() for row in moved)
+
+
 def test_server_failure_leaves_pdfs_and_existing_report_untouched(tmp_path):
     first = write_pdf(tmp_path, "a.pdf")
     duplicate = write_pdf(tmp_path, "b.pdf")
