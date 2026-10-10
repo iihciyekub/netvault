@@ -43,6 +43,7 @@ from netvault.cli.http import (
     upload_pdf,
 )
 from netvault.cli.update import update_from_github
+from netvault.cli.identify import identify_pdfs
 from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
@@ -89,6 +90,7 @@ Examples:
   nv upload ./paper.pdf ./papers
   nv check-pdfs ./papers
   nv doi ./paper.pdf --verbose
+  nv identify ./papers --rename --duplicates-to ./duplicates
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
   nv update
@@ -361,7 +363,9 @@ def get_existing_pdf_by_sha256(sha256: str) -> dict | None:
     return existing_pdf_from_response(response)
 
 
-def get_existing_pdfs_by_sha256(hashes: Iterable[str], progress_callback=None) -> dict[str, dict]:
+def get_existing_pdfs_by_sha256(
+    hashes: Iterable[str], progress_callback=None, *, fallback: bool = True,
+) -> dict[str, dict]:
     unique_hashes = sorted({sha256 for sha256 in hashes if sha256})
     if not unique_hashes:
         return {}
@@ -377,6 +381,8 @@ def get_existing_pdfs_by_sha256(hashes: Iterable[str], progress_callback=None) -
                 progress_callback(min(index + chunk_size, len(unique_hashes)))
         return existing
     except (RuntimeError, requests.RequestException):
+        if not fallback:
+            raise
         existing = {}
         for index, sha256 in enumerate(unique_hashes, start=1):
             pdf = get_existing_pdf_by_sha256(sha256)
@@ -713,6 +719,77 @@ def logout() -> None:
     finally:
         clear_credentials()
     console.print("Logged out.")
+
+
+@app.command(
+    "identify",
+    epilog="""\b
+Examples:
+  nv identify ~/Downloads/papers
+  nv identify ~/Downloads/papers --rename
+  nv identify ~/Downloads/papers --rename --duplicates-to ~/Downloads/duplicates
+  nv identify ./papers --csv ./report.csv
+
+\b
+Notes:
+  Scans PDFs recursively and looks up SHA-256 values without uploading files.
+  Without --rename, only writes a CSV preview; no PDFs are renamed or moved.
+  --duplicates-to keeps one copy per hash across the scan and moves the others
+  only with --rename. The duplicate destination is excluded from scanning.
+  Existing PDFs and reports are never overwritten. CSV paths are absolute.
+""",
+)
+def identify_command(
+    directory: Path = typer.Argument(
+        Path("."), exists=True, file_okay=False, readable=True,
+        help="Directory of PDFs to scan recursively.",
+    ),
+    rename: bool = typer.Option(False, "--rename", help="Apply file renames and duplicate moves."),
+    duplicates_to: Path | None = typer.Option(
+        None, "--duplicates-to", help="Keep one copy per SHA-256; move other copies here with --rename.",
+    ),
+    csv_path: Path | None = typer.Option(
+        None, "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
+    ),
+) -> None:
+    try:
+        ensure_logged_in()
+        with Progress(
+            SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
+            TextColumn("{task.completed:.0f}/{task.total:.0f}"), TimeElapsedColumn(),
+            console=console, transient=True,
+        ) as progress:
+            task = progress.add_task("Scanning PDFs", total=0)
+
+            def update_progress(stage: str, completed: int, total: int) -> None:
+                progress.update(task, description=stage, completed=completed, total=total)
+
+            def lookup(hashes: Iterable[str]) -> dict[str, dict]:
+                values = list(hashes)
+                total = len(set(values))
+                update_progress("Querying server hashes", 0, total)
+                return get_existing_pdfs_by_sha256(
+                    values,
+                    progress_callback=lambda completed: update_progress(
+                        "Querying server hashes", completed, total,
+                    ),
+                    fallback=False,
+                )
+
+            report, counts = identify_pdfs(
+                directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
+                hash_file=file_sha256, lookup=lookup, progress=update_progress,
+            )
+    except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
+        console.print(f"identify failed: {exc}")
+        raise typer.Exit(1) from exc
+    console.print("done: " + ("; ".join(f"{count} {status}" for status, count in counts.items())
+                              or "0 PDFs"))
+    console.print(f"CSV: {report}")
+    if not rename:
+        console.print("Preview only. Add --rename to apply renames and duplicate moves.")
+    if counts.get("error") or counts.get("conflict"):
+        raise typer.Exit(1)
 
 
 @app.command(

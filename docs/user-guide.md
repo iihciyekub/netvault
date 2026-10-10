@@ -81,6 +81,85 @@ Logout:
 nv logout
 ```
 
+## Identify and organize local PDFs
+
+Look up local PDF hashes in the server database and write a CSV preview:
+
+```bash
+nv identify ~/Downloads/papers
+```
+
+The command scans `.pdf` and `.PDF` files recursively, computes their SHA-256
+values from their bytes, and queries the existing authenticated API in batches
+of up to 500 unique hashes. It also finds hashes registered as alternate versions
+of a server PDF. No PDFs are uploaded, no DOI is inferred from PDF text, and no
+CSL metadata is requested. An unmatched hash leaves the file unchanged.
+
+Apply DOI-based filenames in each PDF's original directory:
+
+```bash
+nv identify ~/Downloads/papers --rename
+```
+
+For example, DOI `10.1177/00222437241234567` produces
+`10.1177_00222437241234567.pdf`. Path separators, Windows-reserved punctuation,
+and control characters become underscores. The CSV retains the complete DOI.
+An existing destination or two DOIs mapping to the same filename produces a
+`conflict`; the source is kept and no file is overwritten. Very long DOI names
+produce an error rather than silently truncating the DOI.
+
+To collect byte-identical duplicates across all scanned subdirectories:
+
+```bash
+# Preview both renames and duplicate moves.
+nv identify ~/Downloads/papers --duplicates-to ~/Downloads/duplicates
+
+# Apply the previewed operations.
+nv identify ~/Downloads/papers --rename --duplicates-to ~/Downloads/duplicates
+```
+
+One copy per hash is retained. A copy already named for the DOI is preferred;
+otherwise the first absolute path in sorted order is retained. Other copies move
+to the duplicate directory using their original basenames. If a basename is
+already taken, a short hash and, when needed, a number are appended. Different
+PDF bytes sharing a DOI are not considered duplicates. Identical copies without
+a server match are also collected, with an empty DOI in the CSV.
+
+The duplicate directory may be inside the scan directory and is excluded from
+scanning, including subsequent runs. It cannot equal or contain the scan directory.
+Symbolic links are skipped. Cross-filesystem moves verify the copied hash before
+removing the original file. Files changed after scanning are left in place.
+
+By default the CSV is saved as `netvault-index.csv` in the scanned directory.
+Repeated runs produce `netvault-index-2.csv`, `netvault-index-3.csv`, etc., keeping
+earlier audit records. Choose a different new report filename with:
+
+```bash
+nv identify ~/Downloads/papers --rename --csv ~/Downloads/papers-report.csv
+```
+
+An explicitly specified existing CSV is never overwritten. The parent directory
+must already exist. Reports use UTF-8 with a BOM for spreadsheet compatibility
+and contain one row per scanned PDF, including unmatched files and failures:
+
+| Column | Meaning |
+| --- | --- |
+| `sha256` | Actual local PDF hash, including when matched through a server alias |
+| `doi` | Complete DOI returned by the server, or empty when unmatched |
+| `directory` | Actual containing directory after this run |
+| `original_filename`, `original_path` | Name and absolute path before processing |
+| `filename`, `path` | Actual name and absolute path after processing |
+| `proposed_path` | Planned destination; preview runs leave `path` unchanged |
+| `status` | `would_rename`, `would_move_duplicate`, `renamed`, `moved_duplicate`, `already_named`, `not_found`, `conflict`, or `error` |
+| `match_status` | `matched`, `not_found`, or `error` |
+| `duplicate_of` | Actual path of the retained identical copy |
+| `error` | Reason a file could not be processed |
+
+Without `--rename`, the command creates a report but does not move or rename PDFs.
+All server queries finish before any file changes. A server failure stops the run,
+so it cannot be mistaken for an unmatched PDF. A run containing file errors or
+conflicts writes its report and exits with status 1; otherwise it exits with 0.
+
 ## Upload PDFs
 
 Upload one PDF:
