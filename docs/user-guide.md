@@ -198,6 +198,19 @@ conflicts writes its report and exits with status 1; otherwise it exits with 0.
 
 ## Upload PDFs
 
+Uploads use three concurrent requests by default, with DOI identities prepared
+in batches of 12 while earlier files upload. Hash checks, DOI verification and
+idempotency remain enabled. Force replacements run serially in input order.
+Use `nv upload ./papers --jobs 1` to diagnose a connection with serial requests;
+`--jobs` accepts 1 through 3 and requires no change to the usual command.
+
+Progress shows aggregate multipart bytes sent and average MiB/s since the first
+request. The summary separates body-send time from response wait, which includes
+network and server processing. Updated servers also report average storage, PDF
+parsing, verification, persistence and total handler time. Per-request averages
+can overlap under concurrency; they do not sum to the command's elapsed time.
+
+
 Upload one PDF:
 
 ```bash

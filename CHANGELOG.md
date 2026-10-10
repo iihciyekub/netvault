@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.25 - 2026-10-11
+
+- Upload with three bounded concurrent requests by default, preparing DOI identities
+  in small batches while earlier uploads are in flight; keep force replacements serial.
+- Show aggregate sent bytes, average throughput, send/response-wait timings, and
+  server storage, PDF parsing, verification and persistence timings.
+- Reuse extracted PDF text for DOI title verification and run blocking PDF parsing
+  and title matching outside the server event loop.
+- Serialize same-DOI lookup/create decisions across distinct hashes, preserving
+  verification, hash idempotency and duplicate/alias behavior under concurrent uploads.
+- Share metadata concurrency and request pacing across server request handlers, preserving
+  provider retries and Retry-After handling. Use `--jobs 1` for serial diagnostics.
+
 ## 0.7.24 - 2026-10-10
 
 - Identify equivalent complete PDF page content even when byte hashes and registered

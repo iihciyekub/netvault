@@ -1,5 +1,6 @@
 from pathlib import Path
 import threading
+from time import monotonic
 from typing import Any
 
 import requests
@@ -89,7 +90,11 @@ def upload_pdf(
     progress_callback: Any | None = None,
     sha256: str | None = None,
     doi_source: str | None = None,
+    timing_callback: Any | None = None,
 ) -> Any:
+    started = monotonic()
+    sent_at = None
+    response = None
     with path.open("rb") as handle:
         fields: dict[str, Any] = {}
         if doi:
@@ -105,6 +110,9 @@ def upload_pdf(
         encoder = MultipartEncoder(fields=fields)
 
         def notify_upload_progress(monitor: MultipartEncoderMonitor) -> None:
+            nonlocal sent_at
+            if sent_at is None and monitor.bytes_read >= monitor.len:
+                sent_at = monotonic()
             if progress_callback:
                 progress_callback(monitor.bytes_read, monitor.len)
 
@@ -113,11 +121,26 @@ def upload_pdf(
         headers["Content-Type"] = monitor.content_type
         if sha256:
             headers["Idempotency-Key"] = sha256
-        response = http_session().post(
-            f"{server_url()}/pdfs/upload",
-            headers=headers,
-            data=monitor,
-            timeout=300,
-        )
+        try:
+            response = http_session().post(
+                f"{server_url()}/pdfs/upload",
+                headers=headers,
+                data=monitor,
+                timeout=300,
+            )
+        finally:
+            if timing_callback and sent_at is not None:
+                server_timings = {}
+                if response is not None:
+                    for entry in response.headers.get("Server-Timing", "").split(","):
+                        name, _, attributes = entry.strip().partition(";")
+                        for attribute in attributes.split(";"):
+                            key, _, value = attribute.strip().partition("=")
+                            if key == "dur":
+                                try:
+                                    server_timings[name] = float(value) / 1000
+                                except ValueError:
+                                    pass
+                timing_callback(sent_at - started, monotonic() - sent_at, server_timings)
     raise_for_api_error(response)
     return response.json()

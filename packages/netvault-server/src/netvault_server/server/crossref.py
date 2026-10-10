@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 import threading
+from contextlib import contextmanager
+from time import monotonic
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -11,6 +13,42 @@ from urllib3.util.retry import Retry
 from netvault_server.server.config import get_settings
 
 _local = threading.local()
+_request_condition = threading.Condition()
+_active_requests = 0
+_next_request = 0.0
+
+
+@contextmanager
+def _request_slot(*, search: bool = False):
+    """Share metadata concurrency/rate limits across upload and web threads in this server process.
+
+    Public requests use one slot; configured polite requests use three.
+    Title searches use the stricter list-endpoint rate. The HTTP adapter keeps
+    its existing Retry-After handling while a retry holds its concurrency slot.
+    """
+    global _active_requests, _next_request
+    polite = bool(get_settings().crossref_mailto)
+    limit = 3 if polite else 1
+    rate = (3 if polite else 1) if search else (10 if polite else 5)
+    with _request_condition:
+        while True:
+            delay = _next_request - monotonic()
+            if _active_requests < limit and delay <= 0:
+                _active_requests += 1
+                _next_request = monotonic() + 1 / rate
+                break
+            _request_condition.wait(timeout=max(delay, 0.001) if _active_requests < limit else None)
+    try:
+        yield
+    finally:
+        with _request_condition:
+            _active_requests -= 1
+            _request_condition.notify_all()
+
+
+def _limited_get(url: str, **kwargs):
+    with _request_slot(search=url.endswith("/works")):
+        return _session().get(url, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -83,7 +121,7 @@ def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
 
     fetched_at = datetime.now(timezone.utc)
     try:
-        response = _session().get(url, params=params, headers=headers, timeout=(3.05, 10))
+        response = _limited_get(url, params=params, headers=headers, timeout=(3.05, 10))
     except requests.RequestException:
         return CrossrefMetadata(status="unavailable", fetched_at=fetched_at)
 
@@ -143,7 +181,7 @@ def fetch_doi_org_metadata(doi: str) -> CrossrefMetadata:
         "User-Agent": settings.crossref_user_agent,
     }
     try:
-        response = _session().get(url, headers=headers, timeout=(3.05, 10), allow_redirects=True)
+        response = _limited_get(url, headers=headers, timeout=(3.05, 10), allow_redirects=True)
     except requests.RequestException:
         return CrossrefMetadata(status="unavailable", fetched_at=fetched_at, provider="doi.org")
 
@@ -196,7 +234,7 @@ def search_crossref_metadata(title: str) -> list[CrossrefMetadata]:
         params["mailto"] = settings.crossref_mailto
     fetched_at = datetime.now(timezone.utc)
     try:
-        response = _session().get(
+        response = _limited_get(
             "https://api.crossref.org/works", params=params,
             headers={"User-Agent": settings.crossref_user_agent}, timeout=(3.05, 10),
         )

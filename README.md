@@ -175,7 +175,19 @@ token is valid for 7 days by default and can be changed with
 server, username, and password before uploading.
 
 Upload PDFs. NetVault extracts a DOI from the PDF, asks Crossref for metadata,
-and stores the PDF under that DOI:
+and stores the PDF under that DOI.
+
+Uploads use three concurrent requests by default, with DOI identities prepared
+in batches of 12 while earlier files upload. Hash checks, DOI verification and
+idempotency remain enabled. Force replacements run serially in input order.
+Use `nv upload ./papers --jobs 1` to diagnose a connection with serial requests;
+`--jobs` accepts 1 through 3 and requires no change to the usual command.
+
+Progress shows aggregate multipart bytes sent and average MiB/s since the first
+request. The summary separates body-send time from response wait, which includes
+network and server processing. Updated servers also report average storage, PDF
+parsing, verification, persistence and total handler time. Per-request averages
+can overlap under concurrency; they do not sum to the command's elapsed time.
 
 ```bash
 nv upload ~/Documents/papers

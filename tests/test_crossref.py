@@ -1,6 +1,60 @@
 from types import SimpleNamespace
 
 
+def test_metadata_requests_share_three_polite_slots(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Lock
+    from netvault_server.server import crossref
+
+    monkeypatch.setattr(crossref, "get_settings", lambda: SimpleNamespace(crossref_mailto="test@example.edu"))
+    monkeypatch.setattr(crossref, "_next_request", 0.0)
+    barrier, lock = Barrier(3, timeout=5), Lock()
+    active = peak = 0
+
+    def request(_index):
+        nonlocal active, peak
+        with crossref._request_slot():
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            barrier.wait()
+            with lock:
+                active -= 1
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(request, range(6)))
+    assert peak == 3
+    assert crossref._active_requests == 0
+
+
+def test_public_metadata_requests_are_serialized(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from netvault_server.server import crossref
+
+    monkeypatch.setattr(crossref, "get_settings", lambda: SimpleNamespace(crossref_mailto=None))
+    monkeypatch.setattr(crossref, "_next_request", 0.0)
+    first, second, release = Event(), Event(), Event()
+
+    def request(index):
+        with crossref._request_slot():
+            (first if index == 0 else second).set()
+            if index == 0:
+                assert release.wait(5)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a = pool.submit(request, 0)
+        try:
+            assert first.wait(5)
+            b = pool.submit(request, 1)
+            assert not second.wait(0.3)
+        finally:
+            release.set()
+        a.result(timeout=5)
+        b.result(timeout=5)
+    assert second.is_set()
+
+
 def test_crossref_session_retries_transient_failures(monkeypatch) -> None:
     from netvault_server.server import crossref
 

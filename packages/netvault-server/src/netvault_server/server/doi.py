@@ -2,7 +2,7 @@ import logging
 import re
 import subprocess
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -49,6 +49,7 @@ class DoiEvidence:
     source: str | None
     candidates: list[DoiCandidate]
     reason: str | None = None
+    pdf_text: str | None = field(default=None, compare=False, repr=False)
 
 
 def normalize_doi(value: str) -> str:
@@ -256,40 +257,35 @@ def candidates_from_text(text: str, source: str, detail: str, page: int | None =
     return candidates
 
 
-def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
+def _pdftotext(path: Path) -> str:
     try:
         result = subprocess.run(
             ["pdftotext", "-f", "1", "-l", "3", str(path), "-"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
+            check=False, capture_output=True, text=True, timeout=10,
         )
     except (FileNotFoundError, subprocess.SubprocessError):
-        return []
-    if result.returncode != 0 or not result.stdout:
-        return []
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
+def _text_candidates(text: str) -> list[DoiCandidate]:
     candidates = []
-    for index, text in enumerate(result.stdout.split("\f")[:3], start=1):
-        candidates.extend(candidates_from_text(text, "pdf-content", f"pdftotext-page-{index}", page=index))
+    for index, page_text in enumerate(text.split("\f")[:3], start=1):
+        candidates.extend(candidates_from_text(
+            page_text, "pdf-content", f"pdftotext-page-{index}", page=index,
+        ))
     return candidates
+
+
+def scan_with_pdftotext(path: Path) -> list[DoiCandidate]:
+    return _text_candidates(_pdftotext(path))
 
 
 def extract_pdf_text(path: Path) -> str:
     """Return usable text from the first three pages for identity verification."""
-    try:
-        result = subprocess.run(
-            ["pdftotext", "-f", "1", "-l", "3", str(path), "-"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (FileNotFoundError, subprocess.SubprocessError):
-        result = None
-    if result is not None and result.returncode == 0 and result.stdout.strip():
-        return result.stdout
-
+    text = _pdftotext(path)
+    if text.strip():
+        return text
     try:
         reader = PdfReader(str(path))
         return "\n".join(text for _, text in readable_pages(reader))
@@ -455,7 +451,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         positions[key] = len(candidates)
         candidates.append(candidate)
 
-    for candidate in scan_with_pdftotext(path):
+    pdf_text = _pdftotext(path)
+    for candidate in _text_candidates(pdf_text):
         add(candidate)
 
     try:
@@ -482,6 +479,12 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
     for index, text in page_texts:
         for candidate in candidates_from_text(text, "pdf-content", f"pypdf-page-{index}", page=index):
             add(candidate)
+
+    if not pdf_text.strip():
+        pdf_text = "\n".join(text for _, text in page_texts)
+
+    def resolved(*args) -> DoiEvidence:
+        return DoiEvidence(*args, pdf_text=pdf_text)
 
     filename_candidate = find_filename_doi_from_name(filename) if filename else find_filename_doi_from_name(path.name)
     if filename_candidate:
@@ -514,7 +517,7 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
             None,
         )
         if metadata_conflict:
-            return DoiEvidence(
+            return resolved(
                 "conflict",
                 None,
                 None,
@@ -546,12 +549,12 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
             doi = metadata_dois[0]
             source = choose_source(candidates, doi)
         else:
-            return DoiEvidence("conflict", None, None, candidates, "Multiple metadata DOI values")
+            return resolved("conflict", None, None, candidates, "Multiple metadata DOI values")
     elif content_dois:
         best_doi, best_score, _ = scored_dois[0]
         second_score = scored_dois[1][1] if len(scored_dois) > 1 else 0
         if len(content_dois) > 1 and best_score - second_score < 18:
-            return DoiEvidence(
+            return resolved(
                 "conflict",
                 None,
                 None,
@@ -562,8 +565,8 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         source = choose_source(candidates, doi)
 
     if not doi:
-        return DoiEvidence("no-doi", None, None, candidates, "No DOI found")
-    return DoiEvidence("ok", doi, source, candidates)
+        return resolved("no-doi", None, None, candidates, "No DOI found")
+    return resolved("ok", doi, source, candidates)
 
 
 def doi_evidence_requires_confirmation(evidence: DoiEvidence) -> bool:

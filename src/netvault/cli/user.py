@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+from time import monotonic
 from typing import Iterable
 
 from pypdf import PdfReader
@@ -44,6 +45,7 @@ from netvault.cli.http import (
 )
 from netvault.cli.update import update_from_github
 from netvault.cli.identify import identify_pdfs
+from netvault.cli.upload_pipeline import UploadPipeline, UploadRateColumn, UploadStats
 from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
@@ -58,6 +60,7 @@ HASH_CACHE_VERSION = 1
 IDENTITY_CACHE_VERSION = 1
 PDF_MAGIC = b"%PDF-"
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+UPLOAD_PREPARE_BATCH_SIZE = 12
 DEFAULT_UPLOAD_EXCLUDED_DIRS = {
     ".cache",
     ".git",
@@ -908,6 +911,7 @@ def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
+    jobs: int = typer.Option(3, "--jobs", min=1, max=3, help="Concurrent uploads (default: 3)."),
     force: bool = typer.Option(
         False,
         "--force",
@@ -979,6 +983,9 @@ def upload_command(
     existing_by_sha: dict[str, dict] = {}
     unique_pdf_paths: list[Path] = []
     local_duplicate_paths = 0
+    stats = UploadStats()
+    preparation_seconds = 0.0
+    started = monotonic()
 
     with Progress(
         SpinnerColumn(),
@@ -986,6 +993,7 @@ def upload_command(
         BarColumn(),
         TextColumn("{task.completed:.0f}/{task.total:.0f} PDFs"),
         TimeElapsedColumn(),
+        UploadRateColumn(stats),
         console=console,
         transient=True,
     ) as progress:
@@ -1034,176 +1042,167 @@ def upload_command(
             else:
                 new_pdfs.append(pdf_path)
 
-        dois_by_path: dict[Path, str | None] = {}
-        doi_sources_by_path: dict[Path, str] = {}
-        upload_candidates: list[Path] = []
-        progress.reset(
-            task,
-            total=len(new_pdfs),
-            completed=0,
-            description="Resolving DOI identities",
-        )
-        for pdf_path in new_pdfs:
-            try:
-                sha256 = hashes_by_path[pdf_path]
-                identity = cached_identity(identity_cache, sha256)
-                if refresh_doi and identity and identity.get("source") != "user":
-                    identity = None
+        upload_task = progress.add_task("Uploading PDFs", total=0, visible=False)
+        progress.reset(task, total=len(new_pdfs), completed=0, description="Preparing DOI identities")
 
-                index_match = None
-                if not doi:
-                    index_match = index_resolver.resolve(
-                        pdf_path,
-                        sha256,
-                        pdf_path.stat().st_size,
-                    )
-
-                if doi:
-                    identity = manual_identity(doi)
-                    identity_cache[sha256] = identity
-                    identity_cache_pending += 1
-                elif identity and identity.get("source") == "user":
-                    if index_match and normalize_doi(identity["doi"]) != index_match.record.doi:
-                        raise RuntimeError(
-                            "User-confirmed DOI conflicts with download index DOI "
-                            f"{index_match.record.doi}"
-                        )
-                    doi_cache_hits += 1
-                elif index_match:
-                    identity = download_index_identity(index_match)
-                    identity_cache[sha256] = identity
-                    identity_cache_pending += 1
-                    download_index_hits += 1
-                    if index_match.renamed:
-                        download_index_renames += 1
-                elif identity:
-                    doi_cache_hits += 1
+        def record_outcomes(outcomes) -> None:
+            nonlocal latest_pdf, replaced, skipped, uploaded
+            for outcome in outcomes:
+                if outcome.error is not None:
+                    failed.append((outcome.path, str(outcome.error)))
                 else:
-                    evidence = extract_doi_evidence(pdf_path)
-                    if evidence.status == "conflict" and evidence.candidates and not no_crossref:
-                        # Automatic identities are only upload hints. The server owns
-                        # Crossref verification and can safely fall back to another
-                        # candidate from the PDF.
-                        best = max(
-                            evidence.candidates,
-                            key=lambda candidate: (candidate.score, candidate.source, candidate.doi),
-                        )
-                        evidence = replace(
-                            evidence,
-                            status="ok",
-                            doi=best.doi,
-                            source=best.source,
-                        )
-                    identity = identity_from_evidence(evidence)
-                    identity_cache[sha256] = identity
-                    identity_cache_pending += 1
-                    doi_scans += 1
+                    result = outcome.result
+                    latest_pdf = result["pdf"]
+                    if result.get("replaced"):
+                        replaced += 1
+                    elif result["deduplicated"]:
+                        skipped += 1
+                    else:
+                        uploaded += 1
+                progress.advance(upload_task, 1)
 
-                extracted = identity.get("doi")
-                if identity.get("status") == "no-doi":
-                    # The server has its own parsers. A failed local scan must not
-                    # prevent it from examining the actual document.
-                    dois_by_path[pdf_path] = None
-                    doi_sources_by_path[pdf_path] = "pdf-content"
-                    upload_candidates.append(pdf_path)
-                    continue
-                if identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
-                    reason = identity.get("reason") or "No DOI found"
-                    failed.append(
-                        (
-                            pdf_path,
-                            f"{reason}. Confirm with: nv doi {pdf_path} --set DOI",
-                        )
-                    )
-                    continue
-                dois_by_path[pdf_path] = extracted
-                doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
-                upload_candidates.append(pdf_path)
-            except (RuntimeError, OSError, ValueError) as exc:
-                failed.append((pdf_path, str(exc)))
-            finally:
-                if identity_cache_pending >= 25:
-                    save_identity_cache(identity_cache)
-                    identity_cache_pending = 0
-                progress.advance(task, 1)
+        # Preserve input order for force replacements. Only the coordinator
+        # touches caches; a small preparation batch overlaps bounded uploads.
+        pending_paths = new_pdfs
+        with UploadPipeline(upload_pdf, 1 if force else jobs, stats) as pipeline:
+            for offset in range(0, len(pending_paths), UPLOAD_PREPARE_BATCH_SIZE):
+                preparation_batch = pending_paths[offset : offset + UPLOAD_PREPARE_BATCH_SIZE]
+                prepare_started = monotonic()
+                dois_by_path: dict[Path, str | None] = {}
+                doi_sources_by_path: dict[Path, str] = {}
+                upload_candidates: list[Path] = []
+                for pdf_path in preparation_batch:
+                    try:
+                        sha256 = hashes_by_path[pdf_path]
+                        identity = cached_identity(identity_cache, sha256)
+                        if refresh_doi and identity and identity.get("source") != "user":
+                            identity = None
+
+                        index_match = None
+                        if not doi:
+                            index_match = index_resolver.resolve(
+                                pdf_path,
+                                sha256,
+                                pdf_path.stat().st_size,
+                            )
+
+                        if doi:
+                            identity = manual_identity(doi)
+                            identity_cache[sha256] = identity
+                            identity_cache_pending += 1
+                        elif identity and identity.get("source") == "user":
+                            if index_match and normalize_doi(identity["doi"]) != index_match.record.doi:
+                                raise RuntimeError(
+                                    "User-confirmed DOI conflicts with download index DOI "
+                                    f"{index_match.record.doi}"
+                                )
+                            doi_cache_hits += 1
+                        elif index_match:
+                            identity = download_index_identity(index_match)
+                            identity_cache[sha256] = identity
+                            identity_cache_pending += 1
+                            download_index_hits += 1
+                            if index_match.renamed:
+                                download_index_renames += 1
+                        elif identity:
+                            doi_cache_hits += 1
+                        else:
+                            evidence = extract_doi_evidence(pdf_path)
+                            if evidence.status == "conflict" and evidence.candidates and not no_crossref:
+                                # Automatic identities are only upload hints. The server owns
+                                # Crossref verification and can safely fall back to another
+                                # candidate from the PDF.
+                                best = max(
+                                    evidence.candidates,
+                                    key=lambda candidate: (candidate.score, candidate.source, candidate.doi),
+                                )
+                                evidence = replace(
+                                    evidence,
+                                    status="ok",
+                                    doi=best.doi,
+                                    source=best.source,
+                                )
+                            identity = identity_from_evidence(evidence)
+                            identity_cache[sha256] = identity
+                            identity_cache_pending += 1
+                            doi_scans += 1
+
+                        extracted = identity.get("doi")
+                        if identity.get("status") == "no-doi":
+                            # The server has its own parsers. A failed local scan must not
+                            # prevent it from examining the actual document.
+                            dois_by_path[pdf_path] = None
+                            doi_sources_by_path[pdf_path] = "pdf-content"
+                            upload_candidates.append(pdf_path)
+                            continue
+                        if identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
+                            reason = identity.get("reason") or "No DOI found"
+                            failed.append(
+                                (
+                                    pdf_path,
+                                    f"{reason}. Confirm with: nv doi {pdf_path} --set DOI",
+                                )
+                            )
+                            continue
+                        dois_by_path[pdf_path] = extracted
+                        doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
+                        upload_candidates.append(pdf_path)
+                    except (RuntimeError, OSError, ValueError) as exc:
+                        failed.append((pdf_path, str(exc)))
+                    finally:
+                        if identity_cache_pending >= 25:
+                            save_identity_cache(identity_cache)
+                            identity_cache_pending = 0
+                        progress.advance(task, 1)
+                trusted_dois = [
+                    dois_by_path[path]
+                    for path in upload_candidates
+                    if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata"}
+                ]
+                existing_by_doi = get_existing_pdfs_by_doi(
+                    trusted_dois,
+                )
+                ready_paths = []
+                aliases_to_register: list[tuple[str, str]] = []
+                for pdf_path in upload_candidates:
+                    automatic_source = doi_sources_by_path[pdf_path] in {
+                        "filename",
+                        "pdf-content",
+                        "pdf-metadata",
+                    }
+                    existing_pdf = None if automatic_source else existing_by_doi.get(dois_by_path[pdf_path])
+                    if existing_pdf and not force:
+                        latest_pdf = existing_pdf
+                        skipped += 1
+                        sha256 = hashes_by_path[pdf_path]
+                        if existing_pdf.get("sha256") != sha256:
+                            aliases_to_register.append((sha256, dois_by_path[pdf_path]))
+                    else:
+                        ready_paths.append(pdf_path)
+                if aliases_to_register:
+                    try:
+                        register_pdf_aliases(aliases_to_register)
+                    except (RuntimeError, requests.RequestException):
+                        # Alias persistence is only an optimization. The DOI duplicate is
+                        # already known to exist, so keep the user-facing result as skipped.
+                        pass
+
+                preparation_seconds += monotonic() - prepare_started
+                record_outcomes(pipeline.collect())
+                for pdf_path in ready_paths:
+                    progress.update(upload_task, total=progress.tasks[upload_task].total + 1, visible=True)
+                    record_outcomes(pipeline.submit(
+                        pdf_path,
+                        doi=dois_by_path[pdf_path],
+                        doi_source=doi_sources_by_path[pdf_path] if dois_by_path[pdf_path] else None,
+                        no_crossref=no_crossref,
+                        force=force,
+                        sha256=hashes_by_path[pdf_path],
+                    ))
+            record_outcomes(pipeline.drain())
         if identity_cache_pending:
             save_identity_cache(identity_cache)
-            identity_cache_pending = 0
-        progress.reset(
-            task,
-            total=sum(
-                doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata"}
-                for path in upload_candidates
-            ),
-            completed=0,
-            description="Checking DOI duplicates",
-        )
-        trusted_dois = [
-            dois_by_path[path]
-            for path in upload_candidates
-            if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata"}
-        ]
-        existing_by_doi = get_existing_pdfs_by_doi(
-            trusted_dois,
-            progress_callback=lambda completed: progress.update(task, completed=completed),
-        )
-        new_pdfs = []
-        aliases_to_register: list[tuple[str, str]] = []
-        for pdf_path in upload_candidates:
-            automatic_source = doi_sources_by_path[pdf_path] in {
-                "filename",
-                "pdf-content",
-                "pdf-metadata",
-            }
-            existing_pdf = None if automatic_source else existing_by_doi.get(dois_by_path[pdf_path])
-            if existing_pdf and not force:
-                latest_pdf = existing_pdf
-                skipped += 1
-                sha256 = hashes_by_path[pdf_path]
-                if existing_pdf.get("sha256") != sha256:
-                    aliases_to_register.append((sha256, dois_by_path[pdf_path]))
-            else:
-                new_pdfs.append(pdf_path)
-        if aliases_to_register:
-            try:
-                register_pdf_aliases(aliases_to_register)
-            except (RuntimeError, requests.RequestException):
-                # Alias persistence is only an optimization. The DOI duplicate is
-                # already known to exist, so keep the user-facing result as skipped.
-                pass
 
-        if not new_pdfs:
-            progress.update(
-                task,
-                description="Done",
-                completed=len(unique_pdf_paths),
-                total=len(unique_pdf_paths),
-            )
-        else:
-            progress.reset(task, total=len(new_pdfs), completed=0, description="Indexing new PDFs")
-
-        for pdf_path in new_pdfs:
-            try:
-                sha256 = hashes_by_path[pdf_path]
-                result = upload_pdf(
-                    pdf_path,
-                    doi=dois_by_path[pdf_path],
-                    doi_source=doi_sources_by_path[pdf_path] if dois_by_path[pdf_path] else None,
-                    no_crossref=no_crossref,
-                    force=force,
-                    sha256=sha256,
-                )
-                latest_pdf = result["pdf"]
-                if result.get("replaced"):
-                    replaced += 1
-                elif result["deduplicated"]:
-                    skipped += 1
-                else:
-                    uploaded += 1
-            except (RuntimeError, OSError, requests.RequestException) as exc:
-                failed.append((pdf_path, str(exc)))
-            finally:
-                progress.advance(task, 1)
 
     parts = [
         f"found paths: {len(pdfs)}",
@@ -1212,6 +1211,20 @@ def upload_command(
         f"already stored: {skipped} skipped",
         f"uploaded: {uploaded}",
     ]
+    parts.append(f"elapsed: {monotonic() - started:.1f}s; DOI preparation: {preparation_seconds:.1f}s")
+    if stats.started is not None:
+        parts.append(stats.display())
+    if stats.measured:
+        parts.append(
+            f"average request timing: send {stats.transfer_seconds / stats.measured:.2f}s; "
+            f"response wait {stats.response_seconds / stats.measured:.2f}s "
+            "(includes network and server processing)"
+        )
+    if stats.server_timings:
+        parts.append("average server timing: " + "; ".join(
+            f"{name} {seconds / count:.2f}s"
+            for name, (seconds, count) in stats.server_timings.items()
+        ))
     if replaced:
         parts.append(f"{replaced} replaced")
     if doi_cache_hits:

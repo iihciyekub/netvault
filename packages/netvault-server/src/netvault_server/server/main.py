@@ -7,7 +7,7 @@ from time import perf_counter
 from uuid import uuid4
 import shutil
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
@@ -220,6 +220,7 @@ def me(user: User = Depends(get_current_user)) -> User:
 @app.post("/pdfs/upload", response_model=UploadResponse)
 async def upload_pdf(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     doi: str | None = Form(default=None),
     doi_source: str | None = Form(default=None),
@@ -235,7 +236,8 @@ async def upload_pdf(
     idempotency_key = request.headers.get("idempotency-key")
     if idempotency_key and len(idempotency_key) > 128:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency key is too long")
-    return await process_upload(
+    timings: dict[str, float] = {}
+    result = await process_upload(
         file,
         doi,
         no_crossref,
@@ -244,7 +246,12 @@ async def upload_pdf(
         idempotency_key,
         force=force,
         doi_source=doi_source,
+        timings=timings,
     )
+    response.headers["Server-Timing"] = ", ".join(
+        f"{name};dur={seconds * 1000:.2f}" for name, seconds in timings.items()
+    )
+    return result
 
 
 @app.get("/pdfs", response_model=list[PdfRead])

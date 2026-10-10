@@ -114,6 +114,82 @@ def test_logout_revokes_the_presented_token(client: TestClient) -> None:
     assert client.get("/me", headers=headers).status_code == 401
 
 
+def test_concurrent_different_hashes_for_one_doi_are_deduplicated(client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from netvault_server.server import main_helpers, crossref
+
+    headers = login(client, "admin", "admin-pass")
+    barrier = Barrier(3, timeout=5)
+
+    def fetch(doi):
+        barrier.wait()
+        return crossref.CrossrefMetadata(status="ok", canonical_doi=doi, title="Verified article")
+
+    monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fetch)
+    monkeypatch.setattr(main_helpers, "title_match_score", lambda *_args: None)
+
+    def send(index):
+        return upload(client, headers, content=PDF_BYTES + f"\n% variant {index}".encode())
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        responses = list(pool.map(send, range(3)))
+    assert [response.status_code for response in responses] == [200, 200, 200]
+    assert len({response.json()["pdf"]["id"] for response in responses}) == 1
+    assert sum(response.json()["deduplicated"] for response in responses) == 2
+    for response in responses:
+        timing = response.headers["server-timing"]
+        assert "parse;dur=" in timing
+        assert "verify;dur=" in timing
+        assert "persist;dur=" in timing
+
+
+def test_automatic_verification_reuses_parsed_pdf_text(client, monkeypatch):
+    from dataclasses import replace
+    from netvault_server.server import main_helpers
+
+    extract = main_helpers.extract_doi_evidence
+    title = "Title for " + DOI
+
+    def parse(*args, **kwargs):
+        return replace(extract(*args, **kwargs), pdf_text=title + " article text " * 8)
+
+    def second_parse(_path):
+        raise AssertionError("server parsed the PDF text a second time")
+
+    monkeypatch.setattr(main_helpers, "extract_doi_evidence", parse)
+    monkeypatch.setattr(main_helpers, "extract_pdf_text", second_parse)
+    response = upload(client, login(client, "admin", "admin-pass"))
+    assert response.status_code == 200, response.text
+
+
+def test_pdf_parsing_does_not_block_readiness_requests(client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from netvault_server.server import main_helpers
+
+    headers = login(client, "admin", "admin-pass")
+    parsing = Event()
+    release = Event()
+    original = main_helpers.extract_doi_evidence
+
+    def parse(*args, **kwargs):
+        parsing.set()
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(main_helpers, "extract_doi_evidence", parse)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = pool.submit(upload, client, headers)
+        try:
+            assert parsing.wait(5)
+            ready = pool.submit(client.get, "/ready")
+            assert ready.result(timeout=2).status_code == 200
+        finally:
+            release.set()
+        assert pending.result(timeout=5).status_code == 200
+
+
 def test_legacy_bcrypt_password_is_upgraded_on_login(client: TestClient) -> None:
     database = importlib.import_module("netvault_server.server.database")
     models = importlib.import_module("netvault_server.server.models")

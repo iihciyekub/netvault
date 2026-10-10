@@ -1,8 +1,10 @@
 import html
+import hashlib
 import json
 import re
 import unicodedata
 from dataclasses import replace
+from time import monotonic
 from difflib import SequenceMatcher
 
 from fastapi import HTTPException, UploadFile, status
@@ -178,7 +180,7 @@ async def verify_automatic_doi(
     client_doi: str | None = None,
     client_source: str | None = None,
 ) -> tuple[object, CrossrefMetadata, list[dict]]:
-    pdf_text = await run_in_threadpool(extract_pdf_text, path)
+    pdf_text = evidence.pdf_text or await run_in_threadpool(extract_pdf_text, path)
     attempts: list[dict] = []
     crossref_unavailable = False
     candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
@@ -207,7 +209,7 @@ async def verify_automatic_doi(
             attempt.update(accepted=False, reason="DOI identifies a publication container, not an article")
             attempts.append(attempt)
             continue
-        match_score = title_match_score(metadata.title, pdf_text)
+        match_score = await run_in_threadpool(title_match_score, metadata.title, pdf_text)
         attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
         if match_score is not None and match_score < 0.88:
@@ -242,7 +244,7 @@ async def verify_automatic_doi(
     # corroboration in the PDF, and reject ambiguous matches rather than picking rank 1.
     document_title = await run_in_threadpool(extract_pdf_title, path)
     if document_title and not any(c.source == "explicit" for c in candidates) and (
-        title_match_score(document_title, pdf_text) or 0
+        await run_in_threadpool(title_match_score, document_title, pdf_text) or 0
     ) >= 0.98:
         results = await run_in_threadpool(search_crossref_metadata, document_title)
         accepted = {}
@@ -258,7 +260,7 @@ async def verify_automatic_doi(
             pdf_words = set(_normalized_title_text(pdf_text).split())
             author_match = any(_normalized_title_text(name) in pdf_words for name in author_names)
             corroborated = (metadata.work_type == "journal-article" and exact_title >= 0.98
-                            and (title_match_score(metadata.title, pdf_text) or 0) >= 0.98
+                            and (await run_in_threadpool(title_match_score, metadata.title, pdf_text) or 0) >= 0.98
                             and len(journal) >= 8 and journal in normalized_pdf
                             and metadata.published_year is not None
                             and re.search(rf"\b{metadata.published_year}\b", pdf_text) is not None
@@ -326,6 +328,7 @@ async def process_upload(
     idempotency_key: str | None = None,
     force: bool = False,
     doi_source: str | None = None,
+    timings: dict[str, float] | None = None,
 ) -> UploadResponse:
     if force and no_crossref:
         raise HTTPException(
@@ -343,9 +346,17 @@ async def process_upload(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unsupported DOI source",
             )
+    timings = timings if timings is not None else {}
+    started = monotonic()
+    persist_started = None
     sha256, size, relative_path, object_deduplicated, staged_path = await store_pdf(file)
+    timings["store"] = monotonic() - started
     promoted_new_object = False
+    # Authentication has opened a read transaction. Do not hold its connection
+    # while waiting for an object lock owned by another upload.
+    db.rollback()
     object_lock = await run_in_threadpool(acquire_object_lock, sha256)
+    doi_lock = None
     try:
         pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
         if pdf_by_sha is not None and not force:
@@ -383,43 +394,54 @@ async def process_upload(
             db.refresh(pdf_by_sha)
             return UploadResponse(pdf=pdf_to_read(pdf_by_sha), deduplicated=True)
 
+        # DOI parsing and external metadata calls need no open read transaction.
+        db.rollback()
         evidence_path = staged_path or object_path(sha256)
         verified_metadata: CrossrefMetadata | None = None
         verification: list[dict] = []
         automatic_resolution = doi_source in AUTOMATIC_CLIENT_DOI_SOURCES or doi is None
         client_doi = None
+        parse_started = monotonic()
         if automatic_resolution:
-            evidence = extract_doi_evidence(evidence_path, filename=file.filename)
+            evidence = await run_in_threadpool(
+                extract_doi_evidence, evidence_path, filename=file.filename
+            )
+            timings["parse"] = monotonic() - parse_started
             if doi:
                 try:
                     client_doi = normalize_doi(doi)
                 except ValueError as exc:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
             if not evidence.candidates and not client_doi and (
-                no_crossref or not extract_pdf_title(evidence_path)
+                no_crossref or not await run_in_threadpool(extract_pdf_title, evidence_path)
             ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=evidence.reason or "No DOI found in PDF. Pass --doi DOI when uploading.",
                 )
             if not no_crossref:
+                verification_started = monotonic()
                 evidence, verified_metadata, verification = await verify_automatic_doi(
                     evidence,
                     evidence_path,
                     client_doi=client_doi,
                     client_source=doi_source,
                 )
+                timings["verify"] = monotonic() - verification_started
         else:
-            evidence = extract_doi_evidence(
-                evidence_path,
+            evidence = await run_in_threadpool(
+                extract_doi_evidence, evidence_path,
                 explicit_doi=doi,
                 filename=file.filename,
             )
+            timings["parse"] = monotonic() - parse_started
             if not no_crossref and evidence.status == "ok":
+                verification_started = monotonic()
                 evidence, verified_metadata, verification = await verify_automatic_doi(
                     evidence,
                     evidence_path,
                 )
+                timings["verify"] = monotonic() - verification_started
         if doi_source is not None and not automatic_resolution and evidence.status == "ok":
             evidence = replace(evidence, source=doi_source)
         if evidence.status == "conflict":
@@ -434,6 +456,17 @@ async def process_upload(
             )
         normalized_doi = evidence.doi
 
+        persist_started = monotonic()
+        # Different byte hashes can resolve to the same DOI concurrently. Serialize
+        # the lookup/create decision even when the DOI row does not exist yet.
+        # Drop the read transaction before waiting so it holds no DB connection
+        # and the next lookup sees the previous upload's committed row.
+        db.rollback()
+        doi_lock = await run_in_threadpool(
+            acquire_object_lock,
+            "doi-" + hashlib.sha256(normalized_doi.encode()).hexdigest(),
+        )
+        pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
         pdf_by_doi = db.scalar(
             select(Pdf).where(Pdf.doi == normalized_doi).with_for_update()
         )
@@ -597,4 +630,9 @@ async def process_upload(
             object_path(sha256).unlink(missing_ok=True)
         raise
     finally:
+        timings["total"] = monotonic() - started
+        if persist_started is not None:
+            timings["persist"] = monotonic() - persist_started
+        if doi_lock is not None:
+            release_object_lock(doi_lock)
         release_object_lock(object_lock)
