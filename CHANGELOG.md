@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.23 - 2026-10-10
+
+- With `nv identify --rename`, also collect same-DOI filename conflicts with
+  different hashes into `duplicates/`, preserving the existing DOI-named PDF.
+- Distinguish these moves as `moved_doi_conflict` (or `would_move_doi_conflict`
+  in previews), with the retained file's path and local hash in the CSV.
+- Keep byte-identical copies marked `moved_duplicate`, and preserve files when
+  different DOIs collide after filename conversion or a conflict reference changes.
+
 ## 0.7.22 - 2026-10-10
 
 - Add `nv identify` to batch-match local PDF SHA-256 values against the server,

@@ -102,7 +102,8 @@ nv identify ~/Downloads/papers --rename
 ```
 
 No destination arguments are required. Under the directory where you run the
-command, `duplicates/` receives identical extra copies and `unidentifys/` receives
+command, `duplicates/` receives identical extra copies and same-DOI filename
+conflicts with different hashes. `unidentifys/` receives
 retained PDFs whose hashes have no DOI match on the server. These are relative to
 the command's current working directory, even when the scanned directory is
 elsewhere. Collection directories are created when needed, only with `--rename`.
@@ -110,8 +111,11 @@ elsewhere. Collection directories are created when needed, only with `--rename`.
 For example, DOI `10.1177/00222437241234567` produces
 `10.1177_00222437241234567.pdf`. Path separators, Windows-reserved punctuation,
 and control characters become underscores. The CSV retains the complete DOI.
-An existing destination or two DOIs mapping to the same filename produces a
-`conflict`; the source is kept and no file is overwritten. Very long DOI names
+When a DOI destination belongs to a server-matched PDF with the same DOI and a
+different local hash, the extra PDF moves to `duplicates/` with status
+`moved_doi_conflict`. The existing DOI-named PDF is retained. Other occupied
+destinations, including two different DOIs mapping to the same filename, produce
+a `conflict`; the source is kept and no file is overwritten. Very long DOI names
 produce an error rather than silently truncating the DOI.
 
 To preview or apply all operations for PDFs in the current directory:
@@ -130,7 +134,8 @@ One copy per hash is retained. A copy already named for the DOI is preferred;
 otherwise the first absolute path in sorted order is retained. Other copies move
 to the duplicate directory using their original basenames. If a basename is
 already taken, a short hash and, when needed, a number are appended. Different
-PDF bytes sharing a DOI are not considered duplicates. Identical copies without
+PDF bytes sharing a DOI are recorded separately as DOI conflicts when they
+compete for the same filename. Identical copies without
 a server match are also collected: one copy goes to `unidentifys/`, the others
 to `duplicates/`, and the CSV records the retained copy's final path.
 
@@ -161,9 +166,10 @@ and contain one row per scanned PDF, including unmatched files and failures:
 | `original_filename`, `original_path` | Name and absolute path before processing |
 | `filename`, `path` | Actual name and absolute path after processing |
 | `proposed_path` | Planned destination; preview runs leave `path` unchanged |
-| `status` | `would_rename`, `would_move_duplicate`, `would_move_unidentified`, `renamed`, `moved_duplicate`, `moved_unidentified`, `already_named`, `not_found`, `conflict`, or `error` |
+| `status` | `would_rename`, `would_move_duplicate`, `would_move_doi_conflict`, `would_move_unidentified`, `renamed`, `moved_duplicate`, `moved_doi_conflict`, `moved_unidentified`, `already_named`, `not_found`, `conflict`, or `error` |
 | `match_status` | `matched`, `not_found`, or `error` |
 | `duplicate_of` | Actual path of the retained identical copy |
+| `conflict_with`, `conflict_with_sha256` | Path and local hash of the retained same-DOI file for a DOI conflict; the hashes differ |
 | `error` | Reason a file could not be processed |
 
 Without `--rename`, the command creates a report but does not move or rename PDFs.

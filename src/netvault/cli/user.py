@@ -734,7 +734,8 @@ Examples:
 Notes:
   Scans PDFs recursively and looks up SHA-256 values without uploading files.
   Without --rename, only writes a CSV preview; no PDFs are renamed or moved.
-  --rename names matched PDFs by DOI, moves identical extra copies to ./duplicates,
+  --rename names matched PDFs by DOI, moves identical copies and same-DOI filename
+  conflicts with different hashes to ./duplicates,
   and moves unmatched retained PDFs to ./unidentifys, under the current working directory.
   Both collection directories are excluded from scanning. --duplicates-to is optional.
   Existing PDFs and reports are never overwritten. CSV paths are absolute.

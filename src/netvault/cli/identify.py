@@ -15,7 +15,7 @@ from netvault.doi import normalize_doi
 CSV_FIELDS = (
     "sha256", "doi", "directory", "original_filename", "filename",
     "original_path", "path", "proposed_path", "status", "match_status",
-    "duplicate_of", "error",
+    "duplicate_of", "conflict_with", "conflict_with_sha256", "error",
 )
 
 
@@ -190,6 +190,7 @@ def identify_pdfs(
     counts: dict[str, int] = {}
     actual_paths = {id(pdf): pdf.path for pdf in pdfs}
     reserved: set[str] = set()
+    destination_owners = {str(pdf.path).casefold(): pdf for pdf in pdfs if not pdf.error}
     # Process keepers first so duplicate_of can contain their final paths.
     ordered = sorted(pdfs, key=lambda pdf: keepers.get(pdf.sha256) is not pdf)
     with report:
@@ -203,6 +204,9 @@ def identify_pdfs(
             current = pdf.path
             proposed = current
             duplicate_of = str(actual_paths[id(keeper)]) if duplicate else ""
+            doi_conflict = None
+            conflict_with = ""
+            conflict_with_sha256 = ""
             error = pdf.error
             status = "error" if error else "not_found"
             if not error:
@@ -216,6 +220,18 @@ def identify_pdfs(
                     elif unidentified_to is not None:
                         proposed = available_destination(unidentified_to, pdf, reserved)
                         status = "would_move_unidentified"
+
+                    if status == "would_rename" and duplicates_to is not None:
+                        owner = destination_owners.get(str(proposed).casefold())
+                        if (owner is not None and owner is not pdf and owner.doi == pdf.doi
+                                and owner.sha256 != pdf.sha256
+                                and (os.path.lexists(proposed)
+                                     or str(proposed).casefold() in reserved)):
+                            doi_conflict = owner
+                            conflict_with = str(actual_paths[id(owner)])
+                            conflict_with_sha256 = owner.sha256
+                            proposed = available_destination(duplicates_to, pdf, reserved)
+                            status = "would_move_doi_conflict"
 
                     if proposed != current:
                         if (os.path.lexists(proposed)
@@ -232,16 +248,25 @@ def identify_pdfs(
                                     if (keeper_path.is_symlink()
                                             or file_signature(keeper_path) != keeper.signature):
                                         raise RuntimeError("Retained copy changed; duplicate left in place")
+                                if doi_conflict is not None:
+                                    owner_path = actual_paths[id(doi_conflict)]
+                                    if (owner_path.is_symlink()
+                                            or file_signature(owner_path) != doi_conflict.signature):
+                                        raise RuntimeError("DOI conflict reference changed; source left in place")
                                 move_without_overwrite(current, proposed, pdf.sha256, hash_file)
                                 current = proposed
                                 actual_paths[id(pdf)] = current
                                 pdf.signature = file_signature(current)
                                 if duplicate and duplicates_to is not None:
                                     status = "moved_duplicate"
+                                elif doi_conflict is not None:
+                                    status = "moved_doi_conflict"
                                 elif not pdf.doi and unidentified_to is not None:
                                     status = "moved_unidentified"
                                 else:
                                     status = "renamed"
+                            if status in {"would_rename", "renamed"}:
+                                destination_owners[str(proposed).casefold()] = pdf
                 except FileExistsError:
                     status, error = "conflict", "Destination appeared during processing; source retained"
                 except (OSError, ValueError, RuntimeError) as exc:
@@ -252,7 +277,8 @@ def identify_pdfs(
                 "filename": current.name, "original_path": str(pdf.path),
                 "path": str(current), "proposed_path": str(proposed), "status": status,
                 "match_status": "error" if pdf.error else ("matched" if pdf.doi else "not_found"),
-                "duplicate_of": duplicate_of, "error": error,
+                "duplicate_of": duplicate_of, "conflict_with": conflict_with,
+                "conflict_with_sha256": conflict_with_sha256, "error": error,
             })
             report.flush()
             os.fsync(report.fileno())

@@ -90,15 +90,84 @@ def test_conflicting_different_hashes_are_not_overwritten(tmp_path):
     assert read_rows(report)[1]["path"] == str(second)
 
 
-def test_encoding_collisions_are_recorded(tmp_path):
+@pytest.mark.parametrize("rename", [False, True])
+@pytest.mark.parametrize("already_named", [False, True])
+def test_doi_conflicts_are_collected_separately_from_hash_duplicates(tmp_path, rename, already_named):
+    first = write_pdf(tmp_path, "10.1234_example.pdf" if already_named else "a.pdf", b"%PDF-first")
+    second_name = "000.pdf" if already_named else "b.pdf"
+    second = write_pdf(tmp_path, second_name, b"%PDF-second")
+    copy = write_pdf(tmp_path, "c.pdf", b"%PDF-second")
+    duplicates = tmp_path / "duplicates"
+    existing = write_pdf(duplicates, second_name, b"%PDF-preserved archive")
+    report, counts = run(tmp_path, rename=rename, duplicates_to=duplicates)
+    rows = {row["original_path"]: row for row in read_rows(report)}
+    conflict = rows[str(second)]
+    assert conflict["status"] == ("moved_doi_conflict" if rename else "would_move_doi_conflict")
+    assert conflict["match_status"] == "matched" and conflict["error"] == ""
+    assert conflict["duplicate_of"] == ""
+    assert conflict["conflict_with"] == rows[str(first)]["path"]
+    assert conflict["conflict_with_sha256"] == rows[str(first)]["sha256"]
+    assert conflict["sha256"] != conflict["conflict_with_sha256"]
+    assert Path(conflict["proposed_path"]).parent == duplicates
+    assert Path(conflict["proposed_path"]).name.startswith(f"{second.stem}__")
+    assert rows[str(copy)]["status"] == ("moved_duplicate" if rename else "would_move_duplicate")
+    assert rows[str(copy)]["duplicate_of"] == conflict["path"]
+    assert rows[str(copy)]["conflict_with"] == ""
+    assert "conflict" not in counts
+    assert existing.read_bytes() == b"%PDF-preserved archive"
+    for row in rows.values():
+        assert cli.file_sha256(Path(row["path"])) == row["sha256"]
+    if rename:
+        assert not second.exists() and not copy.exists()
+        _, next_counts = run(tmp_path, rename=True, duplicates_to=duplicates)
+        assert next_counts == {"already_named": 1}
+    else:
+        assert first.exists() and second.exists() and copy.exists()
+
+
+def test_unverified_destination_is_not_assumed_to_share_doi(tmp_path):
+    target = write_pdf(tmp_path, "10.1234_example.pdf", b"%PDF-unmatched")
+    source = write_pdf(tmp_path, "a.pdf", b"%PDF-matched")
+    source_sha = cli.file_sha256(source)
+    report, counts = run(tmp_path, rename=True, duplicates_to=tmp_path / "duplicates",
+                         lookup=lambda hashes: {source_sha: {"doi": DOI}})
+    assert counts == {"not_found": 1, "conflict": 1}
+    assert target.exists() and source.exists()
+    assert all(row["conflict_with"] == "" for row in read_rows(report))
+
+
+def test_changed_doi_conflict_reference_retains_source(tmp_path, monkeypatch):
+    first = write_pdf(tmp_path, "10.1234_example.pdf", b"%PDF-first")
+    second = write_pdf(tmp_path, "b.pdf", b"%PDF-second")
+    original = identify.file_signature
+    calls = 0
+
+    def signature(path):
+        nonlocal calls
+        if path == first:
+            calls += 1
+            if calls == 3:
+                first.write_bytes(b"%PDF-reference changed")
+        return original(path)
+
+    monkeypatch.setattr(identify, "file_signature", signature)
+    report, counts = run(tmp_path, rename=True, duplicates_to=tmp_path / "duplicates")
+    assert counts == {"already_named": 1, "error": 1}
+    assert second.exists()
+    assert "DOI conflict reference changed" in read_rows(report)[1]["error"]
+
+
+@pytest.mark.parametrize("rename", [False, True])
+def test_encoding_collisions_are_recorded(tmp_path, rename):
     first = write_pdf(tmp_path, "a.pdf", b"%PDF-first")
     second = write_pdf(tmp_path, "b.pdf", b"%PDF-second")
     mapping = {
         cli.file_sha256(first): {"doi": "10.1234/a/b"},
         cli.file_sha256(second): {"doi": "10.1234/a_b"},
     }
-    report, counts = run(tmp_path, rename=True, lookup=lambda hashes: mapping)
-    assert counts == {"renamed": 1, "conflict": 1}
+    report, counts = run(tmp_path, rename=rename, lookup=lambda hashes: mapping,
+                         duplicates_to=tmp_path / "duplicates")
+    assert counts == {"renamed" if rename else "would_rename": 1, "conflict": 1}
     assert second.exists()
     assert {row["doi"] for row in read_rows(report)} == {"10.1234/a/b", "10.1234/a_b"}
 
@@ -347,14 +416,16 @@ def test_cli_rename_automatically_collects_into_working_directory(tmp_path, monk
     working.mkdir()
     source = tmp_path / "papers"
     matched = write_pdf(source, "a.pdf")
+    alternative = write_pdf(source, "b.pdf", b"%PDF-alternate-server-hash")
     write_pdf(source / "nested", "copy.pdf")
     unmatched = write_pdf(source, "unknown.pdf", b"%PDF-not-on-server")
     write_pdf(source / "nested", "unknown-copy.pdf", b"%PDF-not-on-server")
     matched_sha = cli.file_sha256(matched)
+    alternative_sha = cli.file_sha256(alternative)
     monkeypatch.chdir(working)
     monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
     monkeypatch.setattr(cli, "api_post", lambda path, json: {
-        "existing": {matched_sha: {"doi": DOI}},
+        "existing": {matched_sha: {"doi": DOI}, alternative_sha: {"doi": DOI}},
     })
     runner = CliRunner()
     preview = runner.invoke(cli.app, ["identify", str(source)])
@@ -364,16 +435,17 @@ def test_cli_rename_automatically_collects_into_working_directory(tmp_path, monk
     assert not (working / "unidentifys").exists()
     preview_rows = read_rows(source / "netvault-index.csv")
     assert sorted(row["status"] for row in preview_rows) == [
-        "would_move_duplicate", "would_move_duplicate", "would_move_unidentified", "would_rename",
+        "would_move_doi_conflict", "would_move_duplicate", "would_move_duplicate",
+        "would_move_unidentified", "would_rename",
     ]
 
     applied = runner.invoke(cli.app, ["identify", str(source), "--rename"])
     assert applied.exit_code == 0, applied.output
     rows = read_rows(source / "netvault-index-2.csv")
     assert sorted(row["status"] for row in rows) == [
-        "moved_duplicate", "moved_duplicate", "moved_unidentified", "renamed",
+        "moved_doi_conflict", "moved_duplicate", "moved_duplicate", "moved_unidentified", "renamed",
     ]
-    assert len(list((working / "duplicates").glob("*.pdf"))) == 2
+    assert len(list((working / "duplicates").glob("*.pdf"))) == 3
     assert len(list((working / "unidentifys").glob("*.pdf"))) == 1
     assert not (source / "duplicates").exists()
     assert not (source / "unidentifys").exists()
@@ -383,6 +455,9 @@ def test_cli_rename_automatically_collects_into_working_directory(tmp_path, monk
         assert row["directory"] == str(actual.parent)
         if row["duplicate_of"]:
             assert cli.file_sha256(Path(row["duplicate_of"])) == row["sha256"]
+        if row["conflict_with"]:
+            assert row["status"] == "moved_doi_conflict"
+            assert cli.file_sha256(Path(row["conflict_with"])) == row["conflict_with_sha256"]
         if row["status"] == "moved_unidentified":
             assert actual.parent == working / "unidentifys"
             assert row["doi"] == "" and row["match_status"] == "not_found"
