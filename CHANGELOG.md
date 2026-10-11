@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.30 — 2026-10-11
 
 - Verify DOI metadata titles directly against bounded heading regions on PDF pages one and two, including publisher covers and relocated subtitles.
 - Normalize line wrapping, punctuation, soft hyphens and ligatures; keep short titles exact and long-title fuzzy matching conservative.
