@@ -38,7 +38,7 @@
 
 <div class="table-scroll">
   <table class="results admin-table">
-    <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
+    <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Created</th><th>Last login (UTC)</th><th></th></tr></thead>
     <tbody>
     {% for managed_user in users %}
       <tr>
@@ -46,6 +46,7 @@
         <td>{{ managed_user.role.value }}</td>
         <td>{% if managed_user.is_active %}active{% else %}inactive{% endif %}</td>
         <td>{{ managed_user.created_at.strftime("%Y-%m-%d") if managed_user.created_at else "-" }}</td>
+        <td>{{ managed_user.last_login_at.strftime("%Y-%m-%d %H:%M:%S") if managed_user.last_login_at else "Never" }}</td>
         <td>
           {% if managed_user.id != user.id %}
           <form method="post" action="{{ path_for('/web/admin/users/set-active') }}" class="inline-form">

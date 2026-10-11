@@ -27,6 +27,7 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     dashboard_journal_limit: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     uploads: Mapped[list["UploadRecord"]] = relationship(back_populates="user")
     journal_filters: Mapped[list["UserJournalFilter"]] = relationship(

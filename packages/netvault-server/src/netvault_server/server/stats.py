@@ -1,9 +1,11 @@
 from html import unescape
+from uuid import uuid4
+from types import SimpleNamespace
 from time import monotonic
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import distinct, func, select
+from sqlalchemy import distinct, func, select, text
 from sqlalchemy.orm import Session
 
 from netvault_server.server.database import get_db
@@ -18,8 +20,9 @@ from netvault_server.server.models import DownloadRecord, Pdf, UploadRecord, Use
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 STATS_CACHE_TTL_SECONDS = 30.0
-_dashboard_cache: dict[tuple[int | None, str, int], tuple[float, dict[str, Any]]] = {}
+_dashboard_cache: dict[tuple[int | None, str], tuple[float, dict[str, Any]]] = {}
 _dashboard_cache_expires_at = 0.0
+_dashboard_revision = uuid4().hex
 
 
 def active_pdfs():
@@ -43,9 +46,14 @@ def clean_label(value: str | None) -> str | None:
 
 
 def invalidate_stats_cache() -> None:
-    global _dashboard_cache, _dashboard_cache_expires_at
+    global _dashboard_cache, _dashboard_cache_expires_at, _dashboard_revision
     _dashboard_cache = {}
     _dashboard_cache_expires_at = 0.0
+    _dashboard_revision = uuid4().hex
+
+
+def get_dashboard_revision() -> str:
+    return _dashboard_revision
 
 
 def get_dashboard_stats(
@@ -59,24 +67,40 @@ def get_dashboard_stats(
     filter_key = normalize_filter_key(journal_filter)
     now = monotonic()
     included = [name for name in (include_journals or []) if name.strip()]
-    effective_limit = max(1, journal_limit)
-    cache_key = (user_id, filter_key, effective_limit)
+    # The server always includes every journal; display limit is client-side.
+    cache_key = (user_id, filter_key)
     cached = _dashboard_cache.get(cache_key) if not included else None
     if cached is not None and now < cached[0]:
         return cached[1]
+    # Reuse the full-vault summary and picker names after a user visits All.
+    all_cache = _dashboard_cache.get((user_id, "all")) if filter_key != "all" else None
+    all_shared = all_cache[1] if all_cache and now < all_cache[0] else None
     filter_options = user_filter_options(db, user_id) if user_id is not None else ([], [], [])
-    summary = get_summary(db, filter_key, user_id=user_id)
+    if filter_key == "all" and not included and db.get_bind().dialect.name == "postgresql":
+        # One PostgreSQL scan calculates the global summary, journal counts
+        # and name options; SQLite keeps the portable three-query path.
+        summary, year_rows, journal_names = _load_all_dashboard_groupings(db)
+        journal_year = _format_journal_year(year_rows, 100000, [])
+    else:
+        summary = get_summary(db, filter_key, user_id=user_id)
+        journal_year = get_by_journal_year(
+            db, filter_key, limit=100000, include_journals=included, user_id=user_id
+        )
+        journal_names = (
+            all_shared["journal_options"]
+            if all_shared is not None
+            else get_all_journal_names(db, "all", user_id=user_id)
+        )
+    vault_summary = (
+        summary if filter_key == "all"
+        else all_shared["summary"] if all_shared is not None
+        else get_summary(db, "all", user_id=user_id)
+    )
     stats = {
         "summary": summary,
-        "vault_summary": summary if filter_key == "all" else get_summary(db, "all", user_id=user_id),
-        "journal_year": get_by_journal_year(
-            db,
-            filter_key,
-            limit=effective_limit,
-            include_journals=included,
-            user_id=user_id,
-        ),
-        "journal_options": get_all_journal_names(db, "all", user_id=user_id),
+        "vault_summary": vault_summary,
+        "journal_year": journal_year,
+        "journal_options": journal_names,
         "journal_filter": filter_key,
         "journal_filters": filter_options[0],
         "abs_journal_filters": filter_options[1],
@@ -138,28 +162,29 @@ def get_by_journal(db: Session, limit: int = 20) -> list[dict[str, Any]]:
     return [{"journal": clean_label(row.journal), "count": row.count} for row in rows]
 
 
-def get_by_journal_year(
-    db: Session,
-    journal_filter: str = "all",
-    limit: int = 20,
+
+def _format_journal_year(
+    all_rows: list[Any],
+    limit: int,
     include_journals: list[str] | None = None,
-    user_id: int | None = None,
 ) -> dict[str, Any]:
-    filter_key = normalize_filter_key(journal_filter)
-    journal = func.trim(Pdf.container_title)
-    conditions = [*active_pdfs(), *known_journal(), Pdf.published_year.is_not(None)]
-    allowed = allowed_journals_for_filter(filter_key, db, user_id)
-    if allowed is not None:
-        conditions.append(Pdf.journal_key.in_(allowed))
-    all_rows = db.execute(
-        select(journal.label("journal"), Pdf.published_year, func.count(Pdf.id).label("count"))
-        .where(*conditions)
-        .group_by(journal, Pdf.published_year)
-        .order_by(journal.asc(), Pdf.published_year.asc())
-    ).all()
+    # Consolidate historical and abbreviated names before ranking or displaying.
+    naval_aliases = {
+        normalize_journal_name(alias)
+        for alias in (
+            "Naval Research Logistics",
+            "Naval Research Logistics (NRL)",
+            "Naval Research Logistics Quarterly",
+        )
+    }
+
+    def canonical_journal(name: str) -> str:
+        return "Naval Research Logistics" if normalize_journal_name(name) in naval_aliases else name
+
     totals: dict[str, int] = {}
     for row in all_rows:
-        totals[row.journal] = totals.get(row.journal, 0) + int(row.count)
+        name = canonical_journal(row.journal)
+        totals[name] = totals.get(name, 0) + int(row.count)
     top_journals = [
         journal_name
         for journal_name, _ in sorted(totals.items(), key=lambda item: (-item[1], clean_label(item[0]) or item[0]))[:limit]
@@ -172,13 +197,13 @@ def get_by_journal_year(
             top_journals.append(journal_name)
     if not top_journals:
         return {"years": [], "max_count": 0, "rows": []}
-    rows = [row for row in all_rows if row.journal in top_journals]
+    rows = [row for row in all_rows if canonical_journal(row.journal) in top_journals]
     years = sorted({row.published_year for row in rows}, reverse=True)
     display_names = {raw: clean_label(raw) or raw for raw in top_journals}
     by_journal = {name: {year: 0 for year in years} for name in top_journals}
     for row in rows:
-        by_journal[row.journal][row.published_year] = row.count
-    max_count = max((row.count for row in rows), default=0)
+        by_journal[canonical_journal(row.journal)][row.published_year] += row.count
+    max_count = max((count for counts in by_journal.values() for count in counts.values()), default=0)
 
     def level(count: int) -> int:
         if count <= 0 or max_count <= 0:
@@ -211,6 +236,74 @@ def get_by_journal_year(
             for journal_name, counts in by_journal.items()
         ],
     }
+
+
+
+def _load_all_dashboard_groupings(db: Session) -> tuple[dict[str, Any], list[Any], list[str]]:
+    """Combine full-vault summary, journal/year data and names in one PG scan."""
+    records = db.execute(text("""
+        SELECT
+            GROUPING(BTRIM(container_title), published_year) AS group_id,
+            BTRIM(container_title) AS journal,
+            published_year,
+            COUNT(*) AS pdf_count,
+            SUM(size) AS total_size,
+            COUNT(DISTINCT uploaded_by_id) AS uploader_count,
+            MIN(published_year) AS earliest_year,
+            MAX(published_year) AS latest_year
+        FROM pdfs
+        WHERE is_deleted IS FALSE AND doi IS NOT NULL
+        GROUP BY GROUPING SETS ((), (BTRIM(container_title), published_year))
+        ORDER BY journal ASC NULLS LAST, published_year ASC NULLS LAST
+    """)).mappings().all()
+    names: dict[str, None] = {}
+    journal_year: list[Any] = []
+    summary: dict[str, Any] | None = None
+    for record in records:
+        if record["group_id"] == 3:
+            summary = {
+                "active_pdfs": int(record["pdf_count"] or 0),
+                "total_size": int(record["total_size"] or 0),
+                "uploaders": int(record["uploader_count"] or 0),
+                "min_year": record["earliest_year"],
+                "max_year": record["latest_year"],
+            }
+            continue
+        name = record["journal"]
+        if not name or name.casefold() in {"unknown", "(unknown)"}:
+            continue
+        names[name] = None
+        if record["published_year"] is not None:
+            journal_year.append(SimpleNamespace(
+                journal=name,
+                published_year=record["published_year"],
+                count=record["pdf_count"],
+            ))
+    if summary is None:
+        raise RuntimeError("PostgreSQL dashboard grouping did not return a summary")
+    return summary, journal_year, [clean_label(name) or name for name in names]
+
+
+def get_by_journal_year(
+    db: Session,
+    journal_filter: str = "all",
+    limit: int = 20,
+    include_journals: list[str] | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
+    filter_key = normalize_filter_key(journal_filter)
+    journal = func.trim(Pdf.container_title)
+    conditions = [*active_pdfs(), *known_journal(), Pdf.published_year.is_not(None)]
+    allowed = allowed_journals_for_filter(filter_key, db, user_id)
+    if allowed is not None:
+        conditions.append(Pdf.journal_key.in_(allowed))
+    all_rows = db.execute(
+        select(journal.label("journal"), Pdf.published_year, func.count(Pdf.id).label("count"))
+        .where(*conditions)
+        .group_by(journal, Pdf.published_year)
+        .order_by(journal.asc(), Pdf.published_year.asc())
+    ).all()
+    return _format_journal_year(all_rows, limit, include_journals)
 
 
 def get_all_journal_names(

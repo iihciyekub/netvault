@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.28 — 2026-10-11
+
+- Replace the top navigation with a compact icon-only sidebar, simplify Help, and expose administrators' last successful login timestamps.
+- Consolidate Naval Research Logistics title variants without altering stored PDF metadata, and sort all journals before paginating the year heatmap.
+- Add previous/next and direct journal page navigation with persistent initials search, Tab completion, and configurable journals per page.
+- Reduce dashboard HTML by rendering only visible journal rows, combine PostgreSQL full-vault summary queries, and reuse cached global data for category filters.
+- Check a lightweight dashboard revision token before refreshing full statistics, with a periodic fallback refresh.
+- Enhance `nv upload` CSV DOI hint matching for nested and renamed PDFs with SHA-256 or verified article-title evidence; add `--csv`, `--dry-run`, and simplified CLI Help examples.
+
 ## 0.7.27 — 2026-10-11
 
 - Verify article identity against the first-page heading instead of cited titles, prioritize primary DOI evidence, and reject dataset DOIs for articles.

@@ -201,7 +201,8 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
     clear_login_failures(login_key)
     if password_needs_rehash(user.password_hash):
         user.password_hash = hash_password(payload.password)
-        db.commit()
+    user.last_login_at = utc_now()
+    db.commit()
     return TokenResponse(access_token=create_access_token(user.username, user.token_version))
 
 

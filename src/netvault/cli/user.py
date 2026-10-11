@@ -899,6 +899,8 @@ Examples:
   nv upload ./new-paper.pdf --force
   nv upload ~/Downloads/papers --no-crossref
   nv upload ~/Downloads/papers --index-file ./pdf-download-index.json
+  nv upload ~/Downloads/papers --csv ./cli-downloads.csv
+  nv upload ~/Downloads/papers --csv ./cli-downloads.csv --dry-run
 
 \b
 Notes:
@@ -906,6 +908,7 @@ Notes:
   Existing PDFs are skipped before DOI extraction/upload by checking sha256 first.
   File hashes are cached locally in ~/.config/netvault/hash-cache.json.
   A sibling pdf-download-index.json is preferred over PDF DOI extraction.
+  A sibling cli-downloads.csv is also recognized; --csv works across subdirectories.
 """,
 )
 def upload_command(
@@ -937,6 +940,13 @@ def upload_command(
         readable=True,
         help="Use this version 1 download index for every selected PDF.",
     ),
+    csv_file: Path | None = typer.Option(
+        None, "--csv", exists=True, file_okay=True, dir_okay=False, readable=True,
+        help="Use this cli-downloads.csv for all selected PDFs, including renamed files.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview local DOI matching without login, uploads or writes.",
+    ),
     no_index: bool = typer.Option(
         False,
         "--no-index",
@@ -945,7 +955,6 @@ def upload_command(
     report: Path = typer.Option(Path("nv-upload-report.json"), "--report", help="Save incremental results and failures."),
     retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed or pending files from --report."),
 ) -> None:
-    ensure_logged_in()
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
     pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
     if retry_failed:
@@ -964,6 +973,8 @@ def upload_command(
         raise typer.BadParameter("--force cannot be combined with --no-crossref")
     if index_file is not None and no_index:
         raise typer.BadParameter("--index-file cannot be combined with --no-index")
+    if csv_file is not None and (index_file is not None or no_index):
+        raise typer.BadParameter("--csv cannot be combined with --index-file or --no-index")
     try:
         configured_index_enabled, index_names = load_upload_index_settings()
     except RuntimeError as exc:
@@ -971,10 +982,49 @@ def upload_command(
     index_resolver = DownloadIndexResolver(
         index_names,
         explicit_path=index_file,
-        enabled=not no_index and (configured_index_enabled or index_file is not None),
+        explicit_csv=csv_file,
+        csv_roots=tuple(path.resolve() for path in paths if path.is_dir()),
+        enabled=not no_index and (configured_index_enabled or index_file is not None or csv_file is not None),
         warning_callback=lambda message: console.print(f"warning: {message}", style="yellow", highlight=False),
     )
 
+    if dry_run:
+        counts = {"sha256": 0, "filename-size": 0, "title": 0,
+                  "json-index": 0, "pdf-extraction": 0, "needs-review": 0}
+        console.print("Dry run: local DOI matching only; no login, server requests, or files written.")
+        for pdf_path in pdfs:
+            try:
+                if not has_pdf_header(pdf_path):
+                    raise ValueError("invalid PDF header")
+                sha256 = file_sha256(pdf_path)
+                match = None if doi else index_resolver.resolve(
+                    pdf_path, sha256, pdf_path.stat().st_size
+                )
+                if doi:
+                    resolved, kind = normalize_doi(doi), "user DOI"
+                elif match:
+                    resolved = match.record.doi
+                    kind = match.record.validation_method if match.index_version == 0 else "json-index"
+                    if match.index_version == 0:
+                        method = kind.removeprefix("download-record-")
+                        counts[method] += 1
+                    else:
+                        counts["json-index"] += 1
+                else:
+                    evidence = extract_doi_evidence(pdf_path)
+                    resolved = evidence.doi if evidence.status == "ok" else None
+                    kind = "pdf-extraction" if resolved else "needs-review"
+                    counts[kind] += 1
+                renamed = " (renamed)" if match and match.renamed else ""
+                console.print(f"{pdf_path}: {resolved or 'unresolved'} [{kind}]{renamed}",
+                              highlight=False)
+            except (OSError, ValueError, RuntimeError) as exc:
+                counts["needs-review"] += 1
+                console.print(f"{pdf_path}: needs review ({exc})", highlight=False)
+        console.print("Summary: " + ", ".join(f"{key} {value}" for key, value in counts.items()))
+        return
+
+    ensure_logged_in()
     upload_report = UploadReport(report, pdfs)
     uploaded = 0
     replaced = 0

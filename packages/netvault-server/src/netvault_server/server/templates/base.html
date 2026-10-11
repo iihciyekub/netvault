@@ -9,39 +9,40 @@
     <link rel="stylesheet" href="{{ path_for('/static/vendor/fontawesome/css/solid.min.css') }}?v=7.3.0">
     <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}?v={{ asset_version }}">
   </head>
-  <body class="{% block body_class %}{% endblock %}">
+  <body class="{% block body_class %}{% endblock %}{% if user %} with-sidebar{% endif %}">
     <a class="skip-link" href="#app-main">Skip to content</a>
     <div class="top-loader" aria-hidden="true"></div>
-    <header class="topbar">
-      <a class="brand" href="{{ path_for('/web') }}">
-        <span class="brand-mark"><i class="fa-solid fa-quote-left" aria-hidden="true"></i></span>
-        <span>NetVault</span>
+    {% if user %}
+    <aside class="app-sidebar" aria-label="NetVault navigation">
+      <a class="sidebar-icon sidebar-logo" href="{{ path_for('/web') }}" data-tooltip="NetVault v{{ app_version }}" aria-label="NetVault home, version {{ app_version }}">
+        <i class="fa-solid fa-quote-left" aria-hidden="true"></i>
       </a>
-      {% if user %}
-      <nav class="primary-nav" aria-label="Primary">
-        <a class="{% if request.url.path == '/web' %}active{% endif %}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} href="{{ path_for('/web') }}"><i class="fa-solid fa-chart-column fa-fw" aria-hidden="true"></i><span>Home</span></a>
-        <a class="{% if request.url.path == '/web/pdfs' %}active{% endif %}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-magnifying-glass fa-fw" aria-hidden="true"></i><span>Search</span></a>
-        <a class="{% if request.url.path == '/web/upload' %}active{% endif %}" {% if request.url.path == '/web/upload' %}aria-current="page"{% endif %} href="{{ path_for('/web/upload') }}"><i class="fa-solid fa-cloud-arrow-up fa-fw" aria-hidden="true"></i><span>Upload</span></a>
-        <a class="{% if request.url.path == '/web/download' %}active{% endif %}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} href="{{ path_for('/web/download') }}"><i class="fa-solid fa-cloud-arrow-down fa-fw" aria-hidden="true"></i><span>Download</span></a>
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <a class="sidebar-icon {% if request.url.path == '/web' %}active{% endif %}" href="{{ path_for('/web') }}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} data-tooltip="Home" aria-label="Home"><i class="fa-solid fa-chart-column fa-fw" aria-hidden="true"></i></a>
+        <a class="sidebar-icon {% if request.url.path == '/web/pdfs' %}active{% endif %}" href="{{ path_for('/web/pdfs') }}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} data-tooltip="Search" aria-label="Search"><i class="fa-solid fa-magnifying-glass fa-fw" aria-hidden="true"></i></a>
+        <a class="sidebar-icon {% if request.url.path == '/web/download' %}active{% endif %}" href="{{ path_for('/web/download') }}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} data-tooltip="Download" aria-label="Download"><i class="fa-solid fa-cloud-arrow-down fa-fw" aria-hidden="true"></i></a>
+        <a class="sidebar-icon {% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}" {% if request.url.path == '/web/cli' %}aria-current="page"{% endif %} data-tooltip="CLI" aria-label="CLI"><i class="fa-solid fa-terminal fa-fw" aria-hidden="true"></i></a>
+        {% if user.role.value == "admin" %}
+        <a class="sidebar-icon {% if request.url.path == '/web/admin' %}active{% endif %}" href="{{ path_for('/web/admin') }}" {% if request.url.path == '/web/admin' %}aria-current="page"{% endif %} data-tooltip="Admin" aria-label="Admin"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i></a>
+        {% endif %}
       </nav>
-      <div class="topbar-right">
-        <button class="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="utility-nav" data-utility-toggle>
-          <i class="fa-solid fa-bars" aria-hidden="true"></i><span class="sr-only">Open utility menu</span>
-        </button>
-        <nav class="utility-nav" id="utility-nav" aria-label="Utilities">
-          <a class="{% if request.url.path == '/web/cli' %}active{% endif %}" {% if request.url.path == '/web/cli' %}aria-current="page"{% endif %} href="{{ path_for('/web/cli') }}"><i class="fa-solid fa-terminal fa-fw" aria-hidden="true"></i><span>CLI</span></a>
-          {% if user.role.value == "admin" %}
-          <a class="{% if request.url.path == '/web/admin' %}active{% endif %}" {% if request.url.path == '/web/admin' %}aria-current="page"{% endif %} href="{{ path_for('/web/admin') }}"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i><span>Admin</span></a>
-          {% endif %}
-          <a class="{% if request.url.path == '/web/info' %}active{% endif %}" {% if request.url.path == '/web/info' %}aria-current="page"{% endif %} href="{{ path_for('/web/info') }}"><i class="fa-solid fa-circle-question fa-fw" aria-hidden="true"></i><span>Help</span></a>
-        </nav>
-        <form method="post" action="{{ path_for('/web/logout') }}" class="logout">
+      <div class="sidebar-bottom">
+        <a class="sidebar-icon {% if request.url.path == '/web/info' %}active{% endif %}" href="{{ path_for('/web/info') }}" {% if request.url.path == '/web/info' %}aria-current="page"{% endif %} data-tooltip="Help" aria-label="Help"><i class="fa-solid fa-circle-question fa-fw" aria-hidden="true"></i></a>
+        <span class="sidebar-icon sidebar-account" data-tooltip="Signed in as {{ user.username }}" aria-label="Signed in as {{ user.username }}"><i class="fa-solid fa-circle-user fa-fw" aria-hidden="true"></i></span>
+        <form method="post" action="{{ path_for('/web/logout') }}" class="sidebar-logout">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="ghost user-menu" type="submit"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span>{{ user.username }}</span><span class="user-menu-separator">/</span><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i><span data-button-label>Logout</span></button>
+          <button class="sidebar-icon" type="submit" data-tooltip="Logout" aria-label="Logout"><i class="fa-solid fa-arrow-right-from-bracket fa-fw" aria-hidden="true"></i></button>
         </form>
       </div>
-      {% endif %}
+    </aside>
+    {% else %}
+    <header class="topbar login-topbar">
+      <a class="brand" href="{{ path_for('/web') }}">
+        <span class="brand-mark"><i class="fa-solid fa-quote-left" aria-hidden="true"></i></span>
+        <span class="brand-text">NetVault<small class="brand-version">v{{ app_version }}</small></span>
+      </a>
     </header>
+    {% endif %}
     <main class="page" id="app-main" tabindex="-1">
       <h1 class="sr-only">{% block heading %}NetVault{% endblock %}</h1>
       {% block content %}{% endblock %}

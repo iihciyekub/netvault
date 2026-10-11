@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from netvault.doi import normalize_doi
+from netvault.cli.upload_csv import DownloadCsv
 
 
 DOWNLOAD_INDEX_VERSION = 1
@@ -245,18 +246,24 @@ class DownloadIndexResolver:
         index_names: tuple[str, ...],
         *,
         explicit_path: Path | None = None,
+        explicit_csv: Path | None = None,
+        csv_roots: tuple[Path, ...] = (),
         enabled: bool = True,
         warning_callback: Callable[[str], None] | None = None,
     ) -> None:
         self.index_names = index_names
         self.explicit_path = explicit_path.resolve() if explicit_path is not None else None
+        self.explicit_csv = explicit_csv.resolve() if explicit_csv is not None else None
+        self.csv_roots = tuple(root.resolve() for root in csv_roots)
         self.enabled = enabled
         self.warning_callback = warning_callback
         self._cache: dict[Path, DownloadIndex | DownloadIndexError] = {}
-        self._csv_cache: dict[Path, dict[str, dict]] = {}
+        self._csv_cache: dict[Path, DownloadCsv | DownloadIndexError] = {}
 
     def _discover(self, pdf_path: Path) -> Path | None:
         if not self.enabled:
+            return None
+        if self.explicit_csv is not None:
             return None
         if self.explicit_path is not None:
             return self.explicit_path
@@ -295,6 +302,26 @@ class DownloadIndexResolver:
             )
         return loaded
 
+    def _csv_path(self, pdf_path: Path) -> Path | None:
+        if self.explicit_csv is not None:
+            return self.explicit_csv
+        current = pdf_path.parent.resolve()
+        candidate = current / "cli-downloads.csv"
+        if candidate.is_file():
+            return candidate
+        # Check ancestors only up to the selected upload folder, never outside it.
+        eligible_roots = [root for root in self.csv_roots
+                          if current == root or root in current.parents]
+        if not eligible_roots:
+            return None
+        stop = max(eligible_roots, key=lambda root: len(root.parts))
+        while current != stop:
+            current = current.parent
+            candidate = current / "cli-downloads.csv"
+            if candidate.is_file():
+                return candidate
+        return None
+
     def resolve(self, pdf_path: Path, sha256: str, size: int) -> DownloadIndexMatch | None:
         index_path = self._discover(pdf_path)
         if index_path is not None:
@@ -304,46 +331,37 @@ class DownloadIndexResolver:
                 return match
         if not self.enabled or self.explicit_path is not None:
             return None
-        csv_path = pdf_path.parent / "cli-downloads.csv"
-        if not csv_path.is_file():
+        csv_path = self._csv_path(pdf_path)
+        if csv_path is None or not csv_path.is_file():
             return None
         if csv_path not in self._csv_cache:
-            rows = {}
-            ambiguous = set()
             try:
-                if csv_path.stat().st_size > MAX_DOWNLOAD_INDEX_BYTES:
-                    raise DownloadIndexError("download CSV exceeds size limit")
-                with csv_path.open(encoding="utf-8-sig", newline="") as handle:
-                    for number, row in enumerate(csv.DictReader(handle)):
-                        if number >= MAX_DOWNLOAD_INDEX_RECORDS:
-                            raise DownloadIndexError("download CSV exceeds record limit")
-                        name = row.get("file", "")
-                        if row.get("status") != "downloaded" or not row.get("doi") or Path(name).name != name:
-                            continue
-                        try:
-                            normalized = normalize_doi(row["doi"])
-                            row_size = int(row.get("bytes", "0"))
-                        except (ValueError, TypeError):
-                            continue
-                        if name in rows and rows[name]["doi"] != normalized:
-                            ambiguous.add(name)
-                        rows[name] = {**row, "doi": normalized, "bytes": row_size}
-                self._csv_cache[csv_path] = {name: row for name, row in rows.items() if name not in ambiguous}
-            except (OSError, UnicodeError, csv.Error, DownloadIndexError) as exc:
+                self._csv_cache[csv_path] = DownloadCsv(csv_path, self.warning_callback)
+            except (OSError, UnicodeError, ValueError, csv.Error) as exc:
+                error = DownloadIndexError(f"Could not read {csv_path}: {exc}")
+                self._csv_cache[csv_path] = error
+                if self.explicit_csv is not None:
+                    raise error from exc
                 if self.warning_callback:
-                    self.warning_callback(f"Ignoring unusable EBSCO download CSV: {exc}")
-                self._csv_cache[csv_path] = {}
-        row = self._csv_cache[csv_path].get(pdf_path.name)
-        if row is None or row["bytes"] != size:
+                    self.warning_callback(f"Ignoring unusable download CSV: {exc}")
+        csv_index = self._csv_cache[csv_path]
+        if isinstance(csv_index, DownloadIndexError):
+            if self.explicit_csv is not None:
+                raise csv_index
             return None
-        if row.get("sha256") and row["sha256"].lower() != sha256.lower():
+        try:
+            matched = csv_index.match(pdf_path, sha256, size)
+        except ValueError as exc:
+            raise DownloadIndexError(f"{csv_path}: {exc}") from exc
+        if matched is None:
             return None
-        # A legacy filename/size match is a hint, not permission to skip title verification.
+        row, method = matched
         record = DownloadIndexRecord(
-            doi=row["doi"], filename=pdf_path.name, size=size,
+            doi=row.doi, filename=row.filename, size=size,
             last_modified=pdf_path.stat().st_mtime_ns // 1_000_000, sha256=sha256,
-            downloaded_at="", source_url=row.get("url") or "ebsco-download-record",
+            downloaded_at="", source_url=row.url or "download-csv",
             validation_status="valid", validation_checked_at="",
-            validation_method="download-record-filename-size", validation_reason=None,
+            validation_method=f"download-record-{method}", validation_reason=None,
         )
-        return DownloadIndexMatch(csv_path, 0, "", record, False, "download-record")
+        source = "download-record"
+        return DownloadIndexMatch(csv_path, 0, "", record, row.filename != pdf_path.name, source)

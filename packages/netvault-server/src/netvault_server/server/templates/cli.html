@@ -85,25 +85,48 @@
       <h2>Upload PDFs</h2>
     </header>
     <div class="command-card-body">
-      <p>Upload one PDF, multiple files, or a folder. Existing files are skipped by SHA-256.</p>
+      <p><strong>Two commands are all you need.</strong> Put your PDFs in a folder (for example, <code>papers</code>). If you have a <code>cli-downloads.csv</code>, place it in that folder; NetVault finds it automatically, including for PDFs in subfolders.</p>
+      <p><strong>1. Check the DOI matches first (no files are uploaded):</strong></p>
       <div class="command-list">
         <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./paper.pdf</span></code>
-          <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf" aria-label="Copy single upload command"><span data-copy-label>Copy</span></button>
+          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--dry-run</span></code>
+          <button class="copy-button" type="button" data-copy="nv upload ./papers --dry-run" aria-label="Copy upload preview command"><span data-copy-label>Copy</span></button>
         </div>
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./paper-a.pdf</span> <span class="syntax-path">./paper-b.pdf</span></code>
-          <button class="copy-button" type="button" data-copy="nv upload ./paper-a.pdf ./paper-b.pdf" aria-label="Copy multiple upload command"><span data-copy-label>Copy</span></button>
-        </div>
+      </div>
+      <p class="command-help-gap"><strong>2. Upload when the preview looks correct:</strong></p>
+      <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span></code>
           <button class="copy-button" type="button" data-copy="nv upload ./papers" aria-label="Copy folder upload command"><span data-copy-label>Copy</span></button>
         </div>
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./paper.pdf</span> <span class="syntax-option">--doi</span> <span class="syntax-doi">10.1234/example</span></code>
-          <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example" aria-label="Copy DOI upload command"><span data-copy-label>Copy</span></button>
-        </div>
       </div>
+      <p class="command-help-gap"><strong>How DOI matching works:</strong> NetVault checks the CSV's SHA-256 first, so a renamed PDF can still be identified. It then tries the original filename and file size, or a unique article title on the PDF's first page. Without a safe match, it tries normal PDF DOI extraction. Ambiguous matches are not guessed; CSV-based DOI hints are verified by the server during upload. The PDF filenames stay unchanged.</p>
+      <details class="command-advanced">
+        <summary>More options: CSV in another folder, single PDFs, or manual DOI</summary>
+        <div class="command-list">
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--csv</span> <span class="syntax-path">./cli-downloads.csv</span> <span class="syntax-option">--dry-run</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./papers --csv ./cli-downloads.csv --dry-run" aria-label="Copy CSV upload preview command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--csv</span> <span class="syntax-path">./cli-downloads.csv</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./papers --csv ./cli-downloads.csv" aria-label="Copy CSV upload command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./paper.pdf</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf" aria-label="Copy single upload command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./paper-a.pdf</span> <span class="syntax-path">./paper-b.pdf</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./paper-a.pdf ./paper-b.pdf" aria-label="Copy multiple upload command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./paper.pdf</span> <span class="syntax-option">--doi</span> <span class="syntax-doi">10.1234/example</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example" aria-label="Copy DOI upload command"><span data-copy-label>Copy</span></button>
+          </div>
+        </div>
+        <p class="command-help-gap"><code>--csv</code> is only needed when the CSV is outside the upload folder. <code>--dry-run</code> checks matches locally without logging in, uploading, or writing a report.</p>
+      </details>
     </div>
   </article>
 

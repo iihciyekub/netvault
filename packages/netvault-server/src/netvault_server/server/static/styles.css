@@ -1603,6 +1603,18 @@ button:disabled,
   padding: 18px;
 }
 
+.command-help-gap { margin-top: 14px !important; }
+.command-advanced { margin-top: 14px; }
+.command-advanced summary {
+  cursor: pointer;
+  color: #0969da;
+  font-size: 13px;
+  font-weight: 600;
+}
+.command-advanced summary:hover { text-decoration: underline; }
+.command-advanced .command-list { margin-top: 12px; }
+
+
 .command-card p {
   margin: 0 0 14px;
   color: #57606a;
@@ -2215,4 +2227,157 @@ ul {
   .doi-dialog-actions .button {
     width: 100%;
   }
+}
+
+.brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+.brand-version { font-size: 10px; font-weight: 400; color: var(--muted, #707070); margin-top: 3px; }
+
+
+/* Compact, icon-only primary sidebar */
+body.with-sidebar {
+  --sidebar-width: 52px;
+  padding-left: var(--sidebar-width);
+}
+.app-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-width);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 5px 10px;
+  background: #f9f9f9;
+  border-right: 1px solid var(--line);
+}
+.app-sidebar .sidebar-nav,
+.app-sidebar .sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+}
+.app-sidebar .sidebar-bottom {
+  margin-top: auto;
+}
+.app-sidebar .sidebar-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  height: 36px;
+  width: 36px;
+  min-height: 36px;
+  color: #626262;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+}
+.app-sidebar .sidebar-icon i { font-size: 17px; }
+.app-sidebar .sidebar-logo { width: 38px; height: 38px; min-height: 38px; }
+.app-sidebar .sidebar-logo i { font-size: 17px; }
+.app-sidebar .sidebar-icon:hover,
+.app-sidebar .sidebar-icon:focus-visible,
+.app-sidebar .sidebar-icon.active {
+  background: #e9e9e9;
+  color: #111;
+}
+.app-sidebar .sidebar-logo {
+  background: #111;
+  color: #fff;
+  border-radius: 12px;
+}
+.app-sidebar .sidebar-logo:hover,
+.app-sidebar .sidebar-logo:focus-visible { background: #303030; color: #fff; }
+.app-sidebar .sidebar-account { cursor: default; }
+.app-sidebar .sidebar-logout { display: block; width: 36px; margin: 0; }
+.app-sidebar [data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 13px);
+  transform: translateY(-50%) translateX(-3px);
+  padding: 7px 10px;
+  background: #202020;
+  border-radius: 7px;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  box-shadow: 0 5px 14px rgb(0 0 0 / 12%);
+  transition: opacity .12s, transform .12s, visibility .12s;
+  z-index: 100;
+}
+.app-sidebar [data-tooltip]:hover::after,
+.app-sidebar [data-tooltip]:focus-visible::after {
+  transform: translateY(-50%) translateX(0);
+  visibility: visible;
+  opacity: 1;
+}
+.with-sidebar .page {
+  width: min(var(--page-width), calc(100vw - var(--sidebar-width) - var(--page-gutter)));
+}
+.dashboard-body.with-sidebar .page {
+  height: 100dvh;
+  min-height: 0;
+}
+@media (max-width: 760px) {
+  body.with-sidebar { --sidebar-width: 48px; --page-gutter: 24px; }
+  .app-sidebar { padding: 10px 3px; gap: 12px; }
+  .app-sidebar .sidebar-icon { width: 36px; height: 36px; }
+  .app-sidebar .sidebar-nav, .app-sidebar .sidebar-bottom { gap: 4px; }
+  .dashboard-body.with-sidebar .page { height: auto; min-height: 100dvh; }
+}
+
+/* Heatmap paging stays outside the internally scrolling table. */
+.heatmap-pagination {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-height: 42px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+.heatmap-pagination .heatmap-page-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.heatmap-pagination button {
+  width: 32px;
+  min-width: 32px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+.heatmap-pagination button:disabled { cursor: default; opacity: .4; }
+.heatmap-pagination input {
+  width: 54px;
+  min-width: 54px;
+  height: 30px;
+  padding: 0 5px;
+  text-align: center;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .heatmap-pagination { justify-content: center; }
 }

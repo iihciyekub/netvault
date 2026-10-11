@@ -9,7 +9,9 @@ a small authenticated web UI.
 
 `nv upload ./papers` reports **new**, **existing**, **failed**, and **replaced** separately. The request progress bar counts completed requests, including failed and deduplicated requests; it is not the number of newly stored articles. An atomic `nv-upload-report.json` in the current directory records every file and its outcome while the command runs. Use `--report PATH` to choose another location, and `nv upload ./papers --retry-failed` to retry only failed or still-pending files from that report. Already stored hashes are checked again before retries.
 
-A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. These legacy records continue through server-side primary-title verification; unlike a SHA-256-bound JSON index, they cannot cause an unverified DOI-only skip. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
+A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. These legacy records continue through server-side primary-title verification; unlike a SHA-256-bound JSON index, they cannot cause an unverified DOI-only skip. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
+
+Renamed PDFs can be matched against a CSV with a SHA-256 column, or (when present) a unique article-title column matched against the PDF first page. CSV hints are verified by the server before acceptance. Use the --csv PATH option for PDFs across directories and --dry-run to preview matches without uploading or writing local caches. Without a hash or title, renamed files fall back to PDF DOI extraction rather than an unsafe filename guess.
 
 ## What It Provides
 
@@ -257,6 +259,8 @@ Use one index for every selected PDF, or bypass index discovery:
 
 ```bash
 nv upload ./papers --index-file ./custom-download-index.json
+nv upload ./papers --csv ./cli-downloads.csv
+nv upload ./papers --csv ./cli-downloads.csv --dry-run
 nv upload ./papers --no-index
 ```
 

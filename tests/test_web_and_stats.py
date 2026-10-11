@@ -1,4 +1,5 @@
 import hashlib
+import json
 import importlib
 import io
 import re
@@ -127,6 +128,19 @@ def login_headers(client: TestClient) -> dict[str, str]:
     response = client.post("/auth/login", json={"username": "admin", "password": "admin-pass"})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def dashboard_journal_data(response) -> list[list]:
+    match = re.search(
+        r'<script type="application/json" data-journal-heatmap-data>(.*?)</script>',
+        response.text,
+        flags=re.DOTALL,
+    )
+    return json.loads(match.group(1)) if match else []
+
+
+def dashboard_journal_names(response) -> list[str]:
+    return [row[0] for row in dashboard_journal_data(response)]
 
 
 def web_login(client: TestClient) -> None:
@@ -400,8 +414,10 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
 
     normal = client.get("/web")
     pinned = client.get("/web", params={"pin": "Journal 20"})
-    assert 'data-journal-name="Journal 20"' not in normal.text
-    assert 'data-journal-name="Journal 20"' in pinned.text
+    assert "Journal 20" in dashboard_journal_names(normal)
+    assert "Journal 20" in dashboard_journal_names(pinned)
+    assert len(dashboard_journal_names(normal)) == 21
+    assert "data-journal-pagination" in normal.text
     assert '<option value="Journal 20"></option>' in normal.text
     assert 'class="heatmap-limit-form"' in normal.text
     assert 'name="journal_limit" type="number" min="1" max="200" value="20"' in normal.text
@@ -422,7 +438,7 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
     assert '<option value="total-asc">Total: Low to High</option>' in normal.text
-    assert 'data-journal-total="21"' in normal.text
+    assert any(row[0] == "Journal 00" and row[1] == 21 for row in dashboard_journal_data(normal))
 
     updated = client.post(
         "/web/preferences/all-journal-limit",
@@ -431,7 +447,7 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert updated.status_code == 200
     assert updated.history[0].status_code == 303
     assert updated.history[0].headers["location"].endswith("/web?filter=all")
-    assert 'data-journal-name="Journal 20"' in updated.text
+    assert "Journal 20" in dashboard_journal_names(updated)
     assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in updated.text
     autosaved = client.post(
         "/web/preferences/all-journal-limit",
@@ -519,12 +535,12 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Help" in dashboard.text
     assert "fa-chart-column" in dashboard.text
     assert "fa-magnifying-glass" in dashboard.text
-    assert "fa-cloud-arrow-up" in dashboard.text
+    assert "fa-cloud-arrow-up" not in dashboard.text
     assert "fa-cloud-arrow-down" in dashboard.text
     assert "fa-quote-left" in dashboard.text
     assert "fa-box-archive" not in dashboard.text
-    assert "data-utility-toggle" in dashboard.text
-    assert 'id="utility-nav"' in dashboard.text
+    assert "app-sidebar" in dashboard.text
+    assert "data-journal-pagination" not in dashboard.text
     assert '<h2 id="journal-year-title" class="sr-only">Journal by Year</h2>' in dashboard.text
     assert "Publication density across matching journals." not in dashboard.text
     assert "By Year" not in dashboard.text
@@ -556,6 +572,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "--password &#39;!1@2#3Qwe&#39;" in cli_page.text
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
+    assert "nv upload ./papers --dry-run" in cli_page.text
+    assert "nv upload ./papers --csv ./cli-downloads.csv --dry-run" in cli_page.text
+    assert "NetVault finds it automatically" in cli_page.text
+    assert "renamed PDF can still be identified" in cli_page.text
+    assert "no files are uploaded" in cli_page.text
     assert "data-copy" in cli_page.text
     assert 'class="command-timeline"' in cli_page.text
     assert cli_page.text.count('class="timeline-node"') == 5
@@ -571,26 +592,26 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.27" in info_page.text
-    assert "app.js?v=0.7.27-ui24" in info_page.text
+    assert "0.7.28" in info_page.text
+    assert "app.js?v=0.7.28-ui28" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
     assert "> Usage Policy</h2>" in info_page.text
     assert 'href="https://iiaide.com/nv/web"><strong>NetVault</strong></a>' in info_page.text
     assert "intended exclusively for authorized members of the team" in info_page.text
-    assert "github.com/iihciyekub/netvault" in info_page.text
-    assert 'class="author-email"' in info_page.text
-    assert "<span>yongjian.li</span><span>@</span><span>polyu.edu.hk</span>" in info_page.text
+    assert "github.com/iihciyekub/netvault" not in info_page.text
+    assert 'class="author-email"' not in info_page.text
+    assert "yongjian.li" not in info_page.text
     assert "mailto:" not in info_page.text
     assert "Usage Declaration" not in info_page.text
     assert "must be deleted within 24 hours after use" in info_page.text
     assert "Bulk redistribution" in info_page.text
     assert info_page.text.count("Bulk redistribution") == 1
-    assert "Acknowledgement" in info_page.text
-    assert "The Hong Kong Polytechnic University (PolyU)" in info_page.text
-    assert "School of Fashion and Textiles (SFT)" in info_page.text
-    assert "Professor Fan" in info_page.text
+    assert "Acknowledgement" not in info_page.text
+    assert "The Hong Kong Polytechnic University (PolyU)" not in info_page.text
+    assert "School of Fashion and Textiles (SFT)" not in info_page.text
+    assert "Professor Fan" not in info_page.text
     assert "Professor Di Fan" not in info_page.text
 
     upload = client.post(
@@ -636,23 +657,19 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'data-journal-list-add' in dashboard.text
     assert 'placeholder="Choose a journal name..."' in dashboard.text
     assert 'id="journal-list-options"' in dashboard.text
-    assert 'placeholder="Filter journal names..."' in dashboard.text
+    assert 'placeholder="Search name or initials (e.g. NRL, IJIR)..."' in dashboard.text
     assert "Search a journal name or initials, such as IJIR." in dashboard.text
     assert "Open in Web of Science" in dashboard.text
     assert "data-journal-context-menu" in dashboard.text
     assert "data-journal-wos-link" in dashboard.text
-    assert 'data-journal-name="Web Journal"' in dashboard.text
-    assert 'data-journal-name="Another Journal"' in dashboard.text
-    assert "data-journal-row=" in dashboard.text
+    assert "Web Journal" in dashboard_journal_names(dashboard)
+    assert "Another Journal" in dashboard_journal_names(dashboard)
+    journal_rows = dashboard_journal_data(dashboard)
+    assert any(cell[2] == 4 for row in journal_rows for cell in row[2])
+    assert "data-journal-row=" not in dashboard.text
     assert "No journals match the current filters." in dashboard.text
-    assert "data-tip=" in dashboard.text
-    assert 'data-tip="2026 · 1 PDF"' in dashboard.text
-    assert 'data-tip="Another Journal · 2026' not in dashboard.text
-    assert "aria-hidden=\"true\"" in dashboard.text
-    assert "0 PDFs" not in dashboard.text
     assert "heatmap-tooltip.js" not in dashboard.text
-    assert "heat-cell level-4" in dashboard.text
-    assert '<button\n              type="button"\n              class="heat-cell level-4"' in dashboard.text
+    assert "data-journal-pagination" in dashboard.text
 
     pdfs_without_query = client.get("/web/pdfs")
     assert pdfs_without_query.status_code == 200
@@ -885,7 +902,7 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert saved_custom.json()["journals"] == ["Web Journal"]
     custom_dashboard = client.get("/web", params={"filter": "custom"})
     assert custom_dashboard.status_code == 200
-    assert 'data-journal-name="Web Journal"' in custom_dashboard.text
+    assert "Web Journal" in dashboard_journal_names(custom_dashboard)
     assert ">1</span>" in custom_dashboard.text
 
     created_custom = client.post(
@@ -906,7 +923,7 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert saved_second_custom.json()["label"] == "Marketing shortlist"
     multi_list_dashboard = client.get("/web", params={"filter": custom_key})
     assert "Marketing shortlist" in multi_list_dashboard.text
-    assert 'data-journal-name="Web Journal"' in multi_list_dashboard.text
+    assert "Web Journal" in dashboard_journal_names(multi_list_dashboard)
     deleted_custom = client.delete(
         f"/web/journal-filters/{custom_key}",
         headers={"x-csrf-token": csrf},
@@ -922,7 +939,7 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert saved_utd.json()["is_default"] is False
     assert saved_utd.json()["can_reset"] is True
     utd_dashboard = client.get("/web", params={"filter": "utd24"})
-    assert 'data-journal-name="Web Journal"' in utd_dashboard.text
+    assert "Web Journal" in dashboard_journal_names(utd_dashboard)
 
     reset_utd = client.delete(
         "/web/journal-filters/utd24",

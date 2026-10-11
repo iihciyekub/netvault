@@ -178,6 +178,17 @@ def _add_user_dashboard_journal_limit(engine: Engine) -> None:
             )
 
 
+def _add_last_login_at(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("users")}
+    if "last_login_at" not in existing:
+        sql_type = "TIMESTAMP WITH TIME ZONE" if engine.dialect.name == "postgresql" else "TIMESTAMP"
+        with engine.begin() as connection:
+            connection.execute(text(f"ALTER TABLE users ADD COLUMN last_login_at {sql_type}"))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _add_pdf_metadata_columns,
     _add_user_token_version,
@@ -186,6 +197,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _add_user_journal_filters,
     _add_user_dashboard_journal_limit,
     _add_pdf_doi_corrections,
+    _add_last_login_at,
 )
 
 

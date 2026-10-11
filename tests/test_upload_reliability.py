@@ -163,3 +163,145 @@ def test_http_retry_reopens_stream_and_does_not_retry_validation_errors(tmp_path
     with pytest.raises(http.ApiError):
         http.upload_pdf(pdf, sha256="hash")
     assert len(calls) == 1
+
+
+def _write_download_csv(path, rows, fieldnames=None):
+    fieldnames = fieldnames or ["file", "status", "doi", "bytes", "sha256", "title"]
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_csv_sha256_matches_renamed_pdf_and_never_uses_filename_only(tmp_path):
+    pdf = tmp_path / "renamed.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nA file whose name changed\n%%EOF")
+    sha = user.file_sha256(pdf)
+    csv_path = tmp_path / "cli-downloads.csv"
+    _write_download_csv(csv_path, [{
+        "file": "original.pdf", "status": "downloaded", "doi": "10.1234/renamed",
+        "bytes": pdf.stat().st_size, "sha256": sha, "title": "",
+    }])
+    match = DownloadIndexResolver(("pdf-download-index.json",)).resolve(
+        pdf, sha, pdf.stat().st_size
+    )
+    assert match is not None
+    assert match.record.doi == "10.1234/renamed"
+    assert match.renamed
+    assert match.record.validation_method == "download-record-sha256"
+    assert match.source == "download-record"
+    assert DownloadIndexResolver(("pdf-download-index.json",)).resolve(
+        pdf, "0" * 64, pdf.stat().st_size
+    ) is None
+
+
+def test_csv_duplicate_hash_with_conflicting_dois_is_rejected(tmp_path):
+    pdf = tmp_path / "renamed.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nsame bytes\n%%EOF")
+    sha = user.file_sha256(pdf)
+    _write_download_csv(tmp_path / "cli-downloads.csv", [
+        {"file": f"old{i}.pdf", "status": "downloaded", "doi": doi,
+         "bytes": pdf.stat().st_size, "sha256": sha, "title": ""}
+        for i, doi in enumerate(("10.1234/one", "10.1234/two"))
+    ])
+    warnings = []
+    resolver = DownloadIndexResolver(("pdf-download-index.json",),
+                                     warning_callback=warnings.append)
+    assert resolver.resolve(pdf, sha, pdf.stat().st_size) is None
+    assert any("ambiguous" in message for message in warnings)
+
+
+def test_csv_title_matches_renamed_modified_pdf_only_on_unique_front_page(tmp_path, monkeypatch):
+    from netvault.cli import upload_csv
+    pdf = tmp_path / "new-name.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nmodified bytes\n%%EOF")
+    csv_path = tmp_path / "cli-downloads.csv"
+    title = "The Impact of Automation on Scientific Literature Collections"
+    _write_download_csv(csv_path, [
+        {"file": "old-name.pdf", "status": "downloaded",
+         "doi": "10.1234/automation", "bytes": 900, "sha256": "", "title": title}
+    ])
+    monkeypatch.setattr(upload_csv, "first_page_text", lambda _:
+                        "Authors\n" + title + "\nAbstract\nAn independent study.")
+    resolver = DownloadIndexResolver(("pdf-download-index.json",))
+    match = resolver.resolve(pdf, user.file_sha256(pdf), pdf.stat().st_size)
+    assert match.record.doi == "10.1234/automation"
+    assert match.record.validation_method == "download-record-title"
+    assert match.source == "download-record"  # Server validates the title.
+    assert match.renamed
+    monkeypatch.setattr(upload_csv, "first_page_text", lambda _:
+                        "Abstract\nA different and unrelated study\nReferences\n" + title)
+    assert resolver.resolve(pdf, user.file_sha256(pdf), pdf.stat().st_size) is None
+
+
+def test_csv_explicit_other_directory_dry_run_never_uploads_or_writes(tmp_path, monkeypatch):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    pdf = docs / "renamed.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nRenamed PDF\n%%EOF")
+    csv_path = tmp_path / "cli-downloads.csv"
+    _write_download_csv(csv_path, [{
+        "file": "original.pdf", "status": "downloaded", "doi": "10.1234/explicit",
+        "bytes": pdf.stat().st_size, "sha256": user.file_sha256(pdf), "title": "",
+    }])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(user, "ensure_logged_in", lambda: pytest.fail("must not log in"))
+    monkeypatch.setattr(user, "upload_pdf", lambda *a, **k: pytest.fail("must not upload"))
+    monkeypatch.setattr(user, "get_existing_pdfs_by_sha256", lambda *a, **k:
+                        pytest.fail("must not contact server"))
+    monkeypatch.setattr(user, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user, "load_upload_index_settings", lambda: (True, ("pdf-download-index.json",)))
+    result = CliRunner().invoke(user.app, [
+        "upload", str(docs), "--csv", str(csv_path), "--dry-run"
+    ])
+    assert result.exit_code == 0, result.output
+    assert "10.1234/explicit" in result.output
+    assert "renamed" in result.output
+    assert not (tmp_path / "nv-upload-report.json").exists()
+    assert not (tmp_path / "hash-cache.json").exists()
+    assert not (tmp_path / "identity-cache.json").exists()
+
+
+
+def test_csv_at_upload_root_matches_nested_renamed_pdf(tmp_path):
+    parent = tmp_path / "papers"
+    nested = parent / "journal" / "2024"
+    nested.mkdir(parents=True)
+    pdf = nested / "renamed.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nRenamed paper\n%%EOF")
+    digest = user.file_sha256(pdf)
+    _write_download_csv(parent / "cli-downloads.csv", [{
+        "file": "original.pdf", "status": "downloaded", "doi": "10.1234/nested",
+        "bytes": pdf.stat().st_size, "sha256": digest, "title": "",
+    }])
+    resolver = DownloadIndexResolver(("pdf-download-index.json",), csv_roots=(parent,))
+    match = resolver.resolve(pdf, digest, pdf.stat().st_size)
+    assert match is not None and match.renamed
+    assert match.record.doi == "10.1234/nested"
+    assert DownloadIndexResolver(("pdf-download-index.json",)).resolve(
+        pdf, digest, pdf.stat().st_size
+    ) is None
+
+
+
+def test_upload_dry_run_auto_finds_csv_in_parent_folder(tmp_path, monkeypatch):
+    parent = tmp_path / "papers"
+    nested = parent / "journal"
+    nested.mkdir(parents=True)
+    pdf = nested / "newname.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nA renamed document\n%%EOF")
+    _write_download_csv(parent / "cli-downloads.csv", [{
+        "file": "oldname.pdf", "status": "downloaded", "doi": "10.1234/auto-parent",
+        "bytes": pdf.stat().st_size, "sha256": user.file_sha256(pdf), "title": "",
+    }])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(user, "load_upload_index_settings",
+                        lambda: (True, ("pdf-download-index.json",)))
+    monkeypatch.setattr(user, "ensure_logged_in", lambda: pytest.fail("dry run logged in"))
+    monkeypatch.setattr(user, "upload_pdf", lambda *a, **k: pytest.fail("dry run uploaded"))
+    result = CliRunner().invoke(user.app, ["upload", str(parent), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "10.1234/auto-parent" in result.output
+    assert "renamed" in result.output
+    assert not (tmp_path / "nv-upload-report.json").exists()

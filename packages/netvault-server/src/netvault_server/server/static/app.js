@@ -117,6 +117,16 @@
     document.body.className = state.bodyClass;
     currentMain.innerHTML = state.mainHTML;
     document.title = state.title;
+    const sidebar = qs(".app-sidebar");
+    if (sidebar) {
+      const targetPath = sameOriginUrl(url)?.pathname;
+      qsa("a.sidebar-icon", sidebar).forEach((item) => {
+        const active = sameOriginUrl(item.href)?.pathname === targetPath;
+        item.classList.toggle("active", active);
+        if (active) item.setAttribute("aria-current", "page");
+        else item.removeAttribute("aria-current");
+      });
+    }
 
     if (push && url !== window.location.href) history.pushState({}, "", url);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -193,10 +203,14 @@
   };
 
   const markLinkActive = (link) => {
-    const group = link.closest(".primary-nav, .utility-nav, .filter-tabs");
+    const group = link.closest(".app-sidebar, .primary-nav, .utility-nav, .filter-tabs");
     if (!group) return;
     qsa("a.active", group).forEach((item) => item.classList.remove("active"));
     link.classList.add("active");
+    if (group.matches(".app-sidebar")) {
+      qsa("a[aria-current]", group).forEach((item) => item.removeAttribute("aria-current"));
+      link.setAttribute("aria-current", "page");
+    }
   };
 
   const copyText = async (button) => {
@@ -508,43 +522,70 @@
     .filter((word) => !journalStopWords.has(word))
     .map((word) => Array.from(word)[0]).join("");
 
+  // Keep the full journal dataset, but create DOM cells only for visible rows.
   const journalRows = (heatmap) => {
     if (journalRowsCache.has(heatmap)) return journalRowsCache.get(heatmap);
-    const elementsByRow = new Map();
-    qsa("[data-journal-row]", heatmap).forEach((element) => {
-      const rowId = element.dataset.journalRow;
-      if (!elementsByRow.has(rowId)) elementsByRow.set(rowId, []);
-      elementsByRow.get(rowId).push(element);
-    });
-    const rows = qsa(".heat-journal[data-journal-name]", heatmap).map((label) => ({
-      name: normalizedJournalText(label.dataset.journalName || label.textContent || ""),
-      initials: journalInitials(label.dataset.journalName || label.textContent || ""),
-      label: label.dataset.journalName || label.textContent || "",
-      total: Number(label.dataset.journalTotal || 0),
-      elements: elementsByRow.get(label.dataset.journalRow) || [label],
+    const dataNode = qs("[data-journal-heatmap-data]", heatmap.closest(".heatmap-panel"));
+    const years = qsa(".heat-year span", heatmap).map((node) => node.textContent.trim());
+    let payload = [];
+    try {
+      payload = dataNode ? JSON.parse(dataNode.textContent || "[]") : [];
+    } catch {
+      payload = [];
+    }
+    const rows = payload.map(([label, total, cells], index) => ({
+      id: index,
+      label,
+      name: normalizedJournalText(label),
+      initials: journalInitials(label),
+      total: Number(total),
+      counts: new Map(cells.map(([yearIndex, count, level]) => [yearIndex, [count, level]])),
+      elements: null,
     }));
-    journalRowsCache.set(heatmap, rows);
-    return rows;
+    const result = { rows, years };
+    journalRowsCache.set(heatmap, result);
+    return result;
+  };
+
+  const renderJournalRow = (row, years) => {
+    if (row.elements) return row.elements;
+    const elements = [];
+    const label = document.createElement("div");
+    label.className = "heat-journal";
+    label.tabIndex = 0;
+    label.setAttribute("aria-haspopup", "menu");
+    label.dataset.journalRow = String(row.id);
+    label.dataset.journalName = row.label;
+    label.dataset.journalTotal = String(row.total);
+    label.dataset.tip = row.label;
+    label.textContent = row.label;
+    elements.push(label);
+    years.forEach((year, index) => {
+      const data = row.counts.get(index);
+      const cell = document.createElement(data ? "button" : "span");
+      cell.className = "heat-cell level-" + (data ? data[1] : 0);
+      cell.dataset.journalRow = String(row.id);
+      if (data) {
+        cell.type = "button";
+        const count = data[0];
+        cell.dataset.tip = year + " · " + count.toLocaleString("en-US") + " PDF" + (count === 1 ? "" : "s");
+        cell.setAttribute("aria-label", row.label + " " + year + " " + count.toLocaleString("en-US") + " PDFs");
+      } else {
+        cell.setAttribute("aria-hidden", "true");
+      }
+      elements.push(cell);
+    });
+    const total = document.createElement("div");
+    total.className = "heat-total";
+    total.dataset.journalRow = String(row.id);
+    total.textContent = row.total.toLocaleString("en-US");
+    elements.push(total);
+    row.elements = elements;
+    return elements;
   };
 
   const sortJournalRows = (select) => {
-    const panel = select.closest(".heatmap-panel");
-    const heatmap = qs(".journal-heatmap", panel);
-    if (!heatmap) return;
-    const [field, direction] = select.value.split("-");
-    const multiplier = direction === "desc" ? -1 : 1;
-    const rows = [...journalRows(heatmap)];
-    rows.sort((left, right) => {
-      if (field === "total" && left.total !== right.total) {
-        return (left.total - right.total) * multiplier;
-      }
-      const nameOrder = left.label.localeCompare(right.label, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-      return field === "name" ? nameOrder * multiplier : nameOrder;
-    });
-    rows.forEach((row) => row.elements.forEach((element) => heatmap.append(element)));
+    applyJournalFilters(select.closest(".heatmap-panel"));
   };
 
   const loadJournalSort = () => {
@@ -573,34 +614,88 @@
     const query = normalizedJournalText(input ? input.value.trim() : "");
     const initialsQuery = query.replace(/[\s.-]/g, "");
     const isInitialsQuery = /^[\p{L}\p{N}]{2,}$/u.test(initialsQuery);
-    const rows = journalRows(heatmap);
-    let visibleCount = 0;
-    rows.forEach((row) => {
-      const visible = !query || row.name.includes(query)
-        || (isInitialsQuery && row.initials.includes(initialsQuery));
-      row.elements.forEach((element) => {
-        element.hidden = !visible;
+    const { rows, years } = journalRows(heatmap);
+    const sortValue = qs("[data-journal-sort]", panel)?.value || "total-desc";
+    const [field, direction] = sortValue.split("-");
+    const multiplier = direction === "desc" ? -1 : 1;
+    const sorted = [...rows].sort((left, right) => {
+      if (field === "total" && left.total !== right.total) {
+        return (left.total - right.total) * multiplier;
+      }
+      const nameOrder = left.label.localeCompare(right.label, undefined, {
+        numeric: true, sensitivity: "base",
       });
-      if (visible) visibleCount += 1;
+      return field === "name" ? nameOrder * multiplier : nameOrder;
     });
+    const matches = sorted.filter((row) => !query || row.name.includes(query)
+      || (isInitialsQuery && row.initials.includes(initialsQuery)));
+    const limit = Math.max(1, Math.min(200, Number(qs("[data-journal-limit]", panel)?.value || 20)));
+    const pageCount = Math.max(1, Math.ceil(matches.length / limit));
+    const requestedPage = Number(panel.dataset.journalPage || 1);
+    const page = Number.isInteger(requestedPage) ? Math.min(pageCount, Math.max(1, requestedPage)) : 1;
+    panel.dataset.journalPage = String(page);
+    const offset = (page - 1) * limit;
+    const shown = matches.slice(offset, offset + limit);
+    const pager = qs("[data-journal-pagination]", panel);
+    if (pager) {
+      const start = matches.length ? offset + 1 : 0;
+      const end = offset + shown.length;
+      const range = qs("[data-journal-page-range]", pager);
+      const number = qs("[data-journal-page-input]", pager);
+      const total = qs("[data-journal-page-total]", pager);
+      const prev = qs("[data-journal-page-prev]", pager);
+      const next = qs("[data-journal-page-next]", pager);
+      if (range) range.textContent = `Showing ${start}–${end} of ${matches.length} journals`;
+      if (number) {
+        number.max = String(pageCount);
+        number.value = String(page);
+      }
+      if (total) total.textContent = `of ${pageCount}`;
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = page >= pageCount;
+      pager.hidden = matches.length === 0;
+    }
+    const fragment = document.createDocumentFragment();
+    qsa(".heat-corner, .heat-year, .heat-total-head", heatmap).forEach((node) => fragment.append(node));
+    shown.forEach((row) => renderJournalRow(row, years).forEach((node) => fragment.append(node)));
+    heatmap.replaceChildren(fragment);
+
     const status = qs("[data-journal-filter-status], .heatmap-filter-status", panel);
     if (status) {
       const noun = rows.length === 1 ? "journal" : "journals";
-      status.textContent = query ? `${visibleCount} of ${rows.length} ${noun}` : `${rows.length} ${noun}`;
+      status.textContent = query ? matches.length + " of " + rows.length + " " + noun : rows.length + " " + noun;
+    }
+    const suggestion = qs("[data-journal-suggestion]", panel);
+    if (suggestion) {
+      const first = query ? matches[0] : null;
+      suggestion.textContent = first ? "Tab to complete: " + first.label : "";
+      suggestion.hidden = !first;
     }
     const noMatches = qs("[data-journal-no-matches]", panel);
-    if (noMatches) noMatches.hidden = visibleCount !== 0;
+    if (noMatches) noMatches.hidden = shown.length !== 0;
     const scroll = heatmap.closest(".heatmap-scroll");
-    if (scroll) scroll.hidden = visibleCount === 0;
+    if (scroll) scroll.hidden = shown.length === 0;
+  };
+
+  const goToJournalPage = (panel, requestedPage) => {
+    if (!panel || !Number.isInteger(requestedPage)) return;
+    panel.dataset.journalPage = String(Math.max(1, requestedPage));
+    hideTooltip();
+    closeJournalMenu();
+    applyJournalFilters(panel);
+    const scroll = qs(".heatmap-scroll", panel);
+    if (scroll) scroll.scrollTop = 0;
   };
 
   const scheduleJournalFilter = (input) => {
+    input.closest(".heatmap-panel").dataset.journalPage = "1";
     window.clearTimeout(journalFilterTimer);
     if (input.dataset.composing === "true") return;
     journalFilterTimer = window.setTimeout(() => applyJournalFilters(input.closest(".heatmap-panel")), 200);
   };
 
   const flushJournalFilter = (input) => {
+    input.closest(".heatmap-panel").dataset.journalPage = "1";
     window.clearTimeout(journalFilterTimer);
     if (input.dataset.composing === "true") return;
     applyJournalFilters(input.closest(".heatmap-panel"));
@@ -671,7 +766,7 @@
       input.dataset.savedValue = String(payload.journal_limit);
       if (status) status.textContent = "Saved";
       pageCache.clear();
-      await fetchPage(window.location.href, {}, false);
+      // Paging is entirely client-side; saving the limit needs no full-page fetch.
     } catch (error) {
       if (error.name !== "AbortError" && revision === input.dataset.saveRevision) {
         if (status) status.textContent = "Could not save";
@@ -686,6 +781,8 @@
     if (journalLimitRequest) journalLimitRequest.abort();
     const revision = String(Number(input.dataset.saveRevision || 0) + 1);
     input.dataset.saveRevision = revision;
+    input.closest(".heatmap-panel").dataset.journalPage = "1";
+    applyJournalFilters(input.closest(".heatmap-panel"));
     journalLimitTimer = window.setTimeout(() => saveJournalLimit(input, revision), 600);
   };
 
@@ -694,6 +791,8 @@
     if (journalLimitRequest) journalLimitRequest.abort();
     const revision = String(Number(input.dataset.saveRevision || 0) + 1);
     input.dataset.saveRevision = revision;
+    input.closest(".heatmap-panel").dataset.journalPage = "1";
+    applyJournalFilters(input.closest(".heatmap-panel"));
     saveJournalLimit(input, revision);
   };
 
@@ -702,7 +801,6 @@
       const sortSelect = qs("[data-journal-sort]", panel);
       if (sortSelect) {
         sortSelect.value = loadJournalSort();
-        sortJournalRows(sortSelect);
       }
       applyJournalFilters(panel);
     });
@@ -1171,6 +1269,15 @@
       return;
     }
 
+    const pagePrev = event.target.closest("[data-journal-page-prev]");
+    const pageNext = event.target.closest("[data-journal-page-next]");
+    if (pagePrev || pageNext) {
+      const panel = (pagePrev || pageNext).closest(".heatmap-panel");
+      const currentPage = Number(panel.dataset.journalPage || 1);
+      goToJournalPage(panel, currentPage + (pageNext ? 1 : -1));
+      return;
+    }
+
     const utilityToggle = event.target.closest("[data-utility-toggle]");
     if (utilityToggle) {
       const nav = qs(`#${utilityToggle.getAttribute("aria-controls")}`);
@@ -1258,7 +1365,7 @@
   document.addEventListener("pointerover", (event) => {
     const link = event.target.closest("a[href]");
     if (!link || link.target || link.hasAttribute("download") || link.hasAttribute("data-no-pjax")) return;
-    if (!link.closest(".topbar, .filter-tabs")) return;
+    if (!link.closest(".topbar, .app-sidebar, .filter-tabs")) return;
     prefetchPage(link.href);
   });
 
@@ -1307,7 +1414,12 @@
     if (event.target.matches("[data-journal-list-picker-input]")) addJournalListSelection(event.target);
     if (event.target.matches("[data-journal-sort]")) {
       saveJournalSort(event.target.value);
+      event.target.closest(".heatmap-panel").dataset.journalPage = "1";
       sortJournalRows(event.target);
+    }
+    if (event.target.matches("[data-journal-page-input]")) {
+      const input = event.target;
+      goToJournalPage(input.closest(".heatmap-panel"), Number(input.value));
     }
   });
 
@@ -1328,6 +1440,11 @@
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target.matches("[data-journal-page-input]")) {
+      event.preventDefault();
+      goToJournalPage(event.target.closest(".heatmap-panel"), Number(event.target.value));
+      return;
+    }
     if (event.key === "Escape") closeJournalMenu(true);
     if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
         && event.target.closest(".heat-journal[data-journal-name]")) {
@@ -1348,6 +1465,19 @@
       event.preventDefault();
       addJournalListSelection(event.target);
       return;
+    }
+    if (event.key === "Tab" && event.target.matches("[data-journal-filter]") && event.target.value.trim()) {
+      const input = event.target;
+      const query = normalizedJournalText(input.value.trim());
+      const initials = query.replace(/[\s.-]/g, "");
+      const heatmap = qs(".journal-heatmap", input.closest(".heatmap-panel"));
+      const match = heatmap && journalRows(heatmap).rows.find((row) =>
+        row.name.includes(query) || row.initials.startsWith(initials));
+      if (match) {
+        event.preventDefault();
+        input.value = match.label;
+        flushJournalFilter(input);
+      }
     }
     if (event.key === "Enter" && event.target.matches("[data-journal-limit]")) {
       event.preventDefault();
@@ -1425,43 +1555,65 @@
   });
 
   let dashboardRefreshPending = false;
+  let dashboardLastFullRefresh = Date.now();
   const refreshDashboardCounts = async () => {
-    const indicator = qs("[data-dashboard-updated]");
-    if (!indicator || dashboardRefreshPending || document.hidden || qs("dialog[open]")) return;
+    const panel = qs(".heatmap-panel");
+    if (!panel || dashboardRefreshPending || document.hidden || qs("dialog[open]")) return;
     dashboardRefreshPending = true;
     const url = window.location.href;
     try {
+      // Most checks transfer only a tiny revision token instead of the whole dashboard.
+      const revisionResponse = await fetch(panel.dataset.dashboardRevisionUrl, {
+        credentials: "same-origin", cache: "no-store",
+      });
+      if (!revisionResponse.ok || !revisionResponse.headers.get("content-type")?.includes("application/json")) {
+        throw new Error("Revision check unavailable");
+      }
+      const { revision } = await revisionResponse.json();
+      const fallbackDue = Date.now() - dashboardLastFullRefresh >= 10 * 60 * 1000;
+      if (!fallbackDue && revision === panel.dataset.dashboardRevision) return;
+      const currentMap = qs("#journal-year-heatmap", panel);
+      // A previously empty vault can gain journals; fetch the page normally then.
+      if (!currentMap) {
+        if (url !== window.location.href) return;
+        pageCache.delete(cacheKey(url));
+        await fetchPage(url, {}, false);
+        dashboardLastFullRefresh = Date.now();
+        return;
+      }
+      // Keep existing controls and the current journal page while refreshing.
+      if (currentMap.contains(document.activeElement)) return;
       const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
       if (!response.ok || response.url !== url) throw new Error("Refresh unavailable");
       const next = new DOMParser().parseFromString(await response.text(), htmlType);
-      if (url !== window.location.href || !indicator.isConnected) return;
+      if (url !== window.location.href || !panel.isConnected) return;
+      const updatedPanel = qs(".heatmap-panel", next);
+      const updatedMap = qs("#journal-year-heatmap", updatedPanel);
+      const updatedData = qs("[data-journal-heatmap-data]", updatedPanel);
+      const currentData = qs("[data-journal-heatmap-data]", panel);
+      if (!updatedMap || !updatedData || !currentData) return;
+      const scroll = currentMap.closest(".heatmap-scroll");
+      const left = scroll.scrollLeft;
+      const top = scroll.scrollTop;
+      currentData.replaceWith(updatedData);
+      currentMap.replaceWith(updatedMap);
       for (const selector of [".summary-tags", ".heatmap-filter-pdf-count"]) {
         const current = qs(selector);
-        const updated = qs(selector, next);
-        if (current && updated) current.replaceWith(updated);
+        const replacement = qs(selector, next);
+        if (current && replacement) current.replaceWith(replacement);
       }
-      const currentMap = qs("#journal-year-heatmap");
-      const updatedMap = qs("#journal-year-heatmap", next);
-      if (currentMap && updatedMap && !currentMap.contains(document.activeElement)) {
-        const scroll = currentMap.closest(".heatmap-scroll");
-        const left = scroll.scrollLeft;
-        const top = scroll.scrollTop;
-        currentMap.replaceWith(updatedMap);
-        initHeatmap();
-        scroll.scrollLeft = left;
-        scroll.scrollTop = top;
-      }
+      panel.dataset.dashboardRevision = updatedPanel.dataset.dashboardRevision;
+      applyJournalFilters(panel);
+      scroll.scrollLeft = left;
+      scroll.scrollTop = top;
+      dashboardLastFullRefresh = Date.now();
       pageCache.delete(cacheKey(url));
-      indicator.textContent = `Updated ${new Date().toLocaleTimeString()}`;
     } catch {
-      if (indicator.isConnected) indicator.textContent = "Unable to update; try Refresh counts";
+      // Keep the current dashboard usable if the connection is temporarily unavailable.
     } finally {
       dashboardRefreshPending = false;
     }
   };
-  document.addEventListener("click", (event) => {
-    if (event.target.closest("[data-dashboard-refresh]")) refreshDashboardCounts();
-  });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshDashboardCounts();
   });

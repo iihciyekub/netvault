@@ -30,7 +30,7 @@ from netvault_server.server.journal_filters import (
 )
 from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf_doi_service
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
-from netvault_server.server.models import Pdf, PdfDoiCorrection, User, UserRole
+from netvault_server.server.models import Pdf, PdfDoiCorrection, User, UserRole, utc_now
 from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.security import (
     DUMMY_PASSWORD_HASH,
@@ -46,6 +46,7 @@ from netvault_server.server.security import (
 )
 from netvault_server.server.stats import (
     get_dashboard_stats,
+    get_dashboard_revision,
 )
 from netvault_server.server.storage import object_path
 
@@ -187,7 +188,8 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui24",
+        "asset_version": f"{__version__}-ui28",
+        "app_version": __version__,
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -281,7 +283,8 @@ def login_submit(
     clear_login_failures(login_key)
     if password_needs_rehash(user.password_hash):
         user.password_hash = hash_password(password)
-        db.commit()
+    user.last_login_at = utc_now()
+    db.commit()
     response = redirect("/web")
     set_login_cookie(response, user)
     set_csrf_cookie(response, csrf_token(request))
@@ -304,6 +307,14 @@ def logout_submit(
     return response
 
 
+@router.get("/web/dashboard-revision", include_in_schema=False)
+def dashboard_revision(request: Request, db: Session = Depends(get_db)) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    return {"revision": get_dashboard_revision()}
+
+
 @router.get("/web", response_class=HTMLResponse, include_in_schema=False)
 def dashboard(
     request: Request,
@@ -324,12 +335,28 @@ def dashboard(
         user_id=user.id,
         journal_limit=journal_limit,
     )
+    # Ship all journal totals for correct global sorting and name/initials search,
+    # but avoid emitting tens of thousands of invisible heatmap DOM nodes.
+    heatmap_rows = [
+        [
+            row["journal"],
+            row["total"],
+            [
+                [index, cell["count"], cell["level"]]
+                for index, cell in enumerate(row["cells"])
+                if cell["count"] > 0
+            ],
+        ]
+        for row in stats["journal_year"]["rows"]
+    ]
     return render(
         request,
         "dashboard.html",
         {
             "user": user,
             "dashboard_journal_limit": user.dashboard_journal_limit,
+            "heatmap_rows": heatmap_rows,
+            "dashboard_revision": get_dashboard_revision(),
             **stats,
         },
     )
@@ -354,9 +381,7 @@ def update_all_journal_limit(
         )
     user.dashboard_journal_limit = journal_limit
     db.commit()
-    from netvault_server.server.stats import invalidate_stats_cache
-
-    invalidate_stats_cache()
+    # Display-limit changes do not alter the cached full journal dataset.
     if request.headers.get("x-requested-with") == "fetch":
         return {"journal_limit": journal_limit}
     return redirect(f"/web?filter={quote(normalize_filter_key(active_filter))}")

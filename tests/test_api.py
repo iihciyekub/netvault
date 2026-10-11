@@ -664,7 +664,7 @@ def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) ->
         assert "ix_pdf_file_aliases_sha256" in alias_indexes
         assert "ix_pdf_file_aliases_pdf_id" in alias_indexes
         assert "ix_pdf_doi_corrections_pdf_id" in correction_indexes
-        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 7
+        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 8
 
     incomplete = upload(
         client,
