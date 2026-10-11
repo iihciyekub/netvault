@@ -52,6 +52,12 @@
     <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ vault_summary.total_size|bytes }}</span>
   </div>
 </div>
+<p class="dashboard-refresh-note">
+  Counts show unique articles stored successfully; failed uploads do not increase them.
+  MIS Quarterly Executive is counted separately from MIS Quarterly.
+  <button type="button" class="ghost" data-dashboard-refresh>Refresh counts</button>
+  <span data-dashboard-updated aria-live="polite">Updates every 30 seconds</span>
+</p>
 
 <dialog class="journal-list-dialog" data-journal-list-dialog aria-labelledby="journal-list-dialog-title">
   <form class="journal-list-form" data-journal-list-form>

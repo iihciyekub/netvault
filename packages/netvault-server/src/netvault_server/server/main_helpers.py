@@ -33,13 +33,14 @@ from netvault_server.server.storage import (
 
 CLIENT_DOI_SOURCES = {
     "download-index",
+    "download-record",
     "explicit",
     "filename",
     "pdf-content",
     "pdf-metadata",
     "user",
 }
-AUTOMATIC_CLIENT_DOI_SOURCES = {"filename", "pdf-content", "pdf-metadata"}
+AUTOMATIC_CLIENT_DOI_SOURCES = {"filename", "pdf-content", "pdf-metadata", "download-record"}
 
 
 def pdf_to_read(pdf: Pdf) -> PdfRead:
@@ -113,54 +114,8 @@ def _normalized_title_text(value: str) -> str:
 
 
 def title_match_score(title: str | None, pdf_text: str) -> float | None:
-    """Return a deterministic title match score, or None when PDF text is unavailable."""
-    normalized_title = _normalized_title_text(title or "")
-    normalized_pdf = _normalized_title_text(pdf_text)
-    compact_title = normalized_title.replace(" ", "")
-    if len(compact_title) < 2:
-        return 0.0
-    if len(compact_title) < 12:
-        # Short article titles are legitimate, but a substring or fuzzy match
-        # could just be a term in the body or a cited title. Require an exact
-        # standalone heading near the start of the first page instead.
-        header_lines = []
-        for line in pdf_text.split("\f", 1)[0].splitlines():
-            normalized_line = _normalized_title_text(line)
-            if not normalized_line:
-                continue
-            if re.match(
-                r"^(?:\d+\s+)?(?:abstract|introduction|references|bibliography)\b",
-                normalized_line,
-            ):
-                break
-            header_lines.append(normalized_line)
-            if len(header_lines) >= 40:
-                break
-        headings = header_lines + [
-            f"{first} {second}" for first, second in zip(header_lines, header_lines[1:])
-        ]
-        return 1.0 if normalized_title in headings else 0.0
-    if len(normalized_pdf.replace(" ", "")) < 40:
-        return None
-
-    compact_pdf = normalized_pdf.replace(" ", "")
-    if compact_title in compact_pdf:
-        return 1.0
-
-    title_tokens = normalized_title.split()
-    pdf_tokens = normalized_pdf.split()
-    if not title_tokens or len(pdf_tokens) < max(1, len(title_tokens) - 3):
-        return 0.0
-    minimum = max(1, len(title_tokens) - 3)
-    maximum = min(len(pdf_tokens), len(title_tokens) + 3)
-    best = 0.0
-    for width in range(minimum, maximum + 1):
-        for start in range(0, len(pdf_tokens) - width + 1):
-            window = " ".join(pdf_tokens[start : start + width])
-            best = max(best, SequenceMatcher(None, normalized_title, window).ratio())
-            if best >= 0.98:
-                return best
-    return best
+    from netvault_server.server.article_title import heading_match_score
+    return heading_match_score(title, pdf_text)
 
 
 def _ordered_automatic_candidates(
@@ -168,7 +123,7 @@ def _ordered_automatic_candidates(
     client_doi: str | None,
     client_source: str | None,
 ) -> list[DoiCandidate]:
-    source_order = {"filename": 0, "pdf-metadata": 1, "pdf-content": 2}
+    source_order = {"explicit": -1, "download-record": 0, "pdf-metadata": 1, "filename": 2, "pdf-content": 3}
     candidates = list(evidence.candidates)
     if client_doi and not any(candidate.doi == client_doi for candidate in candidates):
         candidates.append(
@@ -176,12 +131,17 @@ def _ordered_automatic_candidates(
                 client_doi,
                 client_source if client_source in AUTOMATIC_CLIENT_DOI_SOURCES else "pdf-content",
                 "client-hint",
+                80,
             )
         )
     candidates.sort(
         key=lambda candidate: (
-            source_order.get(candidate.source, 9),
+            candidate.source not in {"explicit", "download-record"},
+            candidate.embedded_publisher_url,
             -candidate.score,
+            "page-1" not in candidate.detail,
+            candidate.doi != client_doi,
+            source_order.get(candidate.source, 9),
             candidate.doi,
         )
     )
@@ -205,6 +165,7 @@ async def verify_automatic_doi(
     attempts: list[dict] = []
     crossref_unavailable = False
     candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
+    document_title = await run_in_threadpool(extract_pdf_title, path)
 
     for candidate in candidates:
         metadata = await run_in_threadpool(fetch_doi_metadata, candidate.doi)
@@ -226,11 +187,17 @@ async def verify_automatic_doi(
             attempts.append(attempt)
             continue
 
-        if metadata.work_type in {"journal", "journal-volume", "journal-issue", "book-series", "periodical"}:
-            attempt.update(accepted=False, reason="DOI identifies a publication container, not an article")
+        if metadata.work_type in {"journal", "journal-volume", "journal-issue", "book-series", "periodical", "dataset", "component"} or candidate.doi.startswith("10.17605/osf.io/"):
+            attempt.update(accepted=False, reason="DOI identifies a publication container or research data, not an article")
             attempts.append(attempt)
             continue
         match_score = await run_in_threadpool(title_match_score, metadata.title, pdf_text)
+        if document_title:
+            from netvault_server.server.article_title import primary_title_score
+            heading_score = primary_title_score(metadata.title, document_title)
+            # Geometric title extraction is stronger than a title cited in prose.
+            match_score = heading_score
+
         attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
         if metadata.provider == "semantic-scholar":
@@ -251,7 +218,7 @@ async def verify_automatic_doi(
                 attempt.update(accepted=False, reason="Indexed DOI requires a matching first-page title, author and year")
                 attempts.append(attempt)
                 continue
-        if match_score is not None and match_score < 0.88:
+        if (match_score is None and candidate.source != "explicit") or (match_score is not None and match_score < 0.88):
             attempt["accepted"] = False
             attempt["reason"] = "Metadata title does not match the PDF"
             attempts.append(attempt)
@@ -281,7 +248,6 @@ async def verify_automatic_doi(
 
     # Search only for automatic identities. Require title, journal, year and author
     # corroboration in the PDF, and reject ambiguous matches rather than picking rank 1.
-    document_title = await run_in_threadpool(extract_pdf_title, path)
     if document_title and not any(c.source == "explicit" for c in candidates) and (
         await run_in_threadpool(title_match_score, document_title, pdf_text) or 0
     ) >= 0.98:
@@ -299,7 +265,6 @@ async def verify_automatic_doi(
             pdf_words = set(_normalized_title_text(pdf_text).split())
             author_match = any(_normalized_title_text(name) in pdf_words for name in author_names)
             corroborated = (metadata.work_type == "journal-article" and exact_title >= 0.98
-                            and (await run_in_threadpool(title_match_score, metadata.title, pdf_text) or 0) >= 0.98
                             and len(journal) >= 8 and journal in normalized_pdf
                             and metadata.published_year is not None
                             and re.search(rf"\b{metadata.published_year}\b", pdf_text) is not None

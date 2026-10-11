@@ -111,7 +111,7 @@ def test_doi_suffix_preserves_additional_slashes() -> None:
 
 
 def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
-    assert netvault.doi.DOI_RESOLVER_VERSION == 6
+    assert netvault.doi.DOI_RESOLVER_VERSION == 7
 
 
 def test_doi_parser_stops_before_pdf_object_syntax() -> None:

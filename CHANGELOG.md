@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.27 — 2026-10-11
+
+- Verify article identity against the first-page heading instead of cited titles, prioritize primary DOI evidence, and reject dataset DOIs for articles.
+- Read EBSCO cli-downloads.csv as filename/size-bound DOI hints, retaining server title verification.
+- Display new/existing/failed counts during uploads, save an atomic upload report, and retry only failed or pending files with --retry-failed.
+- Retry temporary upload failures with a rebuilt multipart stream and the same idempotency key.
+- Refresh dashboard counts every 30 seconds while visible, preserving journal filters, sort order and scrolling.
+
 ## 0.7.26 - 2026-10-11
 
 - Accept short article titles such as "OTC Discount" during DOI verification when

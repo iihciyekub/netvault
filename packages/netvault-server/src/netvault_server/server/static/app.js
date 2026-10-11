@@ -1424,6 +1424,49 @@
     fetchPage(window.location.href, {}, false);
   });
 
+  let dashboardRefreshPending = false;
+  const refreshDashboardCounts = async () => {
+    const indicator = qs("[data-dashboard-updated]");
+    if (!indicator || dashboardRefreshPending || document.hidden || qs("dialog[open]")) return;
+    dashboardRefreshPending = true;
+    const url = window.location.href;
+    try {
+      const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok || response.url !== url) throw new Error("Refresh unavailable");
+      const next = new DOMParser().parseFromString(await response.text(), htmlType);
+      if (url !== window.location.href || !indicator.isConnected) return;
+      for (const selector of [".summary-tags", ".heatmap-filter-pdf-count"]) {
+        const current = qs(selector);
+        const updated = qs(selector, next);
+        if (current && updated) current.replaceWith(updated);
+      }
+      const currentMap = qs("#journal-year-heatmap");
+      const updatedMap = qs("#journal-year-heatmap", next);
+      if (currentMap && updatedMap && !currentMap.contains(document.activeElement)) {
+        const scroll = currentMap.closest(".heatmap-scroll");
+        const left = scroll.scrollLeft;
+        const top = scroll.scrollTop;
+        currentMap.replaceWith(updatedMap);
+        initHeatmap();
+        scroll.scrollLeft = left;
+        scroll.scrollTop = top;
+      }
+      pageCache.delete(cacheKey(url));
+      indicator.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    } catch {
+      if (indicator.isConnected) indicator.textContent = "Unable to update; try Refresh counts";
+    } finally {
+      dashboardRefreshPending = false;
+    }
+  };
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-dashboard-refresh]")) refreshDashboardCounts();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshDashboardCounts();
+  });
+  window.setInterval(refreshDashboardCounts, 30000);
+
   rememberPage(window.location.href, snapshotPage());
   initHeatmap();
 })();

@@ -1,6 +1,7 @@
 from pathlib import Path
 import threading
 from time import monotonic
+from time import sleep
 from typing import Any
 
 import requests
@@ -11,6 +12,12 @@ from urllib3.util.retry import Retry
 from netvault.cli.config import require_credentials
 
 _local = threading.local()
+
+
+class ApiError(RuntimeError):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        super().__init__(detail)
 
 
 def http_session() -> requests.Session:
@@ -51,7 +58,7 @@ def raise_for_api_error(response: requests.Response) -> None:
     except ValueError:
         detail = response.text
     hint = " Run `nv login` again." if response.status_code in {401, 403} else ""
-    raise RuntimeError(f"{response.status_code}: {detail}{hint}")
+    raise ApiError(response.status_code, f"{response.status_code}: {detail}{hint}")
 
 
 def api_get(path: str, **params: Any) -> Any:
@@ -82,7 +89,7 @@ def api_delete(path: str) -> Any:
     return response.json()
 
 
-def upload_pdf(
+def _upload_pdf_once(
     path: Path,
     doi: str | None = None,
     no_crossref: bool = False,
@@ -144,3 +151,18 @@ def upload_pdf(
                 timing_callback(sent_at - started, monotonic() - sent_at, server_timings)
     raise_for_api_error(response)
     return response.json()
+
+
+def upload_pdf(path: Path, **kwargs: Any) -> Any:
+    # Rebuild the multipart stream on every retry. The hash idempotency key
+    # protects against a lost successful response; validation errors are final.
+    for attempt in range(3):
+        try:
+            return _upload_pdf_once(path, **kwargs)
+        except ApiError as exc:
+            if exc.status_code not in {429, 502, 503, 504} or attempt == 2:
+                raise
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == 2:
+                raise
+        sleep(2 ** attempt)

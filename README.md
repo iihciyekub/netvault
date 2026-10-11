@@ -5,6 +5,12 @@ Users upload and download PDFs with a lightweight LiteVault-style CLI, while a
 remote FastAPI server stores files in a shared deduplicated repository and serves
 a small authenticated web UI.
 
+## Upload results and recovery
+
+`nv upload ./papers` reports **new**, **existing**, **failed**, and **replaced** separately. The request progress bar counts completed requests, including failed and deduplicated requests; it is not the number of newly stored articles. An atomic `nv-upload-report.json` in the current directory records every file and its outcome while the command runs. Use `--report PATH` to choose another location, and `nv upload ./papers --retry-failed` to retry only failed or still-pending files from that report. Already stored hashes are checked again before retries.
+
+A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. These legacy records continue through server-side primary-title verification; unlike a SHA-256-bound JSON index, they cannot cause an unverified DOI-only skip. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
+
 ## What It Provides
 
 - `netvault`: lightweight user CLI package with `nv` and `netvault` commands.

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from collections.abc import Callable
 import json
+import csv
 from pathlib import Path
 import re
 
@@ -40,6 +41,7 @@ class DownloadIndexMatch:
     index_updated_at: str
     record: DownloadIndexRecord
     renamed: bool
+    source: str = "download-index"
 
 
 @dataclass(frozen=True)
@@ -251,6 +253,7 @@ class DownloadIndexResolver:
         self.enabled = enabled
         self.warning_callback = warning_callback
         self._cache: dict[Path, DownloadIndex | DownloadIndexError] = {}
+        self._csv_cache: dict[Path, dict[str, dict]] = {}
 
     def _discover(self, pdf_path: Path) -> Path | None:
         if not self.enabled:
@@ -294,7 +297,53 @@ class DownloadIndexResolver:
 
     def resolve(self, pdf_path: Path, sha256: str, size: int) -> DownloadIndexMatch | None:
         index_path = self._discover(pdf_path)
-        if index_path is None:
+        if index_path is not None:
+            index = self._load(index_path)
+            match = index.resolve(pdf_path, sha256, size) if index is not None else None
+            if match is not None:
+                return match
+        if not self.enabled or self.explicit_path is not None:
             return None
-        index = self._load(index_path)
-        return index.resolve(pdf_path, sha256, size) if index is not None else None
+        csv_path = pdf_path.parent / "cli-downloads.csv"
+        if not csv_path.is_file():
+            return None
+        if csv_path not in self._csv_cache:
+            rows = {}
+            ambiguous = set()
+            try:
+                if csv_path.stat().st_size > MAX_DOWNLOAD_INDEX_BYTES:
+                    raise DownloadIndexError("download CSV exceeds size limit")
+                with csv_path.open(encoding="utf-8-sig", newline="") as handle:
+                    for number, row in enumerate(csv.DictReader(handle)):
+                        if number >= MAX_DOWNLOAD_INDEX_RECORDS:
+                            raise DownloadIndexError("download CSV exceeds record limit")
+                        name = row.get("file", "")
+                        if row.get("status") != "downloaded" or not row.get("doi") or Path(name).name != name:
+                            continue
+                        try:
+                            normalized = normalize_doi(row["doi"])
+                            row_size = int(row.get("bytes", "0"))
+                        except (ValueError, TypeError):
+                            continue
+                        if name in rows and rows[name]["doi"] != normalized:
+                            ambiguous.add(name)
+                        rows[name] = {**row, "doi": normalized, "bytes": row_size}
+                self._csv_cache[csv_path] = {name: row for name, row in rows.items() if name not in ambiguous}
+            except (OSError, UnicodeError, csv.Error, DownloadIndexError) as exc:
+                if self.warning_callback:
+                    self.warning_callback(f"Ignoring unusable EBSCO download CSV: {exc}")
+                self._csv_cache[csv_path] = {}
+        row = self._csv_cache[csv_path].get(pdf_path.name)
+        if row is None or row["bytes"] != size:
+            return None
+        if row.get("sha256") and row["sha256"].lower() != sha256.lower():
+            return None
+        # A legacy filename/size match is a hint, not permission to skip title verification.
+        record = DownloadIndexRecord(
+            doi=row["doi"], filename=pdf_path.name, size=size,
+            last_modified=pdf_path.stat().st_mtime_ns // 1_000_000, sha256=sha256,
+            downloaded_at="", source_url=row.get("url") or "ebsco-download-record",
+            validation_status="valid", validation_checked_at="",
+            validation_method="download-record-filename-size", validation_reason=None,
+        )
+        return DownloadIndexMatch(csv_path, 0, "", record, False, "download-record")

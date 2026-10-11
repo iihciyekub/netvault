@@ -43,6 +43,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             resource_url=f"https://doi.org/{doi}",
         )
 
+    # Synthetic byte fixtures have no renderable page. Supply the heading proof
+    # explicitly; tests of title verification override this with their real text.
+    original_match = main_helpers.title_match_score
+    def fixture_match(title, text):
+        return 1.0 if text == "fixture-primary-heading" else original_match(title, text)
+    monkeypatch.setattr(main_helpers, "extract_pdf_text", lambda _path: "fixture-primary-heading")
+    monkeypatch.setattr(main_helpers, "title_match_score", fixture_match)
     monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fake_crossref_metadata)
     monkeypatch.setattr(doi_correction, "fetch_doi_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
@@ -127,7 +134,7 @@ def test_concurrent_different_hashes_for_one_doi_are_deduplicated(client, monkey
         return crossref.CrossrefMetadata(status="ok", canonical_doi=doi, title="Verified article")
 
     monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fetch)
-    monkeypatch.setattr(main_helpers, "title_match_score", lambda *_args: None)
+    monkeypatch.setattr(main_helpers, "title_match_score", lambda *_args: 1.0)
 
     def send(index):
         return upload(client, headers, content=PDF_BYTES + f"\n% variant {index}".encode())
@@ -152,7 +159,7 @@ def test_automatic_verification_reuses_parsed_pdf_text(client, monkeypatch):
     title = "Title for " + DOI
 
     def parse(*args, **kwargs):
-        return replace(extract(*args, **kwargs), pdf_text=title + " article text " * 8)
+        return replace(extract(*args, **kwargs), pdf_text=title + "\nAbstract\n" + " article text " * 8)
 
     def second_parse(_path):
         raise AssertionError("server parsed the PDF text a second time")

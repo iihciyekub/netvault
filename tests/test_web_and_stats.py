@@ -110,6 +110,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
             resource_url=f"https://doi.org/{doi}",
         )
 
+    # Synthetic byte fixtures have no renderable page. Supply the heading proof
+    # explicitly; tests of title verification override this with their real text.
+    original_match = main_helpers.title_match_score
+    def fixture_match(title, text):
+        return 1.0 if text == "fixture-primary-heading" else original_match(title, text)
+    monkeypatch.setattr(main_helpers, "extract_pdf_text", lambda _path: "fixture-primary-heading")
+    monkeypatch.setattr(main_helpers, "title_match_score", fixture_match)
     monkeypatch.setattr(main_helpers, "fetch_doi_metadata", fake_crossref_metadata)
     monkeypatch.setattr(doi_correction, "fetch_doi_metadata", fake_crossref_metadata)
     with TestClient(main.app) as test_client:
@@ -564,8 +571,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.26" in info_page.text
-    assert "app.js?v=0.7.26-ui24" in info_page.text
+    assert "0.7.27" in info_page.text
+    assert "app.js?v=0.7.27-ui24" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text

@@ -11,3 +11,4 @@ build/
 storage/
 .env
 mynote.md
+nv-upload-report.json

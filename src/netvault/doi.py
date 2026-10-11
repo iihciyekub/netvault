@@ -29,7 +29,7 @@ DOI_METADATA_PATTERNS = [
     )
 ]
 DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 6
+DOI_RESOLVER_VERSION = 7
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -291,7 +291,7 @@ def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
                 doi,
                 "pdf-content",
                 "raw-explicit",
-                30 if in_references else 88,
+                20 if in_references else (88 if match.start() < 128 else 25),
                 candidate_context(raw_text, match.start(1), match.end(1)),
             )
         )

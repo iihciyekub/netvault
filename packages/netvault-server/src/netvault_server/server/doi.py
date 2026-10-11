@@ -294,14 +294,17 @@ def extract_pdf_text(path: Path) -> str:
 
 
 def extract_pdf_title(path: Path) -> str | None:
-    """Use document title metadata only; never guess from a downloaded filename."""
+    from netvault_server.server.article_title import page_title
+    title = page_title(path)
+    if title:
+        return title
     try:
         title = (PdfReader(str(path)).metadata or {}).get("/Title")
     except Exception:
         return None
-    if isinstance(title, str) and sum(character.isalnum() for character in title) >= 2:
-        return title.strip()
-    return None
+    if not isinstance(title, str) or re.search(r"[\\/]|\.(?:wpd|docx?|pdf)$", title, re.I):
+        return None
+    return title.strip() if sum(c.isalnum() for c in title) >= 2 else None
 
 
 def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
@@ -319,7 +322,7 @@ def raw_explicit_candidates(raw_text: str) -> list[DoiCandidate]:
                 doi,
                 "pdf-content",
                 "raw-explicit",
-                30 if in_references else 88,
+                20 if in_references else (88 if match.start() < 128 else 25),
                 candidate_context(raw_text, match.start(1), match.end(1)),
             )
         )

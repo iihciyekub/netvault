@@ -47,6 +47,7 @@ from netvault.cli.update import update_from_github
 from netvault.cli.identify import identify_pdfs
 from netvault.cli.upload_pipeline import UploadPipeline, UploadRateColumn, UploadStats
 from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
+from netvault.cli.upload_report import UploadReport, failed_paths
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
     DoiEvidence,
@@ -338,7 +339,7 @@ def download_index_identity(match: DownloadIndexMatch) -> dict:
     return {
         "doi": match.record.doi,
         "status": "ok",
-        "source": "download-index",
+        "source": match.source,
         "reason": None,
         "resolver_version": DOI_RESOLVER_VERSION,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -941,10 +942,18 @@ def upload_command(
         "--no-index",
         help="Ignore download index files and use cached or PDF-derived DOI identities.",
     ),
+    report: Path = typer.Option(Path("nv-upload-report.json"), "--report", help="Save incremental results and failures."),
+    retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed or pending files from --report."),
 ) -> None:
     ensure_logged_in()
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
     pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
+    if retry_failed:
+        try:
+            retry_paths = failed_paths(report)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise typer.BadParameter(f"Could not read upload report: {exc}") from exc
+        pdfs = [path for path in pdfs if path.resolve() in retry_paths]
     if not pdfs:
         console.print("No PDF files found.")
         return
@@ -966,6 +975,7 @@ def upload_command(
         warning_callback=lambda message: console.print(f"warning: {message}", style="yellow", highlight=False),
     )
 
+    upload_report = UploadReport(report, pdfs)
     uploaded = 0
     replaced = 0
     skipped = 0
@@ -991,24 +1001,38 @@ def upload_command(
         SpinnerColumn(),
         TextColumn("{task.description}"),
         BarColumn(),
-        TextColumn("{task.completed:.0f}/{task.total:.0f} PDFs"),
+        TextColumn("{task.completed:.0f}/{task.total:.0f} processed"),
+        TextColumn("{task.fields[outcomes]}"),
         TimeElapsedColumn(),
         UploadRateColumn(stats),
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("Hashing PDFs", total=len(pdfs))
+        task = progress.add_task("Hashing PDFs", total=len(pdfs), outcomes="")
+
+        def record_failure(path, error):
+            failed.append((path, str(error)))
+            upload_report.record(path, "failed", error=str(error))
+            console.print(f"failed: {path.name}: {error}", highlight=False)
+
+        def update_counts():
+            counts = f"new {uploaded} | existing {skipped} | failed {len(failed)} | replaced {replaced}"
+            progress.update(task, outcomes=counts)
+            if upload_task is not None:
+                progress.update(upload_task, outcomes=counts)
+
+        upload_task = None
         for pdf_path in pdfs:
             try:
                 if not has_pdf_header(pdf_path):
-                    failed.append((pdf_path, "invalid PDF file: expected %PDF- header"))
+                    record_failure(pdf_path, "invalid PDF file: expected %PDF- header")
                     continue
                 cached_before = file_cache_key(pdf_path) in hash_cache
                 sha256, from_cache = cached_file_sha256(pdf_path, hash_cache)
                 hashes_by_path[pdf_path] = sha256
                 cache_changed = cache_changed or not from_cache or not cached_before
             except OSError as exc:
-                failed.append((pdf_path, str(exc)))
+                record_failure(pdf_path, exc)
             finally:
                 progress.advance(task, 1)
 
@@ -1020,6 +1044,9 @@ def upload_command(
             pdf_paths_by_sha.setdefault(sha256, []).append(pdf_path)
         unique_pdf_paths = [paths[0] for paths in pdf_paths_by_sha.values()]
         local_duplicate_paths = len(hashes_by_path) - len(unique_pdf_paths)
+        for sha, paths_for_hash in pdf_paths_by_sha.items():
+            for duplicate_path in paths_for_hash[1:]:
+                upload_report.record(duplicate_path, "local-duplicate", sha256=sha)
 
         progress.reset(
             task,
@@ -1039,17 +1066,19 @@ def upload_command(
             if existing_pdf and not force:
                 latest_pdf = existing_pdf
                 skipped += 1
+                upload_report.record(pdf_path, "existing", sha256=sha256, pdf=existing_pdf)
             else:
                 new_pdfs.append(pdf_path)
 
-        upload_task = progress.add_task("Uploading PDFs", total=0, visible=False)
+        upload_task = progress.add_task("Upload requests completed", total=0, visible=False, outcomes="")
+        update_counts()
         progress.reset(task, total=len(new_pdfs), completed=0, description="Preparing DOI identities")
 
         def record_outcomes(outcomes) -> None:
             nonlocal latest_pdf, replaced, skipped, uploaded
             for outcome in outcomes:
                 if outcome.error is not None:
-                    failed.append((outcome.path, str(outcome.error)))
+                    record_failure(outcome.path, outcome.error)
                 else:
                     result = outcome.result
                     latest_pdf = result["pdf"]
@@ -1059,7 +1088,10 @@ def upload_command(
                         skipped += 1
                     else:
                         uploaded += 1
+                    status = "replaced" if result.get("replaced") else "existing" if result["deduplicated"] else "uploaded"
+                    upload_report.record(outcome.path, status, sha256=hashes_by_path[outcome.path], pdf=latest_pdf)
                 progress.advance(upload_task, 1)
+                update_counts()
 
         # Preserve input order for force replacements. Only the coordinator
         # touches caches; a small preparation batch overlaps bounded uploads.
@@ -1137,27 +1169,23 @@ def upload_command(
                             continue
                         if identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
                             reason = identity.get("reason") or "No DOI found"
-                            failed.append(
-                                (
-                                    pdf_path,
-                                    f"{reason}. Confirm with: nv doi {pdf_path} --set DOI",
-                                )
-                            )
+                            record_failure(pdf_path, f"{reason}. Confirm with: nv doi {pdf_path} --set DOI")
                             continue
                         dois_by_path[pdf_path] = extracted
                         doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
                         upload_candidates.append(pdf_path)
                     except (RuntimeError, OSError, ValueError) as exc:
-                        failed.append((pdf_path, str(exc)))
+                        record_failure(pdf_path, exc)
                     finally:
                         if identity_cache_pending >= 25:
                             save_identity_cache(identity_cache)
                             identity_cache_pending = 0
                         progress.advance(task, 1)
+                        update_counts()
                 trusted_dois = [
                     dois_by_path[path]
                     for path in upload_candidates
-                    if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata"}
+                    if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata", "download-record"}
                 ]
                 existing_by_doi = get_existing_pdfs_by_doi(
                     trusted_dois,
@@ -1169,11 +1197,14 @@ def upload_command(
                         "filename",
                         "pdf-content",
                         "pdf-metadata",
+                        "download-record",
                     }
                     existing_pdf = None if automatic_source else existing_by_doi.get(dois_by_path[pdf_path])
                     if existing_pdf and not force:
                         latest_pdf = existing_pdf
                         skipped += 1
+                        upload_report.record(pdf_path, "existing", sha256=hashes_by_path[pdf_path], pdf=existing_pdf)
+                        update_counts()
                         sha256 = hashes_by_path[pdf_path]
                         if existing_pdf.get("sha256") != sha256:
                             aliases_to_register.append((sha256, dois_by_path[pdf_path]))
@@ -1204,7 +1235,10 @@ def upload_command(
             save_identity_cache(identity_cache)
 
 
+    upload_report.checkpoint(force=True, finished=True)
     parts = [
+        "Completed requests include failures and existing PDFs; only uploaded is new.",
+        f"report: {upload_report.path}",
         f"found paths: {len(pdfs)}",
         f"unique PDFs: {len(unique_pdf_paths)}",
         f"local duplicate paths: {local_duplicate_paths}",
@@ -1241,8 +1275,6 @@ def upload_command(
         title = latest_pdf.get("title") or latest_pdf["original_name"]
         parts.append(f"latest: {latest_pdf['doi']}  {title}")
     console.print("\n".join(parts))
-    for pdf_path, error in failed:
-        console.print(f"failed: {pdf_path}: {error}")
     if failed:
         raise typer.Exit(1)
 
