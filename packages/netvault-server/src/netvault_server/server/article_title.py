@@ -7,12 +7,15 @@ import unicodedata
 import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher
 from pathlib import Path
+from dataclasses import dataclass
+from statistics import median
 
 
 def normalized_title(value: str) -> str:
     value = html.unescape(unicodedata.normalize("NFKC", value)).casefold()
     value = value.translate({ord(c): None for c in "\u00ad\u200b\ufeff"})
     value = re.sub(r"<[^>]+>", "", value)
+    value = value.replace("&", " and ")
     value = re.sub(r"[‐‑‒–—]", "-", value)
     value = re.sub(r"-\s+", "", value)
     return " ".join(re.findall(r"\w+", value))
@@ -96,15 +99,146 @@ def heading_match_score(title: str | None, text: str) -> float | None:
         return 0.0
     best = 0.0
     for heading in headings:
+        # Character similarity alone can confuse different years, model numbers,
+        # or a negated title. Short titles require exact evidence.
+        if len(target.split()) < 5:
+            continue
+        if re.findall(r"\d+", target) != re.findall(r"\d+", heading):
+            continue
+        negatives = {"no", "not", "without", "non"}
+        if negatives.intersection(target.split()) != negatives.intersection(heading.split()):
+            continue
         matcher = SequenceMatcher(None, target, heading, autojunk=False)
         # Length bounds and quick ratios avoid expensive comparisons that cannot
         # meet the existing 0.88 acceptance threshold.
-        if matcher.real_quick_ratio() < max(best, 0.88):
+        if matcher.real_quick_ratio() < max(best, 0.92):
             continue
-        if matcher.quick_ratio() < max(best, 0.88):
+        if matcher.quick_ratio() < max(best, 0.92):
             continue
-        best = max(best, matcher.ratio())
+        ratio = matcher.ratio()
+        # Preserve word order and nearly all words; do not use bag-of-words
+        # similarity, which can accept a different study on the same subject.
+        target_words, heading_words = target.split(), heading.split()
+        changes = [(a, b) for a, b in zip(target_words, heading_words) if a != b]
+        one_glyph_error = (
+            len(target_words) == len(heading_words) and len(changes) == 1
+            and min(len(changes[0][0]), len(changes[0][1])) >= 7
+            and sum(max(a2 - a1, b2 - b1) for op, a1, a2, b1, b2 in
+                    SequenceMatcher(None, *changes[0], autojunk=False).get_opcodes()
+                    if op != "equal") == 1
+        )
+        if ratio >= 0.92 and one_glyph_error:
+            best = max(best, ratio)
     return best
+
+
+@dataclass(frozen=True)
+class LocalTitleEvidence:
+    title: str
+    page: int
+    prominence: float
+
+
+def layout_title_text(path: Path) -> str:
+    """Recover heading reading order when normal extraction interleaves columns.
+
+    Keep complete lines in the upper page region before abstract/body markers;
+    never search the full body as a fallback for a failed title match.
+    """
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-f", "1", "-l", "2", "-bbox-layout", str(path), "-"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        if result.returncode:
+            return ""
+        cleaned = result.stdout.translate({n: None for n in list(range(9)) + [11, 12] + list(range(14, 32))})
+        document = ET.fromstring(cleaned)
+        regions = []
+        for page in (p for p in document.iter() if p.tag.rsplit("}", 1)[-1] == "page"):
+            lines = []
+            boundary = float(page.attrib["height"]) * 0.45
+            body_started = False
+            for line in page.iter():
+                if line.tag.rsplit("}", 1)[-1] != "line":
+                    continue
+                words = [w for w in line if w.tag.rsplit("}", 1)[-1] == "word" and w.text]
+                value = " ".join(w.text for w in words)
+                y = float(line.attrib["yMin"])
+                normalized = normalized_title(value)
+                if re.match(r"^(?:abstract\b|keywords\b|references\b|bibliography\b|(?:1\s+)?introduction$)", normalized):
+                    boundary = min(boundary, y)
+                    body_started = True
+                lines.append((y, float(line.attrib["xMin"]), value))
+            lines.sort()
+            regions.append("\n".join(v for y, _, v in lines if y < boundary))
+            if body_started:
+                break
+        return "\f".join(regions[:2])
+    except (OSError, subprocess.SubprocessError, ET.ParseError, KeyError, ValueError):
+        return ""
+
+
+def local_title_evidence(path: Path, text: str) -> LocalTitleEvidence | None:
+    """Conservative, layout-backed article heading for pending metadata.
+
+    A guessed title or a filename is insufficient. Require a unique large-font
+    heading below an ISSN masthead, above the abstract, in the first two pages.
+    This intentionally supports fewer documents than registry-led matching.
+    """
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-f", "1", "-l", "2", "-bbox-layout", str(path), "-"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        if result.returncode:
+            return None
+        cleaned = result.stdout.translate({n: None for n in list(range(9)) + [11, 12] + list(range(14, 32))})
+        document = ET.fromstring(cleaned)
+        pages = [node for node in document.iter() if node.tag.rsplit("}", 1)[-1] == "page"][:2]
+        text_pages = text.split("\f", 2)[:2]
+        for index, page in enumerate(pages):
+            if index >= len(text_pages):
+                break
+            if index and re.search(r"(?im)^\s*(?:abstract|references|bibliography|(?:1[. ]+)?introduction)\b", text_pages[0]):
+                break
+            blocks = []
+            heights = []
+            for block in page.iter():
+                if block.tag.rsplit("}", 1)[-1] != "block":
+                    continue
+                words = [w for w in block.iter() if w.tag.rsplit("}", 1)[-1] == "word" and w.text]
+                if not words:
+                    continue
+                sizes = [float(w.attrib["yMax"]) - float(w.attrib["yMin"]) for w in words]
+                heights.extend(sizes)
+                # Keep numbers: stripping them can change a paper's identity.
+                value = " ".join(w.text for w in words)
+                blocks.append((float(block.attrib["yMin"]), median(sizes), value))
+            issn_y = [y for y, _, v in blocks if re.search(r"\bISSN\b", v, re.I)]
+            abstract_y = [y for y, _, v in blocks if re.match(r"abstract\b", v, re.I)]
+            if not heights or not issn_y or not abstract_y:
+                continue
+            eligible = []
+            for y, size, value in blocks:
+                normalized = normalized_title(value)
+                if not max(issn_y) < y < min(min(abstract_y), float(page.attrib["height"]) * 0.45):
+                    continue
+                if len(normalized.split()) < 4 or not 30 <= len(value) <= 300:
+                    continue
+                if re.search(r"https?://|@|\b(?:doi|issn|received|accepted|copyright)\b", value, re.I):
+                    continue
+                if (heading_match_score(value, text_pages[index]) or 0) != 1.0:
+                    continue
+                if size / median(heights) >= 1.25:
+                    eligible.append((size, value))
+            eligible.sort(reverse=True)
+            if eligible and (len(eligible) == 1 or eligible[0][0] >= 1.1 * eligible[1][0]):
+                size, value = eligible[0]
+                return LocalTitleEvidence(value, index + 1, size / median(heights))
+    except (OSError, subprocess.SubprocessError, ET.ParseError, KeyError, ValueError):
+        return None
+    return None
 
 
 def page_title(path: Path) -> str | None:

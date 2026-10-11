@@ -108,3 +108,21 @@ def test_verification_uses_metadata_heading_and_skips_title_guess_on_success(
             asyncio.run(helpers.verify_automatic_doi(evidence, tmp_path / "paper.pdf"))
         assert exc.value.status_code == 422
     assert calls == [DOI]
+
+
+@pytest.mark.parametrize('metadata,printed', [
+    ('Robust Capacity Planning with General Upgrading in 2025', 'Robust Capacity Planning with General Upgrading in 2026'),
+    ('Robust Capacity Planning with General Upgrading', 'Robust Capacity Planning without General Upgrading'),
+    ('Robust Capacity Planning', 'Robust Capacity Plannings'),
+    ('Demand Learning with General Upgrading and Capacity Planning', 'Capacity Planning and Demand Learning with General Upgrading'),
+])
+def test_similar_but_distinct_title_identity_is_rejected(metadata, printed):
+    from netvault_server.server.article_title import heading_match_score
+    assert (heading_match_score(metadata, printed + '\nAbstract. Body') or 0) < 0.88
+
+
+def test_long_heading_tolerates_one_small_text_extraction_error():
+    from netvault_server.server.article_title import heading_match_score
+    title = 'Dynamic Joint Assortment and Pricing Optimization with Demand Learning'
+    printed = 'Dynamic Joint Assortment and Pricing Optimizatlon with Demand Learning'
+    assert (heading_match_score(title, printed + '\nAbstract. Body') or 0) >= 0.92

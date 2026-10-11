@@ -1203,3 +1203,153 @@ def test_container_doi_is_rejected_even_when_journal_title_matches(client, monke
         status='ok', title='NetVault Journal', work_type='journal'))
     response = upload(client, login(client, 'admin', 'admin-pass'))
     assert response.status_code == 422
+
+
+def article_identity_pdf(*, title='Robust Capacity Planning with General Upgrading',
+                         doi=DOI, extra_doi=None, contact=True, title_size=18, marker=''):
+    """Renderable PDF: independent text and font geometry, not mocked scores."""
+    import io
+    from pypdf import PdfWriter
+    from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=800)
+    font = DictionaryObject({NameObject('/Type'): NameObject('/Font'),
+                             NameObject('/Subtype'): NameObject('/Type1'),
+                             NameObject('/BaseFont'): NameObject('/Helvetica')})
+    page[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'): DictionaryObject({NameObject('/F1'): font})})
+    lines = [(750, 10, 'NetVault Journal ISSN 1234-5678'),
+             (700, title_size, title), (675, 10, 'Ada Lovelace and Alan Turing')]
+    if contact:
+        lines.append((655, 10, 'Contact: ada@example.org'))
+    lines.append((635, 10, 'Received: January 1, 2026; Accepted: March 1, 2026'))
+    if doi:
+        lines.append((615, 10, f'https://doi.org/{doi}'))
+    if extra_doi:
+        lines.append((595, 10, f'DOI: {extra_doi}'))
+    lines.extend([(550, 10, 'Abstract. This is the body of the research article.'),
+                  (530, 10, marker or f'Reference DOI: {DOI}'),
+                  (510, 10, 'Introduction. Research results and discussion follow.')])
+    stream = DecodedStreamObject()
+    def escape(value):
+        return value.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+    stream.set_data('\n'.join(f'BT /F1 {size} Tf 1 0 0 1 45 {y} Tm ({escape(value)}) Tj ET'
+                              for y, size, value in lines).encode())
+    page[NameObject('/Contents')] = writer._add_object(stream)
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+@pytest.mark.parametrize('metadata_status', ['not_found', 'unavailable'])
+def test_layout_supported_article_uploads_pending_and_later_refreshes(client, monkeypatch, metadata_status):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    parser = importlib.import_module('netvault_server.server.doi')
+    monkeypatch.setattr(helpers, 'extract_pdf_text', parser.extract_pdf_text)
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(status=metadata_status))
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [])
+    headers = login(client, 'admin', 'admin-pass')
+    content = article_identity_pdf()
+    response = upload(client, headers, content=content)
+    assert response.status_code == 200, response.text
+    paper = response.json()['pdf']
+    assert paper['doi'] == DOI
+    assert paper['title'] == 'Robust Capacity Planning with General Upgrading'
+    assert paper['crossref_status'] == 'pending'
+    repeated = upload(client, headers, content=content)
+    assert repeated.status_code == 200
+    assert repeated.json()['deduplicated'] is True
+    assert repeated.json()['pdf']['crossref_status'] == 'pending'
+    models = importlib.import_module('netvault_server.server.models')
+    database = importlib.import_module('netvault_server.server.database')
+    with database.SessionLocal() as db:
+        stored = db.get(models.Pdf, paper['id'])
+        evidence = json.loads(stored.doi_evidence)
+        local = evidence['verification'][-1]
+        assert local['metadata_verified'] is False
+        assert local['title_page'] == 1
+        assert local['heading_prominence'] >= 1.25
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(
+        status='ok', title=paper['title'], authors='Ada Lovelace', published_year=2026))
+    refreshed = upload(client, headers, content=content)
+    assert refreshed.json()['pdf']['crossref_status'] == 'ok'
+    assert refreshed.json()['pdf']['authors'] == 'Ada Lovelace'
+
+
+@pytest.mark.parametrize('kwargs', [
+    {'doi': None}, {'extra_doi': '10.1234/another'}, {'contact': False}, {'title_size': 10},
+])
+def test_pending_identity_rejects_insufficient_or_ambiguous_pdf_evidence(client, monkeypatch, kwargs):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    parser = importlib.import_module('netvault_server.server.doi')
+    monkeypatch.setattr(helpers, 'extract_pdf_text', parser.extract_pdf_text)
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(status='not_found'))
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [])
+    response = upload(client, login(client, 'admin', 'admin-pass'),
+                      name=f'{DOI.replace("/", "_")}.pdf', content=article_identity_pdf(**kwargs))
+    assert response.status_code == 422, response.text
+
+
+def test_pending_identity_does_not_override_metadata_conflict_or_explicit_doi(client, monkeypatch):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    parser = importlib.import_module('netvault_server.server.doi')
+    monkeypatch.setattr(helpers, 'extract_pdf_text', parser.extract_pdf_text)
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [])
+    headers = login(client, 'admin', 'admin-pass')
+    content = article_identity_pdf()
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(
+        status='ok', title='A Completely Different Research Article', work_type='journal-article'))
+    assert upload(client, headers, content=content).status_code == 422
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(status='not_found'))
+    assert upload(client, headers, content=content, doi='10.1234/wrong').status_code == 422
+    assert upload(client, headers, content=content, force=True).status_code == 503
+
+
+def test_pending_identity_cannot_alias_a_different_file_to_existing_doi(client, monkeypatch):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    parser = importlib.import_module('netvault_server.server.doi')
+    monkeypatch.setattr(helpers, 'extract_pdf_text', parser.extract_pdf_text)
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(status='not_found'))
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [])
+    headers = login(client, 'admin', 'admin-pass')
+    assert upload(client, headers, content=article_identity_pdf()).status_code == 200
+    changed = upload(client, headers, content=article_identity_pdf(marker='Different contents.'))
+    assert changed.status_code == 409, changed.text
+
+
+def test_registry_title_can_recover_from_interleaved_text_using_layout(client, monkeypatch):
+    from dataclasses import replace
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    original_extract = helpers.extract_doi_evidence
+    title = 'Robust Capacity Planning with General Upgrading'
+    def interleaved(*args, **kwargs):
+        evidence = original_extract(*args, **kwargs)
+        return replace(evidence, pdf_text='Robust Capacity\nPublisher annotation\nPlanning with General Upgrading\nAbstract. Body')
+    monkeypatch.setattr(helpers, 'extract_doi_evidence', interleaved)
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(
+        status='ok', title=title, work_type='journal-article'))
+    response = upload(client, login(client, 'admin', 'admin-pass'), content=article_identity_pdf())
+    assert response.status_code == 200, response.text
+    models = importlib.import_module('netvault_server.server.models')
+    database = importlib.import_module('netvault_server.server.database')
+    with database.SessionLocal() as db:
+        evidence = json.loads(db.get(models.Pdf, response.json()['pdf']['id']).doi_evidence)
+        assert evidence['verification'][0]['title_match_method'] == 'heading-layout'
+        assert evidence['verification'][0]['title_match_score'] == 1.0
+
+
+def test_layout_recovery_cannot_match_title_in_article_body(client, monkeypatch):
+    helpers = importlib.import_module('netvault_server.server.main_helpers')
+    crossref = importlib.import_module('netvault_server.server.crossref')
+    parser = importlib.import_module('netvault_server.server.doi')
+    monkeypatch.setattr(helpers, 'extract_pdf_text', parser.extract_pdf_text)
+    title = 'A Completely Different Research Article'
+    monkeypatch.setattr(helpers, 'fetch_doi_metadata', lambda doi: crossref.CrossrefMetadata(
+        status='ok', title=title, work_type='journal-article'))
+    monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [])
+    response = upload(client, login(client, 'admin', 'admin-pass'), content=article_identity_pdf(marker=title))
+    assert response.status_code == 422, response.text

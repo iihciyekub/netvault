@@ -1,8 +1,6 @@
-import html
 import hashlib
 import json
 import re
-import unicodedata
 from dataclasses import replace
 from time import monotonic
 from difflib import SequenceMatcher
@@ -19,6 +17,8 @@ from netvault_server.server.doi import (
     extract_pdf_title,
     extract_doi_evidence,
     normalize_doi,
+    find_dois_in_text,
+    RAW_EXPLICIT_DOI_RE,
 )
 from netvault_server.server.models import Pdf, PdfFileAlias, UploadRecord, User, utc_now
 from netvault_server.server.schemas import PdfRead, UploadResponse
@@ -64,9 +64,16 @@ def pdf_to_read(pdf: Pdf) -> PdfRead:
 
 
 def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata, *, overwrite: bool = False) -> None:
+    locally_pending = pdf.crossref_status == "pending" and bool(pdf.title)
     pdf.crossref_status = metadata.status
     pdf.crossref_fetched_at = metadata.fetched_at or pdf.crossref_fetched_at
     if metadata.status != "ok":
+        if metadata.status == "pending" and metadata.provider == "pdf-local":
+            pdf.title = metadata.title or pdf.title
+        elif locally_pending:
+            # A failed refresh must not erase the locally established title or
+            # misrepresent a pending identity as externally verified.
+            pdf.crossref_status = "pending"
         return
     if overwrite:
         pdf.title = metadata.title
@@ -106,12 +113,8 @@ def doi_evidence_json(evidence, verification: list[dict] | None = None) -> str:
 
 
 def _normalized_title_text(value: str) -> str:
-    value = html.unescape(unicodedata.normalize("NFKC", value)).casefold()
-    value = re.sub(r"<[^>]+>", "", value)
-    value = re.sub(r"[‐‑‒–—]", "-", value)
-    value = re.sub(r"-\s+", "", value)
-    return " ".join(re.findall(r"[\w]+", value, flags=re.UNICODE))
-
+    from netvault_server.server.article_title import normalized_title
+    return normalized_title(value)
 
 def title_match_score(title: str | None, pdf_text: str) -> float | None:
     from netvault_server.server.article_title import heading_match_score
@@ -168,6 +171,7 @@ async def verify_automatic_doi(
     crossref_unavailable = False
     verified_registry_candidate = False
     candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
+    layout_text = None
 
     for candidate in candidates:
         metadata = await run_in_threadpool(fetch_doi_metadata, candidate.doi)
@@ -196,6 +200,17 @@ async def verify_automatic_doi(
             attempts.append(attempt)
             continue
         match_score = await run_in_threadpool(title_match_score, metadata.title, pdf_text)
+
+        attempt["title_match_method"] = "heading-text"
+        if match_score is not None and match_score < 0.88:
+            from netvault_server.server.article_title import layout_title_text
+            if layout_text is None:
+                layout_text = await run_in_threadpool(layout_title_text, path)
+            if layout_text:
+                layout_score = await run_in_threadpool(title_match_score, metadata.title, layout_text)
+                if layout_score is not None and layout_score > match_score:
+                    match_score = layout_score
+                    attempt["title_match_method"] = "heading-layout"
 
         attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
@@ -242,6 +257,25 @@ async def verify_automatic_doi(
                 reason=None,
             ),
             replace(metadata, canonical_doi=canonical_doi),
+            attempts,
+        )
+
+    # Missing registry metadata is distinct from conflicting metadata. Admit a
+    # locally supported identity as pending, never as an externally verified DOI.
+    pending = await run_in_threadpool(pending_pdf_identity, path, pdf_text, candidates, attempts)
+    if pending is not None:
+        local_doi, local_title, local_page, prominence = pending
+        attempts.append({
+            "doi": local_doi, "source": "pdf-local", "accepted": True,
+            "metadata_status": "pending", "metadata_verified": False,
+            "local_title": local_title, "title_page": local_page,
+            "heading_prominence": round(prominence, 3),
+            "reason": "Unique printed DOI and prominent article heading; external metadata pending",
+        })
+        return (
+            replace(evidence, status="ok", doi=local_doi, source="pdf-content", reason=None),
+            CrossrefMetadata(status="pending", canonical_doi=local_doi,
+                             title=local_title, provider="pdf-local"),
             attempts,
         )
 
@@ -299,6 +333,48 @@ async def verify_automatic_doi(
     if publisher_url:
         detail += "; a candidate appeared only in a publisher download URL"
     raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
+
+
+def pending_pdf_identity(path, text, candidates, attempts):
+    from netvault_server.server.article_title import local_title_evidence
+
+    layout = local_title_evidence(path, text)
+    if layout is None:
+        return None
+    page = text.split("\f", 2)[layout.page - 1]
+    header = re.split(
+        r"(?im)^\s*(?:abstract\b|keywords\b|references\b|bibliography\b|to cite this article\b)",
+        page, maxsplit=1,
+    )[0]
+    # A publication masthead, publication history and author contact information
+    # independently support this local article identity. References and embedded
+    # download links cannot establish it.
+    if not re.search(r"\bISSN\s+\d{4}-[\dX]{4}\b", header, re.I):
+        return None
+    if not re.search(r"\b(?:received|accepted|published|copyright)\b", header, re.I):
+        return None
+    if not re.search(r"[\w.+-]+@[\w.-]+\.\w+|orcid\.org/\d", header, re.I):
+        return None
+    printed = set(find_dois_in_text(header))
+    if len(printed) != 1:
+        return None
+    doi = next(iter(printed))
+    # The DOI must stand on its own labelled line, not inside a citation or prose.
+    labelled = any(
+        RAW_EXPLICIT_DOI_RE.fullmatch(line.strip()) and doi in find_dois_in_text(line)
+        for line in header.splitlines()
+    )
+    if not labelled or doi.startswith("10.17605/osf.io/"):
+        return None
+    if not any(candidate.doi == doi for candidate in candidates):
+        return None
+    explicit = {c.doi for c in candidates if c.source == "explicit"}
+    if explicit and explicit != {doi}:
+        return None
+    relevant = [attempt for attempt in attempts if attempt["doi"] == doi]
+    if not relevant or any(a.get("metadata_status") not in {"not_found", "unavailable"} for a in relevant):
+        return None
+    return doi, layout.title, layout.page, layout.prominence
 
 
 def add_upload_record(
@@ -462,6 +538,12 @@ async def process_upload(
             )
         normalized_doi = evidence.doi
 
+        if force and verified_metadata is not None and verified_metadata.status != "ok":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Force upload requires externally verified DOI metadata",
+            )
+
         persist_started = monotonic()
         # Different byte hashes can resolve to the same DOI concurrently. Serialize
         # the lookup/create decision even when the DOI row does not exist yet.
@@ -549,6 +631,7 @@ async def process_upload(
             and pdf_by_doi.sha256 != sha256
             and automatic_resolution
             and verified_metadata is not None
+            and verified_metadata.status == "ok"
             and not force
         ):
             if alias_pdf_id is None:

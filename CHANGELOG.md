@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.31 — 2026-10-11
+
+- Recover interleaved heading text using bounded layout coordinates on the first two PDF pages; parse layout at most once for registry title matching per upload.
+- Keep numeric identity and negation intact, require exact short titles, and restrict fuzzy matching to one small extraction error in a long word.
+- Store articles with missing or unavailable external DOI metadata as pending only when a unique labelled DOI, a prominent heading, ISSN, publication history and author contact evidence agree within the PDF.
+- Retain local pending titles during unsuccessful refreshes; known metadata conflicts, ambiguous printed DOIs and reference-only identities remain rejected.
+- Require external metadata verification for force replacement and automatic aliases between different file hashes.
+
 ## 0.7.30 — 2026-10-11
 
 - Verify DOI metadata titles directly against bounded heading regions on PDF pages one and two, including publisher covers and relocated subtitles.
