@@ -123,7 +123,7 @@ def _ordered_automatic_candidates(
     client_doi: str | None,
     client_source: str | None,
 ) -> list[DoiCandidate]:
-    source_order = {"explicit": -1, "download-record": 0, "pdf-metadata": 1, "filename": 2, "pdf-content": 3}
+    source_order = {"explicit": -1, "download-record": 0, "pdf-metadata": 1, "pdf-content": 2, "filename": 3}
     candidates = list(evidence.candidates)
     if client_doi and not any(candidate.doi == client_doi for candidate in candidates):
         candidates.append(
@@ -136,12 +136,14 @@ def _ordered_automatic_candidates(
         )
     candidates.sort(
         key=lambda candidate: (
-            candidate.source not in {"explicit", "download-record"},
+            # A DOI from references or a raw low-confidence artifact must
+            # not outrank a plausible filename hint.
+            4 if candidate.source == "pdf-content" and candidate.score < 50
+            else source_order.get(candidate.source, 9),
             candidate.embedded_publisher_url,
+            "page-1" not in candidate.detail if candidate.source == "pdf-content" else False,
             -candidate.score,
-            "page-1" not in candidate.detail,
             candidate.doi != client_doi,
-            source_order.get(candidate.source, 9),
             candidate.doi,
         )
     )
@@ -164,6 +166,7 @@ async def verify_automatic_doi(
     pdf_text = evidence.pdf_text or await run_in_threadpool(extract_pdf_text, path)
     attempts: list[dict] = []
     crossref_unavailable = False
+    verified_registry_candidate = False
     candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
     document_title = await run_in_threadpool(extract_pdf_title, path)
 
@@ -181,6 +184,8 @@ async def verify_automatic_doi(
             attempt["reason"] = "DOI metadata provider unavailable"
             attempts.append(attempt)
             continue
+        if metadata.status in {"ok", "not_found"}:
+            verified_registry_candidate = True
         if metadata.status != "ok":
             attempt["accepted"] = False
             attempt["reason"] = "DOI not found by metadata providers"
@@ -287,10 +292,10 @@ async def verify_automatic_doi(
                             candidates=[*evidence.candidates, candidate], reason=None),
                     replace(metadata, canonical_doi=canonical), attempts)
 
-    if crossref_unavailable:
+    if crossref_unavailable and not verified_registry_candidate:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="DOI metadata provider was unavailable and no candidate could be verified",
+            detail="DOI metadata providers were unavailable; retry when connectivity recovers",
         )
     publisher_url = any(candidate.embedded_publisher_url for candidate in candidates)
     detail = "No DOI candidate could be verified against metadata and the PDF title"

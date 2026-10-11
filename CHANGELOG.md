@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.29 — 2026-10-11
+
+- Prioritize verified CSV/download-index DOI hints, embedded PDF metadata and first-page/second-page DOI evidence ahead of filename guesses.
+- Correctly strip known double-hyphen hexadecimal download fingerprints from DOI-based filenames without altering stored PDFs.
+- Extract article headings below publisher ISSN/journal mastheads, handling invalid Poppler XML control glyphs and fallback to page two.
+- Keep reference-only DOI evidence behind filename fallbacks, enforce metadata title verification, and distinguish mismatched DOI candidates from provider outages.
+- Refresh stale automatic DOI identity caches by bumping the resolver version; add regression tests for actual failure patterns.
+
 ## 0.7.28 — 2026-10-11
 
 - Replace the top navigation with a compact icon-only sidebar, simplify Help, and expose administrators' last successful login timestamps.

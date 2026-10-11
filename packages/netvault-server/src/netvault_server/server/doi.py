@@ -104,10 +104,16 @@ def find_metadata_dois_in_text(text: str) -> list[DoiCandidate]:
 
 def find_filename_doi_from_name(filename: str) -> DoiCandidate | None:
     path = Path(filename)
-    direct = find_doi_in_text(path.stem)
+    # Our PDF download workflow appends --<8-16 hex fingerprint> to renamed
+    # files. This suffix is not part of the article DOI. Restrict removal to
+    # recognized DOI-leading filenames and a full hex suffix.
+    stem = path.stem
+    if re.match(r"^10[._]\d{4,9}[_/.-]", stem, re.I):
+        stem = re.sub(r"--[0-9a-f]{8,16}$", "", stem, flags=re.I)
+    direct = find_doi_in_text(stem)
     if direct:
         return DoiCandidate(direct, "filename", path.name, 90)
-    safe_name = re.match(r"^10[._](\d{4,9})[_-](.+)$", path.stem, re.IGNORECASE)
+    safe_name = re.match(r"^10[._](\d{4,9})[_-](.+)$", stem, re.IGNORECASE)
     if safe_name:
         try:
             return DoiCandidate(normalize_doi(f"10.{safe_name.group(1)}/{safe_name.group(2)}"), "filename", path.name, 90)
@@ -512,29 +518,19 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         best = choose_candidate(candidates, candidate_doi)
         if best:
             scored_dois.append((candidate_doi, best.score, best.source))
-    scored_dois.sort(key=lambda row: (row[1], DOI_SOURCE_RANK.get(row[2], 0)), reverse=True)
+    scored_dois.sort(key=lambda row: (DOI_SOURCE_RANK.get(row[2], 0), row[1]), reverse=True)
 
     doi = None
     source = None
     if filename_doi:
-        metadata_conflict = next(
-            (
-                metadata_doi
-                for metadata_doi in metadata_dois
-                if not doi_matches(filename_doi, metadata_doi)
-            ),
-            None,
-        )
-        if metadata_conflict:
-            return resolved(
-                "conflict",
-                None,
-                None,
-                candidates,
-                "Filename DOI conflicts with PDF metadata DOI",
-            )
+        # Filename evidence is the final fallback. A mismatching filename must
+        # not override an unambiguous embedded DOI; independent server-side
+        # title verification will decide between all candidate identities.
         if filename_matched:
             doi = filename_matched
+            source = choose_source(candidates, doi)
+        elif len(metadata_dois) == 1:
+            doi = metadata_dois[0]
             source = choose_source(candidates, doi)
         else:
             strong_content = [

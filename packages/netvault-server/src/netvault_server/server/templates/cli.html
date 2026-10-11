@@ -100,7 +100,7 @@
           <button class="copy-button" type="button" data-copy="nv upload ./papers" aria-label="Copy folder upload command"><span data-copy-label>Copy</span></button>
         </div>
       </div>
-      <p class="command-help-gap"><strong>How DOI matching works:</strong> NetVault checks the CSV's SHA-256 first, so a renamed PDF can still be identified. It then tries the original filename and file size, or a unique article title on the PDF's first page. Without a safe match, it tries normal PDF DOI extraction. Ambiguous matches are not guessed; CSV-based DOI hints are verified by the server during upload. The PDF filenames stay unchanged.</p>
+      <p class="command-help-gap"><strong>How DOI matching works:</strong> NetVault checks the CSV's SHA-256 first, so a renamed PDF can still be identified. It then tries the original filename and file size, or a unique article title on the PDF's first page. Without a safe CSV match, NetVault checks PDF metadata, then the first two pages, and only then the filename. It recognizes known double-hyphen fingerprint suffixes on renamed files. The server verifies candidate DOIs against article titles; reference-only DOIs are not treated as article identities. Ambiguous matches are not guessed. The PDF filenames stay unchanged.</p>
       <details class="command-advanced">
         <summary>More options: CSV in another folder, single PDFs, or manual DOI</summary>
         <div class="command-list">

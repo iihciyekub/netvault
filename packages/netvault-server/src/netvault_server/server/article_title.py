@@ -60,50 +60,91 @@ def heading_match_score(title: str | None, text: str) -> float | None:
 
 
 def page_title(path: Path) -> str | None:
-    """Use first-page text geometry so content-stream order cannot hide a title."""
+    """Find the article heading, ignoring journal mastheads before the ISSN.
+
+    Inspect at most two pages. A publisher's first block frequently contains
+    the *journal* name; when an ISSN/homepage masthead follows that name,
+    choose the first plausible heading below the masthead instead.
+    """
     try:
         result = subprocess.run(
-            ["pdftotext", "-f", "1", "-l", "1", "-bbox-layout", str(path), "-"],
+            ["pdftotext", "-f", "1", "-l", "2", "-bbox-layout", str(path), "-"],
             capture_output=True, text=True, timeout=10, check=False,
         )
         if result.returncode:
             return None
-        document = ET.fromstring(result.stdout)
+        # Poppler sometimes emits XML-invalid control glyphs from PDF fonts.
+        cleaned = result.stdout.translate({n: None for n in list(range(9)) + [11, 12] + list(range(14, 32))})
+        document = ET.fromstring(cleaned)
     except (OSError, subprocess.SubprocessError, ET.ParseError):
         return None
-    candidates = []
-    for block in document.iter():
-        if block.tag.rsplit("}", 1)[-1] != "block":
-            continue
-        words = [w for w in block.iter() if w.tag.rsplit("}", 1)[-1] == "word" and w.text]
-        if not words:
-            continue
-        pieces = []
-        previous = None
-        for word in words:
-            if word.text.isdigit() and len(word.text) <= 2:
+
+    for page in (node for node in document.iter() if node.tag.rsplit("}", 1)[-1] == "page"):
+        blocks = []
+        for block in page.iter():
+            if block.tag.rsplit("}", 1)[-1] != "block":
                 continue
-            if previous is not None:
-                gap = float(word.attrib["xMin"]) - float(previous.attrib["xMax"])
-                same_line = abs(float(word.attrib["yMin"]) - float(previous.attrib["yMin"])) < 5
-                pieces.append("" if same_line and gap < 1 else " ")
-            pieces.append(word.text)
-            previous = word
-        text = "".join(pieces).strip()
-        label = normalized_title(text)
-        if len(label) < 12 or len(label.split()) < 2 or len(text) > 300:
+            words = [word for word in block.iter()
+                     if word.tag.rsplit("}", 1)[-1] == "word" and word.text]
+            if not words:
+                continue
+            pieces = []
+            previous = None
+            for word in words:
+                if word.text.isdigit() and len(word.text) <= 2:
+                    continue
+                if previous is not None:
+                    gap = float(word.attrib["xMin"]) - float(previous.attrib["xMax"])
+                    same_line = abs(float(word.attrib["yMin"]) - float(previous.attrib["yMin"])) < 5
+                    pieces.append("" if same_line and gap < 1 else " ")
+                pieces.append(word.text)
+                previous = word
+            value = "".join(pieces).strip()
+            try:
+                y = float(block.attrib["yMin"])
+            except (KeyError, ValueError):
+                continue
+            if value:
+                blocks.append((y, value))
+        blocks.sort(key=lambda item: item[0])
+        if not blocks:
             continue
-        if re.match(r"^(research\b|methods article|special issue|theory (?:and )?review|issues (?:and )?opinions|abstract|keywords|doi|accepted manuscript)", label):
-            continue
-        if label.replace(" ", "") in {"researcharticle", "researchnote", "misquarterly", "misquarterlyexecutive", "informationsystemsresearch", "revistadeadministraçãoimed", "taylorfrancis"}:
-            continue
-        if "@" in text or re.search(r"\bet al\b|\bvol(?:ume)?\b.*\d|https?://|[A-Za-z]:\\", text, re.IGNORECASE):
-            continue
-        try:
-            y = float(block.attrib["yMin"])
-        except (KeyError, ValueError):
-            continue
-        candidates.append((-y, text))
-    if not candidates:
-        return None
-    return max(candidates)[1]
+
+        masthead_end = None
+        citation_start = float("inf")
+        for y, value in blocks:
+            label = normalized_title(value)
+            if re.search(r"\bissn\b|journal homepage", label):
+                masthead_end = y
+            if re.match(r"^to cite this article\b", label):
+                citation_start = min(citation_start, y)
+        for y, value in blocks:
+            label = normalized_title(value)
+            if len(label) < 12 or len(label.split()) < 2 or len(value) > 300:
+                continue
+            if re.match(
+                r"^(?:issn\b|journal homepage|to cite this article\b|to link to this article\b|"
+                r"published online\b|submit your article\b|article views\b|view related articles\b|"
+                r"citing articles\b|full terms|research\b|methods article|special issue|"
+                r"theory (?:and )?review|issues (?:and )?opinions|abstract\b|keywords\b|"
+                r"doi\b|accepted manuscript)",
+                label,
+            ):
+                continue
+            if label.replace(" ", "") in {
+                "researcharticle", "researchnote", "misquarterly",
+                "misquarterlyexecutive", "informationsystemsresearch",
+                "revistadeadministraçãoimed", "taylorfrancis",
+            }:
+                continue
+            if "@" in value or re.search(
+                r"\bet al\b|\bvol(?:ume)?\b.*\d|https?://|[A-Za-z]:\\\\",
+                value, re.IGNORECASE,
+            ):
+                continue
+            if masthead_end is not None and y <= masthead_end:
+                continue
+            if y >= citation_start:
+                continue
+            return value
+    return None

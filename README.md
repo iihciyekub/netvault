@@ -264,6 +264,16 @@ nv upload ./papers --csv ./cli-downloads.csv --dry-run
 nv upload ./papers --no-index
 ```
 
+Automatic DOI hints follow this priority: a securely matched
+`cli-downloads.csv` / SHA-256 download index, explicit DOI fields in the PDF's
+embedded metadata, DOI evidence on its first two pages, and only then its
+filename. The server checks each candidate against article metadata and the
+paper's first-page heading. DOI strings found only in references receive lower
+confidence; a matching filename never overrides verified PDF evidence.
+Renamed files with a known `--<hex fingerprint>` suffix are recognized.
+Use `nv upload . --retry-failed` after a transient identity error to retry
+previously failed or pending files from `nv-upload-report.json`.
+
 Change the sibling filenames in `~/.config/netvault/config.toml`:
 
 ```toml

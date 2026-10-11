@@ -28,8 +28,8 @@ DOI_METADATA_PATTERNS = [
         re.IGNORECASE,
     )
 ]
-DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 7
+DOI_SOURCE_RANK = {"filename": 2, "pdf-content": 3, "pdf-metadata": 5, "explicit": 6}
+DOI_RESOLVER_VERSION = 8
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 
@@ -104,10 +104,14 @@ def find_metadata_dois_in_text(text: str) -> list[DoiCandidate]:
 
 def find_filename_doi_from_name(filename: str) -> DoiCandidate | None:
     path = Path(filename)
-    direct = find_doi_in_text(path.stem)
+    stem = path.stem
+    if re.match(r"^10[._]\d{4,9}[_/.-]", stem, re.I):
+        # Strip only the known --8..16-hex fingerprint added by PDF downloads.
+        stem = re.sub(r"--[0-9a-f]{8,16}$", "", stem, flags=re.I)
+    direct = find_doi_in_text(stem)
     if direct:
         return DoiCandidate(direct, "filename", path.name, 90)
-    safe_name = re.match(r"^10[._](\d{4,9})[_-](.+)$", path.stem, re.IGNORECASE)
+    safe_name = re.match(r"^10[._](\d{4,9})[_-](.+)$", stem, re.IGNORECASE)
     if safe_name:
         try:
             return DoiCandidate(normalize_doi(f"10.{safe_name.group(1)}/{safe_name.group(2)}"), "filename", path.name, 90)
@@ -468,29 +472,17 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
         best = choose_candidate(candidates, candidate_doi)
         if best:
             scored_dois.append((candidate_doi, best.score, best.source))
-    scored_dois.sort(key=lambda row: (row[1], DOI_SOURCE_RANK.get(row[2], 0)), reverse=True)
+    scored_dois.sort(key=lambda row: (DOI_SOURCE_RANK.get(row[2], 0), row[1]), reverse=True)
 
     doi = None
     source = None
     if filename_doi:
-        metadata_conflict = next(
-            (
-                metadata_doi
-                for metadata_doi in metadata_dois
-                if not doi_matches(filename_doi, metadata_doi)
-            ),
-            None,
-        )
-        if metadata_conflict:
-            return DoiEvidence(
-                "conflict",
-                None,
-                None,
-                candidates,
-                "Filename DOI conflicts with PDF metadata DOI",
-            )
+        # Filename hints cannot veto a DOI actually present in the PDF.
         if filename_matched:
             doi = filename_matched
+            source = choose_source(candidates, doi)
+        elif len(metadata_dois) == 1:
+            doi = metadata_dois[0]
             source = choose_source(candidates, doi)
         else:
             strong_content = [

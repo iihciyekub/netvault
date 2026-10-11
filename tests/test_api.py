@@ -468,12 +468,13 @@ def test_automatic_resolution_falls_back_from_filename_to_pdf_content(
     assert response.status_code == 200
     assert response.json()["pdf"]["doi"] == correct_doi
     assert response.json()["pdf"]["doi_source"] == "pdf-content"
-    assert calls == [wrong_filename_doi, correct_doi]
+    # Content DOI wins; the filename hint is only a final fallback.
+    assert calls == [correct_doi]
 
     detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": correct_doi})
     verification = json.loads(detail.json()["doi_evidence"])["verification"]
-    assert verification[0]["reason"] == "DOI not found by metadata providers"
-    assert verification[1]["accepted"] is True
+    assert verification[0]["doi"] == correct_doi
+    assert verification[0]["accepted"] is True
 
 
 def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
@@ -510,8 +511,8 @@ def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
     assert response.json()["pdf"]["doi"] == correct_doi
     detail = client.get("/pdfs/by-doi", headers=headers, params={"doi": correct_doi})
     attempts = json.loads(detail.json()["doi_evidence"])["verification"]
-    assert attempts[0]["reason"] == "Metadata title does not match the PDF"
-    assert attempts[1]["accepted"] is True
+    assert attempts[0]["doi"] == correct_doi
+    assert attempts[0]["accepted"] is True
 
 
 @pytest.mark.parametrize("pdf_text,expected", [
