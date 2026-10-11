@@ -522,11 +522,12 @@ def test_automatic_resolution_rejects_crossref_title_mismatch_before_fallback(
     ("Management Science\nAnother Article\nAbstract. We document an OTC discount.", 0.0),
     ("Management Science\nAnother Article\nAbstract. Article body\nOTC Discount", 0.0),
     ("Another Article\nReferences\nOTC Discount", 0.0),
-    ("Another Article\nArticle authors\fOTC Discount\nSecond page", 0.0),
+    ("Publisher cover\fOTC Discount\nArticle authors\nAbstract. Body", 1.0),
+    ("Another Article\nAbstract. Body\fOTC Discount\nSecond page", 0.0),
     ("Management Science\nOTC Discounting\nArticle authors", 0.0),
     ("", 0.0),
 ])
-def test_short_titles_require_exact_first_page_headings(pdf_text, expected):
+def test_short_titles_require_exact_title_page_headings(pdf_text, expected):
     from netvault_server.server.main_helpers import title_match_score
     assert title_match_score("OTC Discount", pdf_text) == expected
 

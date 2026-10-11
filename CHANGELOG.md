@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Verify DOI metadata titles directly against bounded heading regions on PDF pages one and two, including publisher covers and relocated subtitles.
+- Normalize line wrapping, punctuation, soft hyphens and ligatures; keep short titles exact and long-title fuzzy matching conservative.
+- Stop at article body, reference sections and citation instructions, and skip page two once page one has entered the article body.
+- Avoid geometric title guessing and additional metadata requests when DOI-led title verification succeeds; invitation labels cannot override a matching article title.
+
 ## 0.7.29 — 2026-10-11
 
 - Prioritize verified CSV/download-index DOI hints, embedded PDF metadata and first-page/second-page DOI evidence ahead of filename guesses.

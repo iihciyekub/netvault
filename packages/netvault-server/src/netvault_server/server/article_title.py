@@ -1,4 +1,4 @@
-"""First-page heading evidence; cited titles in the body are not article identities."""
+"""Metadata-led title verification in the first two PDF pages."""
 
 import html
 import re
@@ -11,6 +11,7 @@ from pathlib import Path
 
 def normalized_title(value: str) -> str:
     value = html.unescape(unicodedata.normalize("NFKC", value)).casefold()
+    value = value.translate({ord(c): None for c in "\u00ad\u200b\ufeff"})
     value = re.sub(r"<[^>]+>", "", value)
     value = re.sub(r"[‐‑‒–—]", "-", value)
     value = re.sub(r"-\s+", "", value)
@@ -30,32 +31,79 @@ def primary_title_score(metadata_title: str | None, document_title: str) -> floa
     return SequenceMatcher(None, target, heading).ratio()
 
 
+def _title_regions(text: str) -> list[list[str]]:
+    """Bound matching to heading lines, including a title after a cover page.
+
+    Once page one reaches article body or references, page two is continuation
+    text rather than another title page. Citation instructions are also excluded.
+    """
+    regions = []
+    for page in text.split("\f", 2)[:2]:
+        lines = []
+        body_started = False
+        for raw_line in page.splitlines():
+            line = normalized_title(raw_line)
+            if not line:
+                continue
+            if re.match(
+                r"^(?:\d+(?:\s+\d+)*\s+)?(?:abstract\b|keywords\b|"
+                r"introduction$|references\b|bibliography\b|acknowledgments?\b)",
+                line,
+            ):
+                body_started = True
+                break
+            if re.match(r"^to cite this article\b", line):
+                break
+            if len(lines) < 40:
+                lines.append(line)
+        if lines:
+            regions.append(lines)
+        if body_started:
+            break
+    return regions
+
+
 def heading_match_score(title: str | None, text: str) -> float | None:
-    first_page = text.split("\f", 1)[0]
     target = normalized_title(title or "")
-    if not first_page.strip():
+    if not any(page.strip() for page in text.split("\f", 2)[:2]):
         return 0.0 if len(target.replace(" ", "")) < 12 else None
     if len(target) < 2:
         return 0.0
-    lines = []
-    for line in first_page.splitlines():
-        line = normalized_title(line)
-        if not line:
-            continue
-        if re.match(r"^(?:\d+\s+)?(?:abstract|introduction|references|bibliography)\b", line):
-            break
-        lines.append(line)
-        if len(lines) >= 40:
-            break
+    compact_target = target.replace(" ", "")
+    parts = re.split(r"[:：]", html.unescape(title or ""), maxsplit=1)
+    # Publishers sometimes print a metadata subtitle as a label above the main
+    # heading. Require both substantial components exactly on the same title page.
+    subtitle_parts = (
+        [normalized_title(part).replace(" ", "") for part in parts]
+        if len(parts) == 2 and all(len(normalized_title(part).split()) >= 4 for part in parts)
+        else []
+    )
+    headings = []
+    # Whole heading lines prevent a cited title inside prose from proving identity.
+    # At most 2 * 40 * 8 windows, with an exact-match fast path before fuzzy work.
+    for lines in _title_regions(text):
+        page_headings = set()
+        for start in range(len(lines)):
+            for width in range(1, min(8, len(lines) - start) + 1):
+                heading = " ".join(lines[start:start + width])
+                if compact_target == heading.replace(" ", ""):
+                    return 1.0
+                page_headings.add(heading.replace(" ", ""))
+                headings.append(heading)
+        if subtitle_parts and all(part in page_headings for part in subtitle_parts):
+            return 1.0
+    if len(compact_target) < 12:
+        return 0.0
     best = 0.0
-    # Compare entire heading lines, never a sliding token window inside prose.
-    for start in range(len(lines)):
-        for width in range(1, min(8, len(lines) - start) + 1):
-            heading = " ".join(lines[start:start + width])
-            if target.replace(" ", "") == heading.replace(" ", ""):
-                return 1.0
-            if len(target.replace(" ", "")) >= 12:
-                best = max(best, SequenceMatcher(None, target, heading).ratio())
+    for heading in headings:
+        matcher = SequenceMatcher(None, target, heading, autojunk=False)
+        # Length bounds and quick ratios avoid expensive comparisons that cannot
+        # meet the existing 0.88 acceptance threshold.
+        if matcher.real_quick_ratio() < max(best, 0.88):
+            continue
+        if matcher.quick_ratio() < max(best, 0.88):
+            continue
+        best = max(best, matcher.ratio())
     return best
 
 

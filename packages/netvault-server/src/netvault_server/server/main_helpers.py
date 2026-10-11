@@ -168,7 +168,6 @@ async def verify_automatic_doi(
     crossref_unavailable = False
     verified_registry_candidate = False
     candidates = _ordered_automatic_candidates(evidence, client_doi, client_source)
-    document_title = await run_in_threadpool(extract_pdf_title, path)
 
     for candidate in candidates:
         metadata = await run_in_threadpool(fetch_doi_metadata, candidate.doi)
@@ -197,11 +196,6 @@ async def verify_automatic_doi(
             attempts.append(attempt)
             continue
         match_score = await run_in_threadpool(title_match_score, metadata.title, pdf_text)
-        if document_title:
-            from netvault_server.server.article_title import primary_title_score
-            heading_score = primary_title_score(metadata.title, document_title)
-            # Geometric title extraction is stronger than a title cited in prose.
-            match_score = heading_score
 
         attempt["metadata_title"] = metadata.title
         attempt["title_match_score"] = match_score
@@ -253,6 +247,9 @@ async def verify_automatic_doi(
 
     # Search only for automatic identities. Require title, journal, year and author
     # corroboration in the PDF, and reject ambiguous matches rather than picking rank 1.
+    # Guess a document title only after DOI-led verification fails; a masthead or
+    # invitation label must never override a verified metadata title.
+    document_title = await run_in_threadpool(extract_pdf_title, path)
     if document_title and not any(c.source == "explicit" for c in candidates) and (
         await run_in_threadpool(title_match_score, document_title, pdf_text) or 0
     ) >= 0.98:
