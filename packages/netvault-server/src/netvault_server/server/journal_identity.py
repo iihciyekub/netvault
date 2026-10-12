@@ -26,7 +26,7 @@ def journal_display_name(value: str | None) -> str | None:
 
 def normalize_issn(value: str | None) -> str | None:
     digits = re.sub(r"[\s-]", "", value or "").upper()
-    if not re.fullmatch(r"\d{7}[\dX]", digits):
+    if not re.fullmatch(r"[0-9]{7}[0-9X]", digits):
         return None
     check = 10 if digits[-1] == "X" else int(digits[-1])
     if (sum(int(v) * weight for v, weight in zip(digits[:7], range(8, 1, -1))) + check) % 11:

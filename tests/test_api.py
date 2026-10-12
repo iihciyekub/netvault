@@ -63,6 +63,74 @@ def login(client: TestClient, username: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_issn_csv_exports_complete_journal_inventory_with_current_hashes(client):
+    import csv
+    import io
+
+    assert client.get("/pdfs/export", params={"issn": "0025-1909"}).status_code == 401
+    admin_headers = login(client, "admin", "admin-pass")
+    client.post("/admin/users", headers=admin_headers,
+                json={"username": "export-user", "password": "export-password", "role": "user"})
+    headers = login(client, "export-user", "export-password")
+    models = importlib.import_module("netvault_server.server.models")
+    database = importlib.import_module("netvault_server.server.database")
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        db.add_all([models.JournalCanonical(canonical_name=name) for name in (
+            "MANAGEMENT SCIENCE", "EMPTY JOURNAL", "HISTORICAL TITLE",
+        )])
+        db.flush()
+        db.add_all([models.JournalIssn(issn=issn, canonical_name=name, evidence_json="{}")
+                    for issn, name in (
+                        ("0025-1909", "MANAGEMENT SCIENCE"), ("1526-5501", "MANAGEMENT SCIENCE"),
+                        ("0742-6046", "EMPTY JOURNAL"), ("0899-1499", "HISTORICAL TITLE"),
+                    )])
+        db.flush()
+        def paper(number, name, issns=None, deleted=False):
+            return models.Pdf(
+                doi=f"10.1234/export.{number:04d}", sha256=f"{number:064x}",
+                original_name="paper.pdf", size=10, storage_path="unused",
+                uploaded_by_id=admin.id, container_title=name,
+                journal_issns_json=json.dumps(issns) if issns is not None else None,
+                is_deleted=deleted,
+            )
+        db.add_all([paper(i, "Management Science") for i in range(1, 551)])
+        db.add_all([
+            paper(551, "A source alias", ["0025-1909"]),
+            paper(552, "An online variant", ["1526-5501"]),
+            paper(553, "Management Science", deleted=True),
+            paper(554, "An unregistered journal", ["1932-6203"]),
+            paper(555, "Historical Title", ["0899-1499"]),
+            paper(556, "Management Science", ["1932-6203"]),
+        ])
+        db.commit()
+        first = db.query(models.Pdf).filter_by(doi="10.1234/export.0001").one()
+        db.add(models.PdfFileAlias(sha256="f" * 64, pdf_id=first.id,
+                                  source="test", asserted_by_id=admin.id))
+        db.commit()
+    printed = client.get("/pdfs/export", headers=headers, params={"issn": "00251909"})
+    electronic = client.get("/pdfs/export", headers=headers, params={"issn": "1526-5501"})
+    assert printed.status_code == electronic.status_code == 200
+    assert printed.content == electronic.content
+    assert printed.headers["x-netvault-rows"] == "552"
+    assert printed.headers["x-netvault-issn"] == "0025-1909"
+    assert "netvault-0025-1909.csv" in printed.headers["content-disposition"]
+    rows = list(csv.DictReader(io.StringIO(printed.text)))
+    assert len(rows) == 552
+    assert rows == [{"doi": f"10.1234/export.{i:04d}", "sha256": f"{i:064x}"}
+                    for i in range(1, 553)]
+    direct = client.get("/pdfs/export", headers=headers, params={"issn": "1932-6203"})
+    assert direct.status_code == 200
+    assert direct.headers["x-netvault-rows"] == "2"
+    empty = client.get("/pdfs/export", headers=headers, params={"issn": "0742-6046"})
+    assert empty.status_code == 200
+    assert empty.text == "doi,sha256\r\n"
+    assert empty.headers["x-netvault-rows"] == "0"
+    assert client.get("/pdfs/export", headers=headers, params={"issn": "0732-2399"}).status_code == 404
+    for invalid in ("0025-1900", "invalid", "００２５１９０９"):
+        assert client.get("/pdfs/export", headers=headers, params={"issn": invalid}).status_code == 422
+
+
 def upload(
     client: TestClient,
     headers: dict[str, str],

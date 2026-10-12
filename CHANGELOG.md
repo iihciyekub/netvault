@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.33 — 2026-10-12
+
+- Add authenticated `nv export --issn ISSN --out FILE.csv` for the complete active DOI/PDF SHA-256 inventory, including older records linked through the reviewed journal registry.
+- Match print and electronic ISSNs to the same journal, preserve distinct historical identities, validate ISSN checksums, and exclude deleted records.
+- Download CSVs atomically, verify columns, hashes and row counts, and preserve existing files on failed exports.
+- Document journal inventory export in CLI help, the user guide and web CLI examples.
+- Retain raw venue names and enforce uppercase journal identities through reviewed ISSN/alias mappings in SQL and metadata refreshes; keep annual proceedings distinguishable.
+
 ## 0.7.32 — 2026-10-12
 
 - Trust DOI/PDF pairs only when uploads explicitly specify `--csv`, including scanned PDFs with no readable text; skip PDF title/content verification while retaining independent metadata lookup.

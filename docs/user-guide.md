@@ -459,6 +459,28 @@ nv search 10.1016
 nv search supply --json
 ```
 
+## Export a journal inventory
+
+Export every active stored PDF for a print ISSN or electronic ISSN:
+
+```bash
+nv export --issn 0025-1909 --out ./management-science.csv
+nv export --issn 1526-5501 --out ./management-science.csv --force
+```
+
+The CSV columns are `doi,sha256`, with one row per active stored PDF and its
+current SHA-256 digest, ordered by DOI. There is no pagination limit. Print and
+online identifiers registered to the same journal export the same inventory,
+including historical articles without per-article ISSN metadata. Different
+historical journal identities remain separate. The command also matches stored
+article ISSNs when the journal has not yet been registered.
+
+Without `--out`, the filename is `netvault-<ISSN>.csv` in the current directory.
+Use `--force` to replace an existing file. The command validates the complete CSV
+before saving; a failed or interrupted export preserves an existing destination.
+Run `nv login` first. Invalid ISSN checksums and unknown identifiers are reported
+as errors; a registered journal with no active PDFs produces a header-only CSV.
+
 ## Download
 
 Download by DOI:

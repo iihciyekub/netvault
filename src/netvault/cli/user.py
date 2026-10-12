@@ -44,6 +44,7 @@ from netvault.cli.http import (
     upload_pdf,
 )
 from netvault.cli.update import update_from_github
+from netvault.cli.export import normalize_export_issn, save_issn_export
 from netvault.cli.identify import identify_pdfs
 from netvault.cli.upload_pipeline import UploadPipeline, UploadRateColumn, UploadStats
 from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
@@ -97,6 +98,7 @@ Examples:
   nv identify ./papers --rename
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
+  nv export --issn 0025-1909 --out ./management-science.csv
   nv update
 """,
     rich_markup_mode=None,
@@ -1651,6 +1653,30 @@ def search(
         typer.echo(json.dumps(rows, ensure_ascii=False))
     else:
         render_pdf_table(rows)
+
+
+@app.command("export", epilog="""\b
+Examples:
+  nv export --issn 0025-1909
+  nv export --issn 1526-5501 --out ./management-science.csv
+  nv export --issn 0025-1909 --out ./management-science.csv --force
+""")
+def export_command(
+    issn: str = typer.Option(..., "--issn", "-i", help="Print ISSN or electronic ISSN of the journal."),
+    output: Path | None = typer.Option(
+        None, "--out", "--output", "-o", help="CSV path. Defaults to netvault-<ISSN>.csv.",
+    ),
+    force: bool = typer.Option(False, "--force", help="Replace an existing output CSV."),
+) -> None:
+    """Export all active journal DOI and PDF SHA-256 pairs to CSV."""
+    try:
+        normalized = normalize_export_issn(issn)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--issn") from exc
+    destination = (output or Path(f"netvault-{normalized}.csv")).expanduser().resolve()
+    count = save_issn_export(normalized, destination, force=force)
+    console.print(f"Exported {count:,} DOI/SHA-256 rows for ISSN {normalized} to {destination}",
+                  markup=False)
 
 
 def fetch_pdf_detail_for_download(doi: str) -> tuple[str, dict | None, str | None]:

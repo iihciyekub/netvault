@@ -64,6 +64,7 @@ from netvault_server.server.security import (
 )
 from netvault_server.server.storage import ensure_storage_dirs, object_path
 from netvault_server.server.stats import invalidate_stats_cache, router as stats_router
+from netvault_server.server.journal_export import router as journal_export_router
 from netvault_server.server.web import router as web_router
 
 logger = logging.getLogger("netvault.requests")
@@ -110,6 +111,7 @@ app = FastAPI(title="NetVault", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(stats_router)
 app.include_router(web_router)
+app.include_router(journal_export_router)
 
 
 @app.middleware("http")

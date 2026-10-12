@@ -410,6 +410,18 @@ If a PDF is scanned, mislabeled, or still ambiguous, provide the DOI explicitly:
 nv upload ./paper.pdf --doi 10.1234/example.doi
 ```
 
+Export the complete active DOI/SHA-256 inventory for a print or electronic ISSN:
+
+```bash
+nv export --issn 0025-1909 --out ./management-science.csv
+nv export --issn 1526-5501 --out ./management-science.csv --force
+```
+
+The CSV has `doi,sha256` columns and no pagination limit. Registered print and
+online ISSNs share the journal's inventory, including older entries without
+per-article serial identifiers. Output defaults to `netvault-<ISSN>.csv`; saving
+is atomic and an existing file requires `--force`.
+
 List and download by DOI:
 
 ```bash
@@ -467,6 +479,7 @@ netvault-admin delete-pdf 1
 - `POST /pdfs/aliases`
 - `GET /pdfs`
 - `GET /pdfs/search?q=...`
+- `GET /pdfs/export?issn=0025-1909` (authenticated CSV, all matching active PDFs)
 - `GET /pdfs/by-doi?doi=...`
 - `GET /pdfs/by-doi/download?doi=...`
 - `GET /pdfs/{id-or-sha256}`
