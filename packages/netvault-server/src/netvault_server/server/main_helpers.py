@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from netvault_server.server.crossref import CrossrefMetadata, fetch_doi_metadata, search_crossref_metadata
 from netvault_server.server.doi import (
     DoiCandidate,
+    DoiEvidence,
     extract_pdf_text,
     extract_pdf_title,
     extract_doi_evidence,
@@ -34,6 +35,7 @@ from netvault_server.server.storage import (
 CLIENT_DOI_SOURCES = {
     "download-index",
     "download-record",
+    "csv-trusted",
     "explicit",
     "filename",
     "pdf-content",
@@ -482,9 +484,25 @@ async def process_upload(
         verified_metadata: CrossrefMetadata | None = None
         verification: list[dict] = []
         automatic_resolution = doi_source in AUTOMATIC_CLIENT_DOI_SOURCES or doi is None
+        trusted_csv = doi_source == "csv-trusted"
         client_doi = None
         parse_started = monotonic()
-        if automatic_resolution:
+        if trusted_csv:
+            try:
+                normalized_csv_doi = normalize_doi(doi)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            evidence = DoiEvidence(
+                "ok", normalized_csv_doi, "csv-trusted",
+                [DoiCandidate(normalized_csv_doi, "csv-trusted", "user-specified-csv", 100)],
+            )
+            verification = [{
+                "doi": normalized_csv_doi, "source": "csv-trusted", "accepted": True,
+                "pdf_content_verified": False,
+                "reason": "User trusts the DOI/PDF pair in an explicitly specified CSV",
+            }]
+            timings["parse"] = monotonic() - parse_started
+        elif automatic_resolution:
             evidence = await run_in_threadpool(
                 extract_doi_evidence, evidence_path, filename=file.filename
             )
@@ -629,9 +647,11 @@ async def process_upload(
         if (
             pdf_by_doi is not None
             and pdf_by_doi.sha256 != sha256
-            and automatic_resolution
-            and verified_metadata is not None
-            and verified_metadata.status == "ok"
+            and (trusted_csv or (
+                automatic_resolution
+                and verified_metadata is not None
+                and verified_metadata.status == "ok"
+            ))
             and not force
         ):
             if alias_pdf_id is None:
@@ -639,7 +659,7 @@ async def process_upload(
                     PdfFileAlias(
                         pdf_id=pdf_by_doi.id,
                         sha256=sha256,
-                        source="automatic-doi-verified",
+                        source="csv-trusted" if trusted_csv else "automatic-doi-verified",
                         asserted_by_id=user.id,
                     )
                 )

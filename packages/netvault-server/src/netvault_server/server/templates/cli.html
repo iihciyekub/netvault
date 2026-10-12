@@ -100,9 +100,10 @@
           <button class="copy-button" type="button" data-copy="nv upload ./papers" aria-label="Copy folder upload command"><span data-copy-label>Copy</span></button>
         </div>
       </div>
-      <p class="command-help-gap"><strong>How DOI matching works:</strong> NetVault checks the CSV's SHA-256 first, so a renamed PDF can still be identified. It then tries the original filename and file size, or a unique article title on the PDF's first page. Without a safe CSV match, NetVault checks PDF metadata, then the first two pages, and only then the filename. It recognizes known double-hyphen fingerprint suffixes on renamed files. The server verifies candidate DOIs against article titles; reference-only DOIs are not treated as article identities. Ambiguous matches are not guessed. The PDF filenames stay unchanged.</p>
+      <p class="command-help-gap"><strong>How automatic DOI matching works:</strong> NetVault checks the CSV's SHA-256 first, so a renamed PDF can still be identified. It then tries the original filename and file size, or a unique article title on the PDF's first page. Without a safe CSV match, NetVault checks PDF metadata, then the first two pages, and only then the filename. It recognizes known double-hyphen fingerprint suffixes on renamed files. With automatic CSV discovery, the server verifies candidate DOIs against article titles; reference-only DOIs are not treated as article identities. Ambiguous matches are not guessed. The PDF filenames stay unchanged.</p>
+      <p class="command-help-gap"><strong>Trust your CSV for scanned PDFs:</strong> Explicitly pass <code>--csv ./cli-downloads.csv</code> to accept the CSV's DOI/PDF pairs without PDF title or content verification. This works even when a scanned PDF has no readable text. Files must match a unique CSV record by SHA-256 or filename and byte size; title matching and PDF fallback are disabled. Unmatched or ambiguous files are reported as failures. PDF file checks, deduplication, and conflicts with existing DOI assignments still apply. DOI metadata is still fetched when enabled, but unavailable metadata does not block ordinary uploads. Force replacement still requires available DOI metadata.</p>
       <details class="command-advanced">
-        <summary>More options: CSV in another folder, single PDFs, or manual DOI</summary>
+        <summary>Explicit CSV upload commands, single PDFs, or manual DOI</summary>
         <div class="command-list">
           <div class="command-row">
             <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--csv</span> <span class="syntax-path">./cli-downloads.csv</span> <span class="syntax-option">--dry-run</span></code>
@@ -125,7 +126,7 @@
             <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example" aria-label="Copy DOI upload command"><span data-copy-label>Copy</span></button>
           </div>
         </div>
-        <p class="command-help-gap"><code>--csv</code> is only needed when the CSV is outside the upload folder. <code>--dry-run</code> checks matches locally without logging in, uploading, or writing a report.</p>
+        <p class="command-help-gap">Use <code>--csv</code> whenever you want to trust the CSV's DOI/PDF pairs, even if it is inside the upload folder. CSV rows need <code>file</code> (or <code>filename</code>), <code>doi</code>, <code>bytes</code> (or <code>size</code>), and <code>status=downloaded</code>; <code>sha256</code> is optional and supports renamed files. <code>--dry-run</code> checks matches locally without logging in, uploading, or writing a report.</p>
       </details>
     </div>
   </article>

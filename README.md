@@ -11,7 +11,9 @@ a small authenticated web UI.
 
 A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. These legacy records continue through server-side primary-title verification; unlike a SHA-256-bound JSON index, they cannot cause an unverified DOI-only skip. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
 
-Renamed PDFs can be matched against a CSV with a SHA-256 column, or (when present) a unique article-title column matched against the PDF first page. CSV hints are verified by the server before acceptance. Use the --csv PATH option for PDFs across directories and --dry-run to preview matches without uploading or writing local caches. Without a hash or title, renamed files fall back to PDF DOI extraction rather than an unsafe filename guess.
+With automatic CSV discovery, renamed PDFs can be matched by SHA-256 or a unique article-title column matched against the PDF first page; server title verification still applies. Without a usable match, automatic uploads fall back to PDF DOI extraction.
+
+**Explicit `--csv PATH` trusts the CSV's DOI/PDF pairs**, including scanned PDFs with no readable text. It matches a unique record by SHA-256 or filename and byte size, without PDF title matching, PDF content verification, or PDF DOI fallback. Unmatched, ambiguous, or conflicting records are reported as failures. CSV rows need `file` (or `filename`), `doi`, `bytes` (or `size`), and `status=downloaded`; `sha256` is optional and supports renamed files. Trust applies only to the explicit invocation and is not saved in the DOI cache. PDF signature/completeness checks, size limits, hash deduplication, and existing DOI assignment conflict checks remain active. Metadata lookup continues unless `--no-crossref` is used; missing or unavailable metadata does not block ordinary CSV uploads. `--force` still requires available DOI metadata. Use `--dry-run` to preview matches without login, uploads, or local writes. `--csv` cannot be combined with `--doi`, `--index-file`, or `--no-index`.
 
 ## What It Provides
 
@@ -263,6 +265,12 @@ nv upload ./papers --csv ./cli-downloads.csv
 nv upload ./papers --csv ./cli-downloads.csv --dry-run
 nv upload ./papers --no-index
 ```
+
+Passing `--csv` explicitly accepts the matched DOI/PDF pairs without reading PDF text;
+placing the CSV next to the PDFs without that option keeps automatic title verification.
+Existing DOI records with a different file hash are deduplicated as CSV-trusted aliases;
+an existing hash assigned to a different DOI is rejected, and files are not replaced
+unless `--force` is passed.
 
 Automatic DOI hints follow this priority: a securely matched
 `cli-downloads.csv` / SHA-256 download index, explicit DOI fields in the PDF's

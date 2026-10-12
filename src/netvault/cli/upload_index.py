@@ -350,7 +350,9 @@ class DownloadIndexResolver:
                 raise csv_index
             return None
         try:
-            matched = csv_index.match(pdf_path, sha256, size)
+            matched = csv_index.match(
+                pdf_path, sha256, size, allow_title=self.explicit_csv is None,
+            )
         except ValueError as exc:
             raise DownloadIndexError(f"{csv_path}: {exc}") from exc
         if matched is None:
@@ -363,5 +365,5 @@ class DownloadIndexResolver:
             validation_status="valid", validation_checked_at="",
             validation_method=f"download-record-{method}", validation_reason=None,
         )
-        source = "download-record"
+        source = "csv-trusted" if self.explicit_csv is not None else "download-record"
         return DownloadIndexMatch(csv_path, 0, "", record, row.filename != pdf_path.name, source)

@@ -282,6 +282,32 @@ names = ["pdf-download-index.json"]
 Names must be JSON basenames. More than one configured index present in the same
 directory is an error; select the intended file with `--index-file`.
 
+For scanned PDFs, explicitly specify a CSV whose DOI/PDF pairs you trust:
+
+```bash
+nv upload ~/Downloads/papers --csv ~/Downloads/cli-downloads.csv --dry-run
+nv upload ~/Downloads/papers --csv ~/Downloads/cli-downloads.csv
+```
+
+Explicit `--csv` accepts matched DOI/PDF pairs without reading PDF text,
+extracting DOI candidates, or verifying PDF article titles. It requires a unique
+SHA-256 match or filename and byte-size match. CSV rows must contain `file` (or
+`filename`), `doi`, `bytes` (or `size`), and `status=downloaded`; optional `sha256`
+supports renamed files. Unmatched or ambiguous files fail without PDF fallback,
+even when a cached DOI is available. This trust applies only to this invocation;
+it is not stored in the local DOI cache. `--csv` cannot be combined with `--doi`,
+`--index-file`, or `--no-index`.
+
+PDF signature/completeness checks, upload size limits, deduplication, and existing
+hash/DOI conflict checks still apply. Metadata lookup continues unless disabled,
+but missing or unavailable metadata does not prevent an ordinary CSV upload.
+CSV assertions are recorded as `csv-trusted`, including aliases for another file
+with the same DOI. `--force` still requires available DOI metadata before replacing
+the stored file. A CSV discovered automatically beside the PDFs (or at the selected
+folder root) remains a `download-record` hint and still requires PDF title
+verification. Use explicit `--csv` even when the CSV is inside the upload folder
+if you want to trust its pairs.
+
 If an existing DOI is confirmed for a PDF with different bytes, NetVault records
 the new SHA-256 as a server-side alias of the canonical item. This handles
 publisher copies, repository copies, and regenerated PDFs across devices without

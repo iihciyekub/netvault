@@ -576,6 +576,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv upload ./papers --csv ./cli-downloads.csv --dry-run" in cli_page.text
     assert "NetVault finds it automatically" in cli_page.text
     assert "renamed PDF can still be identified" in cli_page.text
+    assert "Trust your CSV for scanned PDFs" in cli_page.text
+    assert "without PDF title or content verification" in cli_page.text
+    assert "Unmatched or ambiguous files are reported as failures" in cli_page.text
+    assert "With automatic CSV discovery" in cli_page.text
+    assert "status=downloaded" in cli_page.text
     assert "no files are uploaded" in cli_page.text
     assert "data-copy" in cli_page.text
     assert 'class="command-timeline"' in cli_page.text
@@ -592,8 +597,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.31" in info_page.text
-    assert "app.js?v=0.7.31-ui28" in info_page.text
+    assert "0.7.32" in info_page.text
+    assert "app.js?v=0.7.32-ui28" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text

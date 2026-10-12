@@ -299,6 +299,9 @@ def cached_identity(identities: dict[str, dict], sha256: str) -> dict | None:
     identity = identities.get(sha256)
     if not isinstance(identity, dict):
         return None
+    # CSV trust belongs to an explicit upload invocation, never a cached identity.
+    if identity.get("source") == "csv-trusted":
+        return None
     if identity.get("source") == "user" and identity.get("status") == "confirmed":
         return identity
     if (
@@ -909,6 +912,10 @@ Notes:
   File hashes are cached locally in ~/.config/netvault/hash-cache.json.
   A sibling pdf-download-index.json is preferred over PDF DOI extraction.
   A sibling cli-downloads.csv is also recognized; --csv works across subdirectories.
+  Explicit --csv trusts matched DOI/PDF pairs without reading PDF text (including scans).
+  It matches SHA-256 or filename and size; unmatched/ambiguous files fail without PDF fallback.
+  Automatic CSV discovery still requires server title verification.
+  Metadata lookup continues; ordinary CSV uploads do not require metadata availability.
 """,
 )
 def upload_command(
@@ -942,7 +949,7 @@ def upload_command(
     ),
     csv_file: Path | None = typer.Option(
         None, "--csv", exists=True, file_okay=True, dir_okay=False, readable=True,
-        help="Use this cli-downloads.csv for all selected PDFs, including renamed files.",
+        help="Trust DOI/PDF pairs in this cli-downloads.csv; skip PDF content verification. Match by hash or filename and size.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview local DOI matching without login, uploads or writes.",
@@ -975,6 +982,8 @@ def upload_command(
         raise typer.BadParameter("--index-file cannot be combined with --no-index")
     if csv_file is not None and (index_file is not None or no_index):
         raise typer.BadParameter("--csv cannot be combined with --index-file or --no-index")
+    if csv_file is not None and doi:
+        raise typer.BadParameter("--csv cannot be combined with --doi")
     try:
         configured_index_enabled, index_names = load_upload_index_settings()
     except RuntimeError as exc:
@@ -1010,12 +1019,16 @@ def upload_command(
                         counts[method] += 1
                     else:
                         counts["json-index"] += 1
+                elif csv_file is not None:
+                    raise ValueError("No unique filename/size or SHA-256 match in the specified CSV; PDF fallback is disabled")
                 else:
                     evidence = extract_doi_evidence(pdf_path)
                     resolved = evidence.doi if evidence.status == "ok" else None
                     kind = "pdf-extraction" if resolved else "needs-review"
                     counts[kind] += 1
                 renamed = " (renamed)" if match and match.renamed else ""
+                if csv_file is not None and match:
+                    kind += "; CSV trusted, PDF content verification skipped"
                 console.print(f"{pdf_path}: {resolved or 'unresolved'} [{kind}]{renamed}",
                               highlight=False)
             except (OSError, ValueError, RuntimeError) as exc:
@@ -1040,6 +1053,7 @@ def upload_command(
     download_index_hits = 0
     download_index_renames = 0
     hashes_by_path: dict[Path, str] = {}
+    csv_matches_by_path: dict[Path, DownloadIndexMatch] = {}
     existing_by_sha: dict[str, dict] = {}
     unique_pdf_paths: list[Path] = []
     local_duplicate_paths = 0
@@ -1079,9 +1093,14 @@ def upload_command(
                     continue
                 cached_before = file_cache_key(pdf_path) in hash_cache
                 sha256, from_cache = cached_file_sha256(pdf_path, hash_cache)
-                hashes_by_path[pdf_path] = sha256
                 cache_changed = cache_changed or not from_cache or not cached_before
-            except OSError as exc:
+                if csv_file is not None:
+                    match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
+                    if match is None:
+                        raise ValueError("No unique filename/size or SHA-256 match in the specified CSV; PDF fallback is disabled")
+                    csv_matches_by_path[pdf_path] = match
+                hashes_by_path[pdf_path] = sha256
+            except (OSError, ValueError, RuntimeError) as exc:
                 record_failure(pdf_path, exc)
             finally:
                 progress.advance(task, 1)
@@ -1092,8 +1111,14 @@ def upload_command(
         pdf_paths_by_sha: dict[str, list[Path]] = {}
         for pdf_path, sha256 in hashes_by_path.items():
             pdf_paths_by_sha.setdefault(sha256, []).append(pdf_path)
+        if csv_file is not None:
+            for sha256, same_files in list(pdf_paths_by_sha.items()):
+                if len({csv_matches_by_path[path].record.doi for path in same_files}) > 1:
+                    for path in same_files:
+                        record_failure(path, "Specified CSV assigns different DOIs to identical PDFs")
+                    del pdf_paths_by_sha[sha256]
         unique_pdf_paths = [paths[0] for paths in pdf_paths_by_sha.values()]
-        local_duplicate_paths = len(hashes_by_path) - len(unique_pdf_paths)
+        local_duplicate_paths = sum(len(paths) - 1 for paths in pdf_paths_by_sha.values())
         for sha, paths_for_hash in pdf_paths_by_sha.items():
             for duplicate_path in paths_for_hash[1:]:
                 upload_report.record(duplicate_path, "local-duplicate", sha256=sha)
@@ -1113,7 +1138,7 @@ def upload_command(
         for pdf_path in unique_pdf_paths:
             sha256 = hashes_by_path[pdf_path]
             existing_pdf = existing_by_sha.get(sha256)
-            if existing_pdf and not force:
+            if existing_pdf and not force and csv_file is None:
                 latest_pdf = existing_pdf
                 skipped += 1
                 upload_report.record(pdf_path, "existing", sha256=sha256, pdf=existing_pdf)
@@ -1161,7 +1186,9 @@ def upload_command(
                             identity = None
 
                         index_match = None
-                        if not doi:
+                        if csv_file is not None:
+                            index_match = csv_matches_by_path[pdf_path]
+                        elif not doi:
                             index_match = index_resolver.resolve(
                                 pdf_path,
                                 sha256,
@@ -1172,6 +1199,13 @@ def upload_command(
                             identity = manual_identity(doi)
                             identity_cache[sha256] = identity
                             identity_cache_pending += 1
+                        elif csv_file is not None:
+                            if identity and identity.get("source") == "user" and normalize_doi(identity["doi"]) != index_match.record.doi:
+                                raise RuntimeError("User-confirmed DOI conflicts with specified CSV DOI " + index_match.record.doi)
+                            identity = download_index_identity(index_match)
+                            download_index_hits += 1
+                            if index_match.renamed:
+                                download_index_renames += 1
                         elif identity and identity.get("source") == "user":
                             if index_match and normalize_doi(identity["doi"]) != index_match.record.doi:
                                 raise RuntimeError(
@@ -1235,7 +1269,7 @@ def upload_command(
                 trusted_dois = [
                     dois_by_path[path]
                     for path in upload_candidates
-                    if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata", "download-record"}
+                    if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata", "download-record", "csv-trusted"}
                 ]
                 existing_by_doi = get_existing_pdfs_by_doi(
                     trusted_dois,
@@ -1248,6 +1282,7 @@ def upload_command(
                         "pdf-content",
                         "pdf-metadata",
                         "download-record",
+                        "csv-trusted",
                     }
                     existing_pdf = None if automatic_source else existing_by_doi.get(dois_by_path[pdf_path])
                     if existing_pdf and not force:

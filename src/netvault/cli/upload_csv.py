@@ -99,6 +99,8 @@ class DownloadCsv:
 
         self.by_name = unique(names, "filename")
         self.by_sha256 = unique(hashes, "SHA-256")
+        self.ambiguous_names = set(names) - self.by_name.keys()
+        self.ambiguous_hashes = set(hashes) - self.by_sha256.keys()
         # A title is only usable if it identifies a unique DOI. PDF text must also
         # contain the full title near its beginning, not in its references section.
         for title, candidates in titles.items():
@@ -107,13 +109,17 @@ class DownloadCsv:
             elif warn:
                 warn(f"Ignoring ambiguous CSV title: {title[:80]}")
 
-    def match(self, path: Path, sha256: str, size: int):
-        """Return (row, method) or None. The server verifies non-hash hints."""
+    def match(self, path: Path, sha256: str, size: int, *, allow_title: bool = True):
+        """Return (row, method) or None; explicit CSV matching never reads PDF text."""
+        if path.name in self.ambiguous_names or sha256.lower() in self.ambiguous_hashes:
+            return None
         hash_row = self.by_sha256.get(sha256.lower())
         if hash_row is not None:
             if hash_row.size != size:
                 raise ValueError(f"CSV SHA-256 matches but file size differs: {path.name}")
             named = self.by_name.get(path.name)
+            if named is not None and named.doi != hash_row.doi:
+                raise ValueError(f"CSV filename DOI conflicts with SHA-256 DOI: {path.name}")
             if named is not None and named.sha256 and named.sha256 != sha256.lower():
                 raise ValueError(f"CSV filename conflicts with SHA-256: {path.name}")
             return hash_row, "sha256"
@@ -124,7 +130,7 @@ class DownloadCsv:
         ):
             return named, "filename-size"
 
-        if not self.by_title:
+        if not allow_title or not self.by_title:
             return None
         raw = first_page_text(path)[:2500]
         raw = re.split(r"(?im)^\s*(?:references|bibliography|works cited)\s*$", raw, maxsplit=1)[0]

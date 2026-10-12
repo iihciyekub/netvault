@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.32 — 2026-10-12
+
+- Trust DOI/PDF pairs only when uploads explicitly specify `--csv`, including scanned PDFs with no readable text; skip PDF title/content verification while retaining independent metadata lookup.
+- Match explicit CSV records by SHA-256 or filename and byte size; report unmatched, ambiguous or conflicting records without PDF extraction fallback.
+- Keep automatically discovered CSV hints under server title verification and keep explicit CSV trust out of persistent DOI caches.
+- Preserve PDF file checks, size limits, hash deduplication, existing DOI assignment conflicts and the metadata requirement for force replacement; record CSV-trusted identities and aliases explicitly.
+- Explain explicit versus automatic CSV behavior, required columns and scanned PDF uploads in CLI help, README and the web CLI guide.
+
 ## 0.7.31 — 2026-10-11
 
 - Recover interleaved heading text using bounded layout coordinates on the first two PDF pages; parse layout at most once for registry title matching per upload.
