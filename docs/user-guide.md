@@ -464,6 +464,8 @@ nv search supply --json
 Export every active stored PDF for a print ISSN or electronic ISSN:
 
 ```bash
+nv export --issn 0025-1909
+nv export --issn 1526-5501
 nv export --issn 0025-1909 --out ./management-science.csv
 nv export --issn 1526-5501 --out ./management-science.csv --force
 ```
@@ -476,7 +478,10 @@ historical journal identities remain separate. The command also matches stored
 article ISSNs when the journal has not yet been registered.
 
 Without `--out`, the filename is `netvault-<ISSN>.csv` in the current directory.
-Use `--force` to replace an existing file. The command validates the complete CSV
+If it already exists, the command automatically chooses `netvault-<ISSN>-2.csv`,
+then `netvault-<ISSN>-3.csv`, and so on. No output filename is required.
+Use `--force` without `--out` to replace `netvault-<ISSN>.csv`, or with `--out`
+to replace that explicit path. The command validates the complete CSV
 before saving; a failed or interrupted export preserves an existing destination.
 Run `nv login` first. Invalid ISSN checksums and unknown identifiers are reported
 as errors; a registered journal with no active PDFs produces a header-only CSV.

@@ -18,6 +18,17 @@ def normalize_export_issn(value: str) -> str:
     raise ValueError("Invalid ISSN format or checksum")
 
 
+def default_export_destination(issn: str, *, force: bool = False) -> Path:
+    destination = Path.cwd() / f"netvault-{issn}.csv"
+    if force:
+        return destination
+    number = 2
+    while destination.exists() or destination.is_symlink():
+        destination = Path.cwd() / f"netvault-{issn}-{number}.csv"
+        number += 1
+    return destination
+
+
 def save_issn_export(issn: str, destination: Path, *, force: bool = False) -> int:
     destination = destination.expanduser().resolve()
     if destination.exists() and not force:

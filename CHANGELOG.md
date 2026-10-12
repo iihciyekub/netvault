@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.34 — 2026-10-12
+
+- Make filename-free journal exports explicit in CLI help, README, the user guide and web examples: `nv export --issn ISSN`.
+- Automatically add an available numeric suffix when a default export CSV already exists, so repeated exports need no filename and preserve earlier files.
+- Keep custom output paths available through `--out`; use `--force` to replace the default or an explicit output path.
+
 ## 0.7.33 — 2026-10-12
 
 - Add authenticated `nv export --issn ISSN --out FILE.csv` for the complete active DOI/PDF SHA-256 inventory, including older records linked through the reviewed journal registry.

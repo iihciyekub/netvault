@@ -75,11 +75,11 @@
           <button class="copy-button" type="button" data-copy="nv download --file ./dois.txt --to ./downloads" aria-label="Copy file download command"><span data-copy-label>Copy</span></button>
         </div>
         <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">export</span> <span class="syntax-option">--issn</span> <span class="syntax-doi">0025-1909</span> <span class="syntax-option">--out</span> <span class="syntax-path">./management-science.csv</span></code>
-          <button class="copy-button" type="button" data-copy="nv export --issn 0025-1909 --out ./management-science.csv" aria-label="Copy journal inventory export command"><span data-copy-label>Copy</span></button>
+          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">export</span> <span class="syntax-option">--issn</span> <span class="syntax-doi">0025-1909</span></code>
+          <button class="copy-button" type="button" data-copy="nv export --issn 0025-1909" aria-label="Copy journal inventory export command"><span data-copy-label>Copy</span></button>
         </div>
       </div>
-      <p>Export all stored DOI and PDF SHA-256 pairs to CSV using a journal's print ISSN or electronic ISSN. Use <code>--force</code> to replace an existing CSV.</p>
+      <p>Export all stored DOI and PDF SHA-256 pairs using a journal's print ISSN or electronic ISSN. The filename defaults to <code>netvault-&lt;ISSN&gt;.csv</code> in the current directory, adding a number if it already exists. Use <code>--out</code> for a custom path or <code>--force</code> to replace the default CSV.</p>
     </div>
   </article>
 

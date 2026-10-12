@@ -413,14 +413,18 @@ nv upload ./paper.pdf --doi 10.1234/example.doi
 Export the complete active DOI/SHA-256 inventory for a print or electronic ISSN:
 
 ```bash
+nv export --issn 0025-1909
+nv export --issn 1526-5501
 nv export --issn 0025-1909 --out ./management-science.csv
 nv export --issn 1526-5501 --out ./management-science.csv --force
 ```
 
 The CSV has `doi,sha256` columns and no pagination limit. Registered print and
 online ISSNs share the journal's inventory, including older entries without
-per-article serial identifiers. Output defaults to `netvault-<ISSN>.csv`; saving
-is atomic and an existing file requires `--force`.
+per-article serial identifiers. Without `--out`, output defaults to
+`netvault-<ISSN>.csv` in the current directory. Repeated exports automatically use
+`netvault-<ISSN>-2.csv`, `netvault-<ISSN>-3.csv`, and so on. Saving is atomic.
+Use `--force` to replace the default file or an existing explicit `--out` path.
 
 List and download by DOI:
 

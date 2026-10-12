@@ -87,9 +87,35 @@ def test_export_checks_issn_before_contacting_server(monkeypatch):
     assert export_cli.normalize_export_issn("1526 548x") == "1526-548X"
 
 
-def test_export_default_filename_uses_normalized_identifier(monkeypatch):
+def test_export_default_filename_uses_normalized_identifier(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     observed = []
     monkeypatch.setattr(user, "save_issn_export", lambda issn, path, **kwargs: observed.append((issn, path)) or 0)
     result = CliRunner().invoke(user.app, ["export", "--issn", "1526548x"])
     assert result.exit_code == 0
     assert observed == [("1526-548X", Path("netvault-1526-548X.csv").resolve())]
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_export_without_output_preserves_previous_csv_or_explicitly_replaces_it(
+    tmp_path, monkeypatch, force,
+):
+    monkeypatch.chdir(tmp_path)
+    original = tmp_path / "netvault-0025-1909.csv"
+    original.write_text("previous export")
+    numbered = tmp_path / "netvault-0025-1909-2.csv"
+    numbered.write_text("second export")
+    payload = ("doi,sha256\r\n10.1234/a," + "a" * 64 + "\r\n").encode()
+    response(monkeypatch, payload)
+    args = ["export", "--issn", "00251909"]
+    if force:
+        args.append("--force")
+    result = CliRunner().invoke(user.app, args)
+    assert result.exit_code == 0, result.output
+    destination = original if force else tmp_path / "netvault-0025-1909-3.csv"
+    assert str(destination) in result.output.replace("\n", "")
+    assert destination.read_bytes() == payload
+    assert numbered.read_text() == "second export"
+    if not force:
+        assert original.read_text() == "previous export"
+    assert list(tmp_path.glob(".nv-export-*")) == []
