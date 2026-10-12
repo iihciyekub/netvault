@@ -227,7 +227,7 @@ def test_cli_explicit_csv_unmatched_never_uses_cached_or_pdf_identity(cli_setup,
     )})
     result = CliRunner().invoke(user.app, ["upload", str(pdf), "--csv", str(csv_path)])
     assert result.exit_code == 1, result.output
-    assert "PDF fallback is disabled" in result.output
+    assert "PDF fallback is disabled" in " ".join(result.output.split())
     assert not calls
     report = json.loads((root / "nv-upload-report.json").read_text())
     assert report["summary"]["failed"] == 1
@@ -273,7 +273,7 @@ def test_explicit_csv_preview_does_not_read_pdf_for_title_only_match(cli_setup):
                                title="An Article Title Long Enough for Automatic Matching")])
     result = CliRunner().invoke(user.app, ["upload", str(pdf), "--csv", str(csv_path), "--dry-run"])
     assert result.exit_code == 0, result.output
-    assert "PDF fallback is disabled" in result.output
+    assert "PDF fallback is disabled" in " ".join(result.output.split())
     assert not calls
     assert not user.HASH_CACHE_PATH.exists()
     assert not user.IDENTITY_CACHE_PATH.exists()
