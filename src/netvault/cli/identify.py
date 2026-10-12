@@ -162,6 +162,7 @@ def identify_pdfs(
                 raise ValueError("File changed while hashing")
         except (OSError, ValueError) as exc:
             pdf.error = str(exc)
+
         if progress:
             progress("Hashing PDFs", index, len(pdfs))
 

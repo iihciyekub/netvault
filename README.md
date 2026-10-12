@@ -426,6 +426,25 @@ per-article serial identifiers. Without `--out`, output defaults to
 `netvault-<ISSN>-2.csv`, `netvault-<ISSN>-3.csv`, and so on. Saving is atomic.
 Use `--force` to replace the default file or an existing explicit `--out` path.
 
+Quickly rename local PDFs using that exported index, with no login, PDF parsing
+or network requests:
+
+```bash
+nv rename ./papers --index ./netvault-0025-1909.csv --dry-run
+nv rename ./papers --index ./netvault-0025-1909.csv
+nv rename ./papers --issn 0025-1909
+```
+
+`--issn` downloads the current inventory once and then matches locally. With
+neither `--index` nor `--issn`, `nv rename ./papers` uses the server's bulk hash
+lookup, including registered file aliases. Matching uses full SHA-256 and
+preserves unmatched PDFs in their original directories. Four parallel readers
+are used by default (`--workers 1` for serial disk access), and unchanged hashes
+are reused within the run before renaming. No existing file is overwritten.
+The audit CSV defaults to `netvault-index.csv` in the scanned directory; use
+`--report` to choose a new path. Use `nv identify --rename` for the existing
+page-content duplicate checks and collection workflow.
+
 List and download by DOI:
 
 ```bash

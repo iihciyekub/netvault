@@ -196,6 +196,58 @@ All server queries finish before any file changes. A server failure stops the ru
 so it cannot be mistaken for an unmatched PDF. A run containing file errors or
 conflicts writes its report and exits with status 1; otherwise it exits with 0.
 
+## Fast renaming with a hash inventory
+
+Export a journal inventory once, then reuse it for offline renaming:
+
+```bash
+nv export --issn 0025-1909
+nv rename ~/Downloads/papers --index ./netvault-0025-1909.csv --dry-run
+nv rename ~/Downloads/papers --index ./netvault-0025-1909.csv
+```
+
+`--index` reads the exported `doi,sha256` CSV. It requires no login and makes no
+network requests. The entire index is validated before processing PDFs; an
+invalid row or a hash assigned to different DOIs stops the command. Repeated
+identical index records are accepted. Empty inventories leave all PDFs in place.
+
+For one command that fetches the current journal inventory and renames locally:
+
+```bash
+nv rename ~/Downloads/papers --issn 0025-1909
+```
+
+Print and electronic ISSNs use the same export rules. The downloaded inventory
+is temporary. Use an explicit exported CSV to reuse an inventory across commands.
+Do not combine `--issn` and `--index`. With neither option, `nv rename` uses the
+existing server hash lookup in batches of 500, including registered file aliases.
+
+The command scans recursively, computes full SHA-256 with four parallel readers
+by default, and renames exact matches by DOI within their original directories.
+Hashing, matching, renaming and audit writes overlap through a bounded pipeline
+with at most twice the reader count queued. Online mode matches batches of 500;
+earlier completed renames remain recorded if a later network request fails.
+Use `--workers 1` for serial reads on a busy or mechanical drive. Unmatched PDFs
+stay in place, which is useful when a journal inventory covers only part of a
+directory. Different PDF bytes, even for the same DOI, cannot match a CSV hash.
+The CSV contains current stored hashes; server alias matches are available in
+the default online mode.
+
+Fast renaming does not parse PDF pages or collect duplicates. Occupied DOI names
+are reported as conflicts, preserving both files. Existing `nv identify --rename`
+retains the page-content comparison and automatic collection behavior.
+
+Within one run, hash results are reused only while device, inode, byte size,
+mtime and ctime remain unchanged. Files are checked again before each move;
+changed files are rehashed and a hash mismatch prevents the move. This cache is
+not persisted, so a later command still reads the local PDF bytes. First-run
+speed depends on total PDF bytes and disk throughput, not just index lookup speed.
+
+Each run writes the same audit columns as `nv identify` to a new
+`netvault-index.csv`, then `netvault-index-2.csv`, and so on, in the scan directory.
+Use `--report PATH.csv` for a different new report. `--dry-run` only writes a
+preview report. File errors or filename conflicts produce exit status 1.
+
 ## Upload PDFs
 
 Uploads use three concurrent requests by default, with DOI identities prepared

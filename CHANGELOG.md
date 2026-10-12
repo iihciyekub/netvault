@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.35 — 2026-10-12
+
+- Add `nv rename` for exact-hash DOI renaming with an offline `doi,sha256` inventory (`--index`), a journal inventory downloaded once (`--issn`), or existing server bulk hash lookup with aliases.
+- Overlap hashing, matching, renaming and audit writes through a bounded pipeline with configurable parallel readers; reuse unchanged hashes within the run with ctime checks before moves, without PDF page parsing.
+- Preserve unmatched PDFs and occupied destinations, provide `--dry-run` and CSV audit reports, and validate the complete input index before renaming.
+- Keep `nv identify --rename` as the full page-content comparison and duplicate collection workflow.
+
 ## 0.7.34 — 2026-10-12
 
 - Make filename-free journal exports explicit in CLI help, README, the user guide and web examples: `nv export --issn ISSN`.
