@@ -61,6 +61,9 @@ class Pdf(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     authors: Mapped[str | None] = mapped_column(Text, nullable=True)
     container_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_raw_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_issns_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    work_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     journal_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(255), nullable=True)
     published_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -93,6 +96,42 @@ class PdfFileAlias(Base):
 
     pdf: Mapped[Pdf] = relationship(back_populates="file_aliases")
     asserted_by: Mapped[User] = relationship()
+
+
+class JournalCanonical(Base):
+    __tablename__ = "journal_canonical_names"
+
+    canonical_name: Mapped[str] = mapped_column(Text, primary_key=True)
+
+
+class JournalAlias(Base):
+    __tablename__ = "journal_name_aliases"
+
+    alias_name: Mapped[str] = mapped_column(Text, primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(
+        ForeignKey("journal_canonical_names.canonical_name"), nullable=False, index=True
+    )
+    evidence_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class JournalIssn(Base):
+    __tablename__ = "journal_issn_identifiers"
+
+    issn: Mapped[str] = mapped_column(String(9), primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(
+        ForeignKey("journal_canonical_names.canonical_name"), nullable=False, index=True
+    )
+    evidence_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class JournalDoiOverride(Base):
+    __tablename__ = "journal_doi_overrides"
+
+    doi: Mapped[str] = mapped_column(String(255), primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(
+        ForeignKey("journal_canonical_names.canonical_name"), nullable=False
+    )
+    evidence_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class PdfDoiCorrection(Base):
@@ -138,6 +177,6 @@ class DownloadRecord(Base):
 @event.listens_for(Pdf, "before_insert")
 @event.listens_for(Pdf, "before_update")
 def set_pdf_journal_key(_mapper, _connection, target: Pdf) -> None:
-    from netvault_server.server.journal_filters import normalize_journal_name
+    from netvault_server.server.journal_identity import canonicalize_pdf
 
-    target.journal_key = normalize_journal_name(target.container_title) or None
+    canonicalize_pdf(_connection, target)

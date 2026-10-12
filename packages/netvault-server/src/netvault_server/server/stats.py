@@ -168,18 +168,9 @@ def _format_journal_year(
     limit: int,
     include_journals: list[str] | None = None,
 ) -> dict[str, Any]:
-    # Consolidate historical and abbreviated names before ranking or displaying.
-    naval_aliases = {
-        normalize_journal_name(alias)
-        for alias in (
-            "Naval Research Logistics",
-            "Naval Research Logistics (NRL)",
-            "Naval Research Logistics Quarterly",
-        )
-    }
-
     def canonical_journal(name: str) -> str:
-        return "Naval Research Logistics" if normalize_journal_name(name) in naval_aliases else name
+        from netvault_server.server.journal_identity import journal_display_name
+        return journal_display_name(name) or name
 
     totals: dict[str, int] = {}
     for row in all_rows:

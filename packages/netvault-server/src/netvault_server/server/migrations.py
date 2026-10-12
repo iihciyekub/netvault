@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 
 from sqlalchemy import Engine, inspect, text
 
@@ -189,6 +190,72 @@ def _add_last_login_at(engine: Engine) -> None:
             connection.execute(text(f"ALTER TABLE users ADD COLUMN last_login_at {sql_type}"))
 
 
+def _add_journal_identity(engine: Engine) -> None:
+    from netvault_server.server.journal_identity import journal_display_name
+    from netvault_server.server.models import (
+        JournalAlias, JournalCanonical, JournalDoiOverride, JournalIssn,
+    )
+
+    for table in (JournalCanonical.__table__, JournalAlias.__table__, JournalIssn.__table__,
+                  JournalDoiOverride.__table__):
+        table.create(bind=engine, checkfirst=True)
+    existing = {column["name"] for column in inspect(engine).get_columns("pdfs")}
+    with engine.begin() as connection:
+        if engine.dialect.name == "postgresql":
+            connection.execute(text("SET LOCAL statement_timeout = 0"))
+            connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+        for column, sql_type in (
+            ("journal_raw_title", "TEXT"), ("journal_issns_json", "TEXT"),
+            ("work_type", "VARCHAR(32)"),
+        ):
+            if column not in existing:
+                connection.execute(text(f"ALTER TABLE pdfs ADD COLUMN {column} {sql_type}"))
+    # Release the brief ALTER TABLE lock before rewriting metadata. Readers can
+    # continue to use the live vault during the larger backfill transaction.
+    with engine.begin() as connection:
+        if engine.dialect.name == "postgresql":
+            connection.execute(text("SET LOCAL statement_timeout = 0"))
+            connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+        names = connection.scalars(text(
+            "SELECT DISTINCT container_title FROM pdfs WHERE container_title IS NOT NULL"
+        )).all()
+        updates = [{"name": name, "canonical": journal_display_name(name),
+                    "key": normalize_journal_name(journal_display_name(name)) or None}
+                   for name in names]
+        if engine.dialect.name == "postgresql" and updates:
+            # One join avoids scanning the entire PDF heap once for every title.
+            params = {f"{key}_{i}": value for i, row in enumerate(updates)
+                      for key, value in row.items()}
+            values = ", ".join(
+                f"(:name_{i}, :canonical_{i}, :key_{i})" for i in range(len(updates))
+            )
+            connection.execute(text(
+                "UPDATE pdfs p SET journal_raw_title = coalesce(p.journal_raw_title, p.container_title), "
+                "container_title = names.canonical, journal_key = names.key "
+                f"FROM (VALUES {values}) AS names(source, canonical, key) "
+                "WHERE p.container_title = names.source AND (p.journal_raw_title IS NULL "
+                "OR p.container_title IS DISTINCT FROM names.canonical "
+                "OR p.journal_key IS DISTINCT FROM names.key)"
+            ), params)
+        elif updates:
+            connection.execute(text(
+                "UPDATE pdfs SET journal_raw_title = coalesce(journal_raw_title, container_title), "
+                "container_title = :canonical, journal_key = :key WHERE container_title = :name "
+                "AND (journal_raw_title IS NULL OR container_title <> :canonical "
+                "OR journal_key <> :key OR journal_key IS NULL)"
+            ), updates)
+        if engine.dialect.name == "postgresql":
+            sql = (Path(__file__).parent / "data" / "journal_identity.sql").read_text()
+            connection.exec_driver_sql(sql)
+            # Catch an old-version writer that inserted a row during backfill;
+            # the trigger also normalizes any writes after this transaction.
+            connection.execute(text(
+                "UPDATE pdfs SET container_title = container_title "
+                "WHERE container_title IS DISTINCT FROM netvault_journal_display_name(container_title) "
+                "OR (container_title IS NOT NULL AND journal_raw_title IS NULL)"
+            ))
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     _add_pdf_metadata_columns,
     _add_user_token_version,
@@ -198,6 +265,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _add_user_dashboard_journal_limit,
     _add_pdf_doi_corrections,
     _add_last_login_at,
+    _add_journal_identity,
 )
 
 

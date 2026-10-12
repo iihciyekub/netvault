@@ -309,14 +309,14 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
         )
         db.commit()
     by_journal = client.get("/stats/by-journal", headers=headers)
-    assert {"journal": "Web Journal", "count": 1} in by_journal.json()
-    assert {"journal": "Fish & Chips Journal", "count": 1} in by_journal.json()
+    assert {"journal": "WEB JOURNAL", "count": 1} in by_journal.json()
+    assert {"journal": "FISH & CHIPS JOURNAL", "count": 1} in by_journal.json()
     journal_year = client.get("/stats/by-journal-year", headers=headers)
     assert journal_year.status_code == 200
     assert journal_year.json()["max_count"] == 1
     assert journal_year.json()["years"] == sorted(journal_year.json()["years"], reverse=True)
-    assert "Fish & Chips Journal" in {row["journal"] for row in journal_year.json()["rows"]}
-    fish_row = next(row for row in journal_year.json()["rows"] if row["journal"] == "Fish & Chips Journal")
+    assert "FISH & CHIPS JOURNAL" in {row["journal"] for row in journal_year.json()["rows"]}
+    fish_row = next(row for row in journal_year.json()["rows"] if row["journal"] == "FISH & CHIPS JOURNAL")
     assert next(cell for cell in fish_row["cells"] if cell["year"] == 2026) == {"year": 2026, "count": 1, "level": 4}
 
     utd_summary = client.get("/stats/summary", params={"filter": "utd24"}, headers=headers)
@@ -324,7 +324,7 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert utd_summary.json()["active_pdfs"] == 1
     assert utd_summary.json()["total_size"] == 100
     utd_heatmap = client.get("/stats/by-journal-year", params={"filter": "utd24"}, headers=headers)
-    assert [row["journal"] for row in utd_heatmap.json()["rows"]] == ["The Journal of Finance"]
+    assert [row["journal"] for row in utd_heatmap.json()["rows"]] == ["THE JOURNAL OF FINANCE"]
 
     abs4star_summary = client.get("/stats/summary", params={"filter": "4*"}, headers=headers)
     assert abs4star_summary.status_code == 200
@@ -414,11 +414,11 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
 
     normal = client.get("/web")
     pinned = client.get("/web", params={"pin": "Journal 20"})
-    assert "Journal 20" in dashboard_journal_names(normal)
-    assert "Journal 20" in dashboard_journal_names(pinned)
+    assert "JOURNAL 20" in dashboard_journal_names(normal)
+    assert "JOURNAL 20" in dashboard_journal_names(pinned)
     assert len(dashboard_journal_names(normal)) == 21
     assert "data-journal-pagination" in normal.text
-    assert '<option value="Journal 20"></option>' in normal.text
+    assert '<option value="JOURNAL 20"></option>' in normal.text
     assert 'class="heatmap-limit-form"' in normal.text
     assert 'name="journal_limit" type="number" min="1" max="200" value="20"' in normal.text
     limit_form = normal.text.split('class="heatmap-limit-form"', 1)[1].split("</form>", 1)[0]
@@ -438,7 +438,7 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
     assert '<option value="total-asc">Total: Low to High</option>' in normal.text
-    assert any(row[0] == "Journal 00" and row[1] == 21 for row in dashboard_journal_data(normal))
+    assert any(row[0] == "JOURNAL 00" and row[1] == 21 for row in dashboard_journal_data(normal))
 
     updated = client.post(
         "/web/preferences/all-journal-limit",
@@ -447,7 +447,7 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert updated.status_code == 200
     assert updated.history[0].status_code == 303
     assert updated.history[0].headers["location"].endswith("/web?filter=all")
-    assert "Journal 20" in dashboard_journal_names(updated)
+    assert "JOURNAL 20" in dashboard_journal_names(updated)
     assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in updated.text
     autosaved = client.post(
         "/web/preferences/all-journal-limit",
@@ -598,7 +598,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
     assert "0.7.32" in info_page.text
-    assert "app.js?v=0.7.32-ui28" in info_page.text
+    assert "app.js?v=0.7.32-ui29" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
@@ -667,8 +667,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Open in Web of Science" in dashboard.text
     assert "data-journal-context-menu" in dashboard.text
     assert "data-journal-wos-link" in dashboard.text
-    assert "Web Journal" in dashboard_journal_names(dashboard)
-    assert "Another Journal" in dashboard_journal_names(dashboard)
+    assert "WEB JOURNAL" in dashboard_journal_names(dashboard)
+    assert "ANOTHER JOURNAL" in dashboard_journal_names(dashboard)
     journal_rows = dashboard_journal_data(dashboard)
     assert any(cell[2] == 4 for row in journal_rows for cell in row[2])
     assert "data-journal-row=" not in dashboard.text
@@ -687,7 +687,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "10.1234/web.test" in pdfs_with_query.text
     assert "paper-result" in pdfs_with_query.text
     assert "Grace Hopper" in pdfs_with_query.text
-    assert "Web Journal" in pdfs_with_query.text
+    assert "WEB JOURNAL" in pdfs_with_query.text
     assert "NetVault Press" in pdfs_with_query.text
     assert "crossref-badge is-verified" in pdfs_with_query.text
     assert "fa-certificate" in pdfs_with_query.text
@@ -855,7 +855,7 @@ def test_pdf_search_decodes_and_sanitizes_crossref_markup(client: TestClient) ->
     assert result.status_code == 200
     assert "CO<sup>2</sup> markets" in result.text
     assert "A &amp; B" in result.text
-    assert "Finance &amp; Economics" in result.text
+    assert "FINANCE &amp; ECONOMICS" in result.text
     assert "&amp;amp;" not in result.text
     assert "onerror" not in result.text
     assert "Safe Publisher" in result.text
@@ -907,7 +907,7 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert saved_custom.json()["journals"] == ["Web Journal"]
     custom_dashboard = client.get("/web", params={"filter": "custom"})
     assert custom_dashboard.status_code == 200
-    assert "Web Journal" in dashboard_journal_names(custom_dashboard)
+    assert "WEB JOURNAL" in dashboard_journal_names(custom_dashboard)
     assert ">1</span>" in custom_dashboard.text
 
     created_custom = client.post(
@@ -928,7 +928,7 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert saved_second_custom.json()["label"] == "Marketing shortlist"
     multi_list_dashboard = client.get("/web", params={"filter": custom_key})
     assert "Marketing shortlist" in multi_list_dashboard.text
-    assert "Web Journal" in dashboard_journal_names(multi_list_dashboard)
+    assert "WEB JOURNAL" in dashboard_journal_names(multi_list_dashboard)
     deleted_custom = client.delete(
         f"/web/journal-filters/{custom_key}",
         headers={"x-csrf-token": csrf},
@@ -944,7 +944,7 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
     assert saved_utd.json()["is_default"] is False
     assert saved_utd.json()["can_reset"] is True
     utd_dashboard = client.get("/web", params={"filter": "utd24"})
-    assert "Web Journal" in dashboard_journal_names(utd_dashboard)
+    assert "WEB JOURNAL" in dashboard_journal_names(utd_dashboard)
 
     reset_utd = client.delete(
         "/web/journal-filters/utd24",

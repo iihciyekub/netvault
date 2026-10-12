@@ -65,6 +65,7 @@ class CrossrefMetadata:
     fetched_at: datetime | None = None
     provider: str = "crossref"
     work_type: str | None = None
+    issns: tuple[str, ...] = ()
 
 
 def _first(values: list[Any] | None) -> Any | None:
@@ -148,6 +149,7 @@ def fetch_crossref_metadata(doi: str) -> CrossrefMetadata:
         fetched_at=fetched_at,
         provider="crossref",
         work_type=message.get("type"),
+        issns=tuple(message.get("ISSN") or ()),
     )
 
 
@@ -215,6 +217,7 @@ def fetch_doi_org_metadata(doi: str) -> CrossrefMetadata:
         fetched_at=fetched_at,
         provider="doi.org",
         work_type=message.get("type"),
+        issns=tuple(message.get("ISSN") or ()),
     )
 
 
@@ -284,6 +287,7 @@ def search_crossref_metadata(title: str) -> list[CrossrefMetadata]:
             authors=_authors(item), container_title=_first(item.get("container-title")),
             publisher=item.get("publisher"), published_year=_published_year(item),
             resource_url=item.get("URL"), fetched_at=fetched_at, work_type=item.get("type"),
+            issns=tuple(item.get("ISSN") or ()),
         ) for item in items]
     except (requests.RequestException, KeyError, TypeError, ValueError):
         return [CrossrefMetadata(status="unavailable", fetched_at=fetched_at)]

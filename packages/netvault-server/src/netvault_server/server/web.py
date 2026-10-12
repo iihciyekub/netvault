@@ -188,7 +188,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui28",
+        "asset_version": f"{__version__}-ui29",
         "app_version": __version__,
     }
     response = templates.TemplateResponse(request, name, context)

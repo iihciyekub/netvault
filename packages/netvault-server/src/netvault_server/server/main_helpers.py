@@ -91,6 +91,12 @@ def apply_crossref_metadata(pdf: Pdf, metadata: CrossrefMetadata, *, overwrite: 
         pdf.publisher = metadata.publisher or pdf.publisher
         pdf.published_year = metadata.published_year or pdf.published_year
         pdf.crossref_url = metadata.resource_url or pdf.crossref_url
+    from netvault_server.server.journal_identity import serial_identifiers
+
+    if overwrite or metadata.container_title:
+        pdf.journal_raw_title = metadata.container_title
+        pdf.journal_issns_json = json.dumps(serial_identifiers(metadata.issns))
+        pdf.work_type = metadata.work_type
 
 
 def doi_evidence_json(evidence, verification: list[dict] | None = None) -> str:

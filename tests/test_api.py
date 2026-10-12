@@ -666,7 +666,7 @@ def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) ->
         assert "ix_pdf_file_aliases_sha256" in alias_indexes
         assert "ix_pdf_file_aliases_pdf_id" in alias_indexes
         assert "ix_pdf_doi_corrections_pdf_id" in correction_indexes
-        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 8
+        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 9
 
     incomplete = upload(
         client,
@@ -826,7 +826,7 @@ def test_force_upload_replaces_pdf_and_crossref_metadata_for_regular_user(
     assert payload["pdf"]["original_name"] == "replacement.pdf"
     assert payload["pdf"]["title"] == "Current Crossref Title"
     assert payload["pdf"]["authors"] is None
-    assert payload["pdf"]["container_title"] == "Current Crossref Journal"
+    assert payload["pdf"]["container_title"] == "CURRENT CROSSREF JOURNAL"
     assert payload["pdf"]["publisher"] is None
     assert payload["pdf"]["published_year"] == 2027
     assert payload["pdf"]["uploaded_by"] == "replacer"

@@ -558,7 +558,10 @@
     label.dataset.journalName = row.label;
     label.dataset.journalTotal = String(row.total);
     label.dataset.tip = row.label;
-    label.textContent = row.label;
+    const name = document.createElement("span");
+    name.className = "heat-journal-name";
+    name.textContent = row.label;
+    label.append(name);
     elements.push(label);
     years.forEach((year, index) => {
       const data = row.counts.get(index);

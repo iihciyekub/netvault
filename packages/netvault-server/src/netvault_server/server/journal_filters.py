@@ -281,6 +281,16 @@ def allowed_journals_for_filter(
     names = effective_journal_names(filter_key, db, user_id)
     if names is None:
         return None
+    if db is not None:
+        from netvault_server.server.journal_identity import journal_display_name
+        from netvault_server.server.models import JournalAlias
+
+        aliases = dict(db.execute(
+            select(JournalAlias.alias_name, JournalAlias.canonical_name).where(
+                JournalAlias.alias_name.in_([journal_display_name(name) for name in names])
+            )
+        ).all())
+        names = [aliases.get(journal_display_name(name), name) for name in names]
     return {key for name in names if (key := normalize_journal_name(name))}
 
 
