@@ -706,8 +706,11 @@ def ensure_logged_in() -> None:
 @app.command(
     epilog="""\b
 Examples:
+  nv login https://iiaide.com/nv --username example-user --password example-password
   nv login https://iiaide.com/nv
   nv login
+
+Replace example-user and example-password with your own credentials.
 """,
 )
 def login(

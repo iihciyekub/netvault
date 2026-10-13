@@ -176,8 +176,11 @@ python -m pip install -e .
 Login:
 
 ```bash
-nv login http://127.0.0.1:8000
+nv login http://127.0.0.1:8000 --username example-user --password example-password
 ```
+
+Replace the example username and password with your own credentials, or run
+`nv login http://127.0.0.1:8000` to enter them when prompted.
 
 Login credentials are saved in `~/.config/netvault/credentials.toml`. The server
 token is valid for 7 days by default and can be changed with

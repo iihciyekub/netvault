@@ -50,8 +50,11 @@ release. Development commits on `main` are not installed as user releases.
 ## Login
 
 ```bash
-nv login https://iiaide.com/nv
+nv login https://iiaide.com/nv --username example-user --password example-password
 ```
+
+Replace the example username and password with your own credentials. Run
+`nv login` without parameters to enter them when prompted.
 
 Credentials are stored locally under:
 

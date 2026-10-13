@@ -2,8 +2,11 @@
 
 ## Unreleased
 
-- Simplify the web CLI guide to everyday install, interactive login/status, upload and download commands; keep literature management and DOI tools in a collapsed Advanced Management section.
-- Remove hard-coded account credentials from the rendered page and copy buttons.
+## 0.7.36 — 2026-10-13
+
+- Add a complete login example with the server URL, `--username example-user` and `--password example-password` to the web CLI guide and copy button, CLI login help, README and user guide; retain interactive login.
+- Simplify the web CLI guide to everyday install, login/status, upload and download commands; keep literature management and DOI tools in a collapsed Advanced Management section.
+- Use clearly labelled example credentials in the rendered page and copy buttons.
 
 - Unify local literature management under `nv identify`: automatic vault lookup, `--issn` inventory matching, or offline `--index`; preview by default and apply with `--rename`.
 - Preserve the fast bounded parallel hash pipeline and per-run cache; make slower page-content comparison opt-in with `--check-content`, and retain inventory misses with status `not_in_index`.

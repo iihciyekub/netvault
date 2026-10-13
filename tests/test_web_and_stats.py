@@ -567,10 +567,12 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">NetVault command-line interface</h1>' in cli_page.text
     assert "Install / Update" in cli_page.text
     assert "nv update" in cli_page.text
-    assert 'data-copy="nv login"' in cli_page.text
+    assert (
+        'data-copy="nv login https://iiaide.com/nv --username example-user '
+        '--password example-password"'
+    ) in cli_page.text
     assert 'data-copy="nv status"' in cli_page.text
-    assert "--username" not in cli_page.text
-    assert "--password" not in cli_page.text
+    assert "Replace the example username and password with your own credentials" in cli_page.text
     assert "shared NetVault server account" not in cli_page.text
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
@@ -605,8 +607,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.35" in info_page.text
-    assert "app.js?v=0.7.35-ui29" in info_page.text
+    assert "0.7.36" in info_page.text
+    assert "app.js?v=0.7.36-ui29" in info_page.text
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text
