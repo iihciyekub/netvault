@@ -10,12 +10,11 @@ from netvault.cli.http import auth_headers, http_session, raise_for_api_error, s
 
 
 def normalize_export_issn(value: str) -> str:
-    digits = re.sub(r"[\s-]", "", value).upper()
-    if re.fullmatch(r"[0-9]{7}[0-9X]", digits):
-        check = 10 if digits[-1] == "X" else int(digits[-1])
-        if (sum(int(v) * w for v, w in zip(digits[:7], range(8, 1, -1))) + check) % 11 == 0:
-            return digits[:4] + "-" + digits[4:]
-    raise ValueError("Invalid ISSN format or checksum")
+    from netvault.identity_shared import normalize_issn
+    normalized = normalize_issn(value)
+    if normalized is None:
+        raise ValueError("Invalid ISSN format or checksum")
+    return normalized
 
 
 def default_export_destination(issn: str, *, force: bool = False) -> Path:
@@ -29,16 +28,19 @@ def default_export_destination(issn: str, *, force: bool = False) -> Path:
     return destination
 
 
-def save_issn_export(issn: str, destination: Path, *, force: bool = False) -> int:
+def save_issn_export(issn: str, destination: Path, *, force: bool = False, primary_only: bool = False) -> int:
     destination = destination.expanduser().resolve()
     if destination.exists() and not force:
         raise FileExistsError(f"Output already exists: {destination}. Use --force to replace it.")
     if destination.is_dir():
         raise IsADirectoryError(f"Output is a directory: {destination}")
     part = None
+    params = {"issn": issn}
+    if primary_only:
+        params["include_aliases"] = "false"
     try:
         with http_session().get(
-            f"{server_url()}/pdfs/export", headers=auth_headers(), params={"issn": issn},
+            f"{server_url()}/pdfs/export", headers=auth_headers(), params=params,
             stream=True, timeout=(10, 60),
         ) as response:
             raise_for_api_error(response)

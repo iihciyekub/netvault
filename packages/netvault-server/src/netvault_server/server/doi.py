@@ -1,267 +1,45 @@
 import logging
 import re
 import subprocess
-import unicodedata
-from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import unquote
 
 from pypdf import PdfReader
 
+from netvault_server.identity_shared import (
+    DoiCandidate as DoiCandidate,
+    DoiEvidence as DoiEvidence,
+    normalize_doi as normalize_doi,
+    find_doi_in_text as find_doi_in_text,
+    find_dois_in_text as find_dois_in_text,
+    find_metadata_dois_in_text as find_metadata_dois_in_text,
+    find_filename_doi_from_name as find_filename_doi_from_name,
+    doi_matches as doi_matches,
+    unique_dois as unique_dois,
+    choose_candidate as choose_candidate,
+    choose_source as choose_source,
+    candidate_context as candidate_context,
+    repair_doi_line_wraps as repair_doi_line_wraps,
+    embedded_in_publisher_url as embedded_in_publisher_url,
+    score_text_candidate as score_text_candidate,
+    candidates_from_text as candidates_from_text,
+    normalize_issn as normalize_issn,
+    journal_display_name as journal_display_name,
+    normalize_journal_key as normalize_journal_key,
+    DOI_SUFFIX_RE as DOI_SUFFIX_RE,
+    DOI_RE as DOI_RE,
+    STRICT_DOI_RE as STRICT_DOI_RE,
+    DOI_URL_PREFIX_RE as DOI_URL_PREFIX_RE,
+    PDF_OBJECT_DELIMITERS as PDF_OBJECT_DELIMITERS,
+    REFERENCE_HEADING_RE as REFERENCE_HEADING_RE,
+    DOI_LABEL_RE as DOI_LABEL_RE,
+    RAW_EXPLICIT_DOI_RE as RAW_EXPLICIT_DOI_RE,
+    DOI_METADATA_PATTERNS as DOI_METADATA_PATTERNS,
+    DOI_SOURCE_RANK as DOI_SOURCE_RANK,
+    DOI_RESOLVER_VERSION as DOI_RESOLVER_VERSION,
+    TRAILING_PUNCTUATION as TRAILING_PUNCTUATION,
+ )
+
 logging.getLogger("pypdf").setLevel(logging.CRITICAL)
-
-DOI_SUFFIX_RE = r"[-._;()/:,A-Z0-9+%=&]+"
-DOI_RE = re.compile(rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE})", re.IGNORECASE)
-STRICT_DOI_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
-DOI_URL_PREFIX_RE = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
-PDF_OBJECT_DELIMITERS = (">>", "<<")
-REFERENCE_HEADING_RE = re.compile(r"(?im)^\s*(references|bibliography|works cited)\s*$")
-DOI_LABEL_RE = re.compile(r"\b(doi|digital object identifier|crossmark)\b", re.IGNORECASE)
-RAW_EXPLICIT_DOI_RE = re.compile(
-    rf"(?:\bdoi\b\s*:?\s*|https?://(?:dx\.)?doi\.org/)(10\.\d{{4,9}}/{DOI_SUFFIX_RE})",
-    re.IGNORECASE,
-)
-DOI_METADATA_PATTERNS = [
-    re.compile(
-        r"(?:prism:doi|crossmark:DOI|pdfx:doi|dc:identifier|WPS-ARTICLEDOI)"
-        rf"\s*(?:=|>|\\\(|\()?[^<>\r\n]{{0,240}}?(10\.\d{{4,9}}/{DOI_SUFFIX_RE})",
-        re.IGNORECASE,
-    )
-]
-DOI_SOURCE_RANK = {"pdf-content": 3, "filename": 4, "pdf-metadata": 5, "explicit": 6}
-TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
-
-
-@dataclass(frozen=True)
-class DoiCandidate:
-    doi: str
-    source: str
-    detail: str = ""
-    score: int = 0
-    context: str = ""
-    embedded_publisher_url: bool = False
-
-
-@dataclass(frozen=True)
-class DoiEvidence:
-    status: str
-    doi: str | None
-    source: str | None
-    candidates: list[DoiCandidate]
-    reason: str | None = None
-    pdf_text: str | None = field(default=None, compare=False, repr=False)
-
-
-def normalize_doi(value: str) -> str:
-    doi = unicodedata.normalize("NFKC", value.strip())
-    if DOI_URL_PREFIX_RE.match(doi):
-        doi = DOI_URL_PREFIX_RE.sub("", doi)
-        doi = unquote(doi)
-    doi = re.sub(r"^doi:\s*", "", doi, flags=re.IGNORECASE)
-    delimiter_positions = [doi.find(token) for token in PDF_OBJECT_DELIMITERS if token in doi]
-    if delimiter_positions:
-        doi = doi[: min(position for position in delimiter_positions if position >= 0)]
-    doi = re.sub(r"</[a-z][^>\s]*.*$", "", doi, flags=re.IGNORECASE)
-    doi = re.sub(r"\)/[a-z][a-z0-9_-].*$", ")", doi, flags=re.IGNORECASE)
-    doi = doi.strip().rstrip(TRAILING_PUNCTUATION)
-    while doi.endswith(")") and doi.count(")") > doi.count("("):
-        doi = doi[:-1]
-    doi = doi.lower()
-    if not STRICT_DOI_RE.fullmatch(doi) or any(char.isspace() for char in doi):
-        raise ValueError("Invalid DOI")
-    return doi
-
-
-def find_doi_in_text(text: str) -> str | None:
-    match = DOI_RE.search(text)
-    if not match:
-        return None
-    return normalize_doi(match.group(1))
-
-
-def find_dois_in_text(text: str) -> list[str]:
-    dois = []
-    for match in DOI_RE.finditer(text):
-        try:
-            doi = normalize_doi(match.group(1))
-        except ValueError:
-            continue
-        if doi not in dois:
-            dois.append(doi)
-    return dois
-
-
-def find_metadata_dois_in_text(text: str) -> list[DoiCandidate]:
-    candidates = []
-    for pattern in DOI_METADATA_PATTERNS:
-        for match in pattern.finditer(text):
-            try:
-                candidates.append(DoiCandidate(normalize_doi(match.group(1)), "pdf-metadata"))
-            except ValueError:
-                continue
-    return candidates
-
-
-def find_filename_doi_from_name(filename: str) -> DoiCandidate | None:
-    path = Path(filename)
-    # Our PDF download workflow appends --<8-16 hex fingerprint> to renamed
-    # files. This suffix is not part of the article DOI. Restrict removal to
-    # recognized DOI-leading filenames and a full hex suffix.
-    stem = path.stem
-    if re.match(r"^10[._]\d{4,9}[_/.-]", stem, re.I):
-        stem = re.sub(r"--[0-9a-f]{8,16}$", "", stem, flags=re.I)
-    direct = find_doi_in_text(stem)
-    if direct:
-        return DoiCandidate(direct, "filename", path.name, 90)
-    safe_name = re.match(r"^10[._](\d{4,9})[_-](.+)$", stem, re.IGNORECASE)
-    if safe_name:
-        try:
-            return DoiCandidate(normalize_doi(f"10.{safe_name.group(1)}/{safe_name.group(2)}"), "filename", path.name, 90)
-        except ValueError:
-            return None
-
-    springer = re.match(r"^(s\d{4,9}-\d{3}-\d{5}(?:-\d)?)", path.stem, re.IGNORECASE)
-    if springer:
-        try:
-            return DoiCandidate(normalize_doi(f"10.1007/{springer.group(1)}"), "filename", path.name, 86)
-        except ValueError:
-            return None
-
-    plos = re.match(r"^(journal\.pone\.\d+)", path.stem, re.IGNORECASE)
-    if plos:
-        try:
-            return DoiCandidate(normalize_doi(f"10.1371/{plos.group(1)}"), "filename", path.name, 86)
-        except ValueError:
-            return None
-
-    frontiers = re.match(r"^(fpsyg)-(\d+)-(\d+)", path.stem, re.IGNORECASE)
-    if frontiers:
-        volume = int(frontiers.group(2))
-        # Frontiers in Psychology volume 13 is 2022, volume 14 is 2023, etc.
-        year = 2009 + volume
-        try:
-            return DoiCandidate(
-                normalize_doi(f"10.3389/{frontiers.group(1)}.{year}.{frontiers.group(3)}"),
-                "filename",
-                path.name,
-                82,
-            )
-        except ValueError:
-            return None
-
-    return None
-
-
-def doi_matches(left: str, right: str) -> bool:
-    return normalize_doi(left) == normalize_doi(right)
-
-
-def unique_dois(candidates: list[DoiCandidate], sources: set[str] | None = None) -> list[str]:
-    dois = []
-    for candidate in candidates:
-        if sources and candidate.source not in sources:
-            continue
-        if candidate.doi not in dois:
-            dois.append(candidate.doi)
-    return dois
-
-
-def choose_candidate(candidates: list[DoiCandidate], doi: str) -> DoiCandidate | None:
-    matching = [candidate for candidate in candidates if candidate.doi == doi]
-    if not matching:
-        return None
-    return max(matching, key=lambda candidate: (candidate.score, DOI_SOURCE_RANK.get(candidate.source, 0)))
-
-
-def choose_source(candidates: list[DoiCandidate], doi: str) -> str:
-    candidate = choose_candidate(candidates, doi)
-    return candidate.source if candidate else "pdf-content"
-
-
-def candidate_context(text: str, start: int, end: int, width: int = 90) -> str:
-    context = re.sub(r"\s+", " ", text[max(0, start - width) : min(len(text), end + width)]).strip()
-    return context[:220]
-
-
-def repair_doi_line_wraps(text: str) -> str:
-    # Join only DOI tokens, never arbitrary PDF prose or adjacent reference titles.
-    text = unicodedata.normalize("NFKC", text).replace("\u00ad", "").replace("\u200b", "")
-    text = re.sub(r"\b(10\.\d{4,9}/)[ \t]*\r?\n[ \t]*(?=[A-Z0-9])", r"\1", text, flags=re.I)
-    pattern = re.compile(
-        rf"\b(10\.\d{{4,9}}/{DOI_SUFFIX_RE}[-/_.])[ \t]*\r?\n[ \t]*"
-        rf"([A-Z0-9]{DOI_SUFFIX_RE})(?=\s|$)",
-        re.I,
-    )
-    # Require punctuation or numbers in the continuation to avoid swallowing prose.
-    for _ in range(3):
-        text = pattern.sub(
-            lambda m: m[1] + m[2] if re.search(r"[0-9/_.-]", m[2]) else m[0], text
-        )
-    return text
-
-
-def embedded_in_publisher_url(text: str, match: re.Match[str]) -> bool:
-    before = text[max(0, match.start() - 500) : match.start()]
-    url_match = re.search(r"https?://([^/\s<>'\"]+)[^\s<>'\"]*$", before, re.IGNORECASE)
-    if not url_match:
-        return False
-    hostname = url_match.group(1).lower().split(":", 1)[0].removeprefix("www.")
-    return hostname not in {"doi.org", "dx.doi.org"}
-
-
-def score_text_candidate(
-    text: str,
-    match: re.Match[str],
-    page: int | None = None,
-    in_references: bool = False,
-    embedded_publisher_url: bool = False,
-) -> int:
-    before = text[max(0, match.start() - 140) : match.start()]
-    after = text[match.end() : min(len(text), match.end() + 80)]
-    score = 54
-    if page == 1:
-        score += 18
-    elif page == 2:
-        score += 8
-    if DOI_LABEL_RE.search(before + after):
-        score += 18
-    if embedded_publisher_url:
-        score -= 40
-    if in_references or re.search(r"(?i)\b(references|bibliography|works cited|cited by)\b", before[-80:]):
-        score -= 38
-    return max(5, min(score, 88))
-
-
-def candidates_from_text(text: str, source: str, detail: str, page: int | None = None) -> list[DoiCandidate]:
-    text = repair_doi_line_wraps(text)
-    reference_match = REFERENCE_HEADING_RE.search(text)
-    reference_start = reference_match.start() if reference_match else None
-    candidates = []
-    for match in DOI_RE.finditer(text):
-        try:
-            doi = normalize_doi(match.group(1))
-        except ValueError:
-            continue
-        in_references = reference_start is not None and match.start() >= reference_start
-        in_publisher_url = embedded_in_publisher_url(text, match)
-        candidates.append(
-            DoiCandidate(
-                doi=doi,
-                source=source,
-                detail=detail,
-                score=score_text_candidate(
-                    text,
-                    match,
-                    page=page,
-                    in_references=in_references,
-                    embedded_publisher_url=in_publisher_url,
-                ),
-                context=candidate_context(text, match.start(), match.end()),
-                embedded_publisher_url=in_publisher_url,
-            )
-        )
-    return candidates
-
 
 def _pdftotext(path: Path) -> str:
     try:

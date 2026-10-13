@@ -117,7 +117,7 @@ def move_without_overwrite(source: Path, destination: Path, sha256: str,
 def open_report(directory: Path, requested: Path | None):
     if requested is not None:
         if requested.suffix.lower() != ".csv":
-            raise ValueError("--csv must name a .csv file")
+            raise ValueError("--report must name a .csv file")
         return requested, requested.open("x", encoding="utf-8-sig", newline="")
     index = 1
     while True:

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import csv
 import os
 from pathlib import Path
+from time import monotonic
 
 from netvault.cli.identify import (
     CSV_FIELDS, LocalPdf, available_destination, doi_filename, file_signature,
@@ -92,6 +93,7 @@ def fast_identify_pdfs(
         writer.writeheader()
         report.flush()
         os.fsync(report.fileno())
+        last_sync = monotonic()
         completed = 0
         for batch in hashed_batches(executor):
             hashes = {pdf.sha256 for pdf in batch if not pdf.error}
@@ -187,10 +189,14 @@ def fast_identify_pdfs(
                     "error": error,
                 })
                 writer.writerow(row)
-                report.flush()
-                os.fsync(report.fileno())
+                if rename or monotonic() - last_sync >= 1:
+                    report.flush()
+                    os.fsync(report.fileno())
+                    last_sync = monotonic()
                 counts[status] = counts.get(status, 0) + 1
                 completed += 1
                 if progress:
                     progress("Hashing and identifying PDFs", completed, len(pdfs))
+        report.flush()
+        os.fsync(report.fileno())
     return report_path, counts

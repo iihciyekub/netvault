@@ -9,7 +9,6 @@ import shutil
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -19,21 +18,22 @@ from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import Base, engine, get_db
 from netvault_server.server.deps import get_current_user, require_admin
-from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.doi import normalize_doi
 from netvault_server.server.main_helpers import pdf_to_read, process_upload
 from netvault_server.server.migrations import run_migrations
 from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf_doi_service
 from netvault_server.server.models import (
     Pdf,
-    PdfDoiCorrection,
-    PdfFileAlias,
     UploadRecord,
     User,
     UserRole,
     utc_now,
 )
-from netvault_server.server.queries import pdf_contains_query, pdf_read_options
+from netvault_server.server.queries import pdf_read_options
+from netvault_server.server.pdf_service import (existing_pdfs, search_pdfs_query,
+    find_pdf as find_pdf_service, find_pdf_by_doi as find_pdf_by_doi_service,
+    send_pdf_file as send_pdf_file_service, doi_correction_history)
+from netvault_server.server import accounts
 from netvault_server.server.schemas import (
     LoginRequest,
     PasswordResetRequest,
@@ -52,17 +52,11 @@ from netvault_server.server.schemas import (
     UserRead,
 )
 from netvault_server.server.security import (
-    DUMMY_PASSWORD_HASH,
-    clear_login_failures,
     create_access_token,
     hash_password,
-    login_is_allowed,
-    password_needs_rehash,
-    record_login_failure,
-    verify_password,
     activity_is_allowed,
 )
-from netvault_server.server.storage import ensure_storage_dirs, object_path
+from netvault_server.server.storage import ensure_storage_dirs
 from netvault_server.server.stats import invalidate_stats_cache, router as stats_router
 from netvault_server.server.journal_export import router as journal_export_router
 from netvault_server.server.web import router as web_router
@@ -190,28 +184,14 @@ def ready() -> dict[str, str]:
 
 @app.post("/auth/login", response_model=TokenResponse)
 def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    client_host = request.client.host if request.client else "unknown"
-    login_key = f"{client_host}:{payload.username.casefold()}"
-    if not login_is_allowed(login_key):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
-    user = db.scalar(select(User).where(User.username == payload.username))
-    candidate_hash = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
-    password_valid = verify_password(payload.password, candidate_hash)
-    if user is None or not user.is_active or not password_valid:
-        record_login_failure(login_key)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    clear_login_failures(login_key)
-    if password_needs_rehash(user.password_hash):
-        user.password_hash = hash_password(payload.password)
-    user.last_login_at = utc_now()
-    db.commit()
+    user = accounts.authenticate(db, payload.username, payload.password,
+                                 request.client.host if request.client else "unknown")
     return TokenResponse(access_token=create_access_token(user.username, user.token_version))
 
 
 @app.post("/auth/logout")
 def logout(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, str]:
-    user.token_version += 1
-    db.commit()
+    accounts.revoke_sessions(db, user)
     return {"status": "ok"}
 
 
@@ -282,57 +262,7 @@ def existing_pdfs_by_sha256(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Sha256ExistsResponse:
-    _ = user
-    hashes = sorted(
-        {
-            sha256.lower()
-            for sha256 in payload.sha256
-            if len(sha256) == 64 and all(char in "0123456789abcdefABCDEF" for char in sha256)
-        }
-    )
-    dois: list[str] = []
-    for raw_doi in payload.doi:
-        try:
-            normalized = normalize_doi(raw_doi)
-        except ValueError:
-            continue
-        if normalized not in dois:
-            dois.append(normalized)
-    hash_pdfs = (
-        db.scalars(
-            select(Pdf)
-            .options(*pdf_read_options())
-            .where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))
-        ).all()
-        if hashes
-        else []
-    )
-    alias_rows = (
-        db.execute(
-            select(PdfFileAlias.sha256, Pdf)
-            .join(Pdf, Pdf.id == PdfFileAlias.pdf_id)
-            .options(*pdf_read_options())
-            .where(Pdf.is_deleted.is_(False), PdfFileAlias.sha256.in_(hashes))
-        ).all()
-        if hashes
-        else []
-    )
-    doi_pdfs = (
-        db.scalars(
-            select(Pdf)
-            .options(*pdf_read_options())
-            .where(Pdf.is_deleted.is_(False), Pdf.doi.in_(dois))
-        ).all()
-        if dois
-        else []
-    )
-    existing = {pdf.sha256: pdf_to_read(pdf) for pdf in hash_pdfs}
-    existing.update({sha256: pdf_to_read(pdf) for sha256, pdf in alias_rows})
-    return Sha256ExistsResponse(
-        existing=existing,
-        existing_doi={pdf.doi: pdf_to_read(pdf) for pdf in doi_pdfs},
-        server_version=__version__,
-    )
+    return existing_pdfs(db, payload.sha256, payload.doi)
 
 
 @app.post("/pdfs/aliases", response_model=PdfAliasCreateResponse)
@@ -341,66 +271,27 @@ def register_pdf_file_aliases(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> PdfAliasCreateResponse:
-    claims: dict[str, str] = {}
+    # Compatibility endpoint: a hash-only claim cannot prove article identity.
+    # New aliases are established by process_upload after examining the PDF.
+    claims = {}
     for claim in payload.aliases:
-        sha256 = claim.sha256.lower()
         try:
             doi = normalize_doi(claim.doi)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        previous = claims.get(sha256)
-        if previous is not None and previous != doi:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"SHA-256 {sha256} was assigned conflicting DOIs",
-            )
-        claims[sha256] = doi
-
-    pdfs = db.scalars(
-        select(Pdf)
-        .options(*pdf_read_options())
-        .where(
-            Pdf.is_deleted.is_(False),
-            (Pdf.doi.in_(set(claims.values()))) | (Pdf.sha256.in_(set(claims))),
-        )
-    ).all()
-    pdf_by_doi = {pdf.doi: pdf for pdf in pdfs}
-    canonical_by_sha = {pdf.sha256: pdf for pdf in pdfs}
-    aliases = db.scalars(select(PdfFileAlias).where(PdfFileAlias.sha256.in_(set(claims)))).all()
-    alias_by_sha = {alias.sha256: alias for alias in aliases}
-
-    registered: dict[str, PdfRead] = {}
-    for sha256, doi in claims.items():
-        pdf = pdf_by_doi.get(doi)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        sha = claim.sha256.lower()
+        if sha in claims and claims[sha] != doi:
+            raise HTTPException(status_code=409, detail="SHA-256 was assigned conflicting DOIs")
+        claims[sha] = doi
+    known = existing_pdfs(db, claims).existing
+    for sha, doi in claims.items():
+        pdf = known.get(sha)
         if pdf is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No active PDF found for DOI {doi}",
-            )
-        canonical = canonical_by_sha.get(sha256)
-        if canonical is not None and canonical.id != pdf.id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"SHA-256 {sha256} belongs to another PDF",
-            )
-        alias = alias_by_sha.get(sha256)
-        if alias is not None and alias.pdf_id != pdf.id:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"SHA-256 alias {sha256} belongs to another PDF",
-            )
-        if canonical is None and alias is None:
-            db.add(
-                PdfFileAlias(
-                    sha256=sha256,
-                    pdf_id=pdf.id,
-                    source="client-doi-confirmed",
-                    asserted_by_id=user.id,
-                )
-            )
-        registered[sha256] = pdf_to_read(pdf)
-    db.commit()
-    return PdfAliasCreateResponse(registered=registered)
+            raise HTTPException(status_code=409,
+                detail="Upload the PDF to verify this hash/DOI pair before registering an alias")
+        if pdf.doi != doi:
+            raise HTTPException(status_code=409, detail=f"SHA-256 belongs to DOI {pdf.doi}")
+    return PdfAliasCreateResponse(registered={sha: known[sha] for sha in claims})
 
 
 @app.get("/pdfs/search", response_model=list[PdfRead])
@@ -411,52 +302,18 @@ def search_pdfs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Sequence[PdfRead]:
-    _ = user
-    if len(q.strip()) > get_settings().search_query_max_chars:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Search query is too long")
-    cleaned_query = q.strip()
-    if not cleaned_query:
+    if not q.strip():
         return []
-    try:
-        exact_doi = normalize_doi(cleaned_query)
-    except ValueError:
-        exact_doi = None
-    query = select(Pdf).options(*pdf_read_options()).where(
-        Pdf.is_deleted.is_(False), Pdf.doi.is_not(None)
-    )
-    if exact_doi:
-        exact_exists = db.scalar(
-            select(Pdf.id).where(Pdf.is_deleted.is_(False), Pdf.doi == exact_doi).limit(1)
-        )
-        query = query.where(Pdf.doi == exact_doi if exact_exists else pdf_contains_query(cleaned_query))
-    else:
-        query = query.where(pdf_contains_query(cleaned_query))
-    pdfs = db.scalars(
-        query.order_by(Pdf.uploaded_at.desc(), Pdf.id.desc()).offset(offset).limit(limit)
-    ).all()
+    pdfs = db.scalars(search_pdfs_query(db, q).offset(offset).limit(limit)).all()
     return [pdf_to_read(pdf) for pdf in pdfs]
 
 
 def find_pdf(identifier: str, db: Session) -> Pdf:
-    pdf: Pdf | None = None
-    if identifier.isdigit():
-        pdf = db.get(Pdf, int(identifier))
-    if pdf is None and len(identifier) == 64:
-        pdf = db.scalar(select(Pdf).where(Pdf.sha256 == identifier))
-    if pdf is None or pdf.is_deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF not found")
-    return pdf
+    return find_pdf_service(identifier, db)
 
 
 def find_pdf_by_doi(doi: str, db: Session) -> Pdf:
-    try:
-        normalized_doi = normalize_doi(doi)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    pdf = db.scalar(select(Pdf).where(Pdf.doi == normalized_doi))
-    if pdf is None or pdf.is_deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF not found for DOI")
-    return pdf
+    return find_pdf_by_doi_service(doi, db)
 
 
 @app.get("/pdfs/by-doi", response_model=PdfDetail)
@@ -500,20 +357,7 @@ def download_pdf(
 
 
 def send_pdf_file(pdf: Pdf, user: User, db: Session) -> FileResponse:
-    if not activity_is_allowed(
-        f"download:{user.id}", get_settings().download_rate_per_hour
-    ):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")
-    path = object_path(pdf.sha256)
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Stored PDF missing")
-    return FileResponse(
-        path,
-        media_type="application/pdf",
-        filename=Path(pdf.original_name).name,
-        background=BackgroundTask(record_completed_downloads, [pdf.id], user.id),
-        headers={"ETag": f'"{pdf.sha256}"'},
-    )
+    return send_pdf_file_service(pdf, user, db)
 
 
 @app.post("/admin/users", response_model=UserRead)
@@ -522,18 +366,7 @@ def create_user(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> User:
-    existing = db.scalar(select(User).where(User.username == payload.username))
-    if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
-    user = User(
-        username=payload.username,
-        password_hash=hash_password(payload.password),
-        role=payload.role,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    return accounts.create_user(db, payload)
 
 
 @app.post("/admin/users/{username}/reset-password", response_model=UserRead)
@@ -543,14 +376,7 @@ def reset_password(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> User:
-    user = db.scalar(select(User).where(User.username == username))
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user.password_hash = hash_password(payload.password)
-    user.token_version += 1
-    db.commit()
-    db.refresh(user)
-    return user
+    return accounts.reset_password(db, username, payload)
 
 
 @app.post("/admin/users/{username}/deactivate", response_model=UserRead)
@@ -559,13 +385,7 @@ def deactivate_user(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> User:
-    user = db.scalar(select(User).where(User.username == username))
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user.is_active = False
-    db.commit()
-    db.refresh(user)
-    return user
+    return accounts.set_active(db, username, False, _)
 
 
 @app.post(
@@ -601,24 +421,7 @@ def list_pdf_doi_corrections(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> list[PdfDoiCorrectionRead]:
-    rows = db.execute(
-        select(PdfDoiCorrection, User)
-        .join(User, User.id == PdfDoiCorrection.corrected_by_id)
-        .where(PdfDoiCorrection.pdf_id == pdf_id)
-        .order_by(PdfDoiCorrection.corrected_at.desc(), PdfDoiCorrection.id.desc())
-    ).all()
-    return [
-        PdfDoiCorrectionRead(
-            id=correction.id,
-            pdf_id=correction.pdf_id,
-            old_doi=correction.old_doi,
-            new_doi=correction.new_doi,
-            reason=correction.reason,
-            corrected_by=user.username,
-            corrected_at=correction.corrected_at,
-        )
-        for correction, user in rows
-    ]
+    return doi_correction_history(db, pdf_id)
 
 
 @app.delete("/admin/pdfs/by-doi", response_model=PdfRead)

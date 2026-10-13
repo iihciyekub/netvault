@@ -27,6 +27,7 @@ def audit(limit: int, alias_limit: int) -> dict:
         "alias_mismatches": [],
         "unreadable_pdfs": 0,
         "unreadable_aliases": 0,
+        "aliases_without_retained_object": 0,
     }
     with SessionLocal() as session:
         pdfs = session.scalars(
@@ -51,6 +52,10 @@ def audit(limit: int, alias_limit: int) -> dict:
         ).all()
         for alias, pdf in aliases:
             result["aliases_checked"] += 1
+            if not object_path(alias.sha256).is_file():
+                # A file alias records identity, not another retained object.
+                result["aliases_without_retained_object"] += 1
+                continue
             title = page_title(object_path(alias.sha256))
             if title is None:
                 result["unreadable_aliases"] += 1

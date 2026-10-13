@@ -6,7 +6,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from starlette.background import BackgroundTask
@@ -18,7 +18,7 @@ from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.download_audit import record_completed_downloads
-from netvault_server.server.doi import find_dois_in_text, normalize_doi
+from netvault_server.server.doi import find_dois_in_text
 from netvault_server.server.journal_filters import (
     create_user_journal_filter,
     delete_user_journal_filter,
@@ -29,19 +29,16 @@ from netvault_server.server.journal_filters import (
     save_user_journal_filter,
 )
 from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf_doi_service
-from netvault_server.server.main_helpers import pdf_to_read, process_upload
-from netvault_server.server.models import Pdf, PdfDoiCorrection, User, UserRole, utc_now
-from netvault_server.server.queries import pdf_contains_query, pdf_read_options
+from netvault_server.server.main_helpers import process_upload
+from netvault_server.server.models import Pdf, User, UserRole
+from netvault_server.server.pdf_service import (existing_pdfs, search_pdfs_query,
+    resolve_pdf_file, send_pdf_file, doi_correction_history)
+from netvault_server.server import accounts
+from netvault_server.server.schemas import PasswordResetRequest, UserCreateRequest, Sha256ExistsRequest
+from pydantic import ValidationError
 from netvault_server.server.security import (
-    DUMMY_PASSWORD_HASH,
-    clear_login_failures,
     create_access_token,
     decode_access_token_claims,
-    hash_password,
-    login_is_allowed,
-    password_needs_rehash,
-    record_login_failure,
-    verify_password,
     activity_is_allowed,
 )
 from netvault_server.server.stats import (
@@ -190,6 +187,7 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "path_for": external_path,
         "asset_version": f"{__version__}-ui29",
         "app_version": __version__,
+        "upload_limits": get_settings(),
     }
     response = templates.TemplateResponse(request, name, context)
     set_csrf_cookie(response, token)
@@ -270,21 +268,12 @@ def login_submit(
     db: Session = Depends(get_db),
 ) -> Any:
     validate_csrf(request, csrf_token_value)
-    client_host = request.client.host if request.client else "unknown"
-    login_key = f"{client_host}:{username.casefold()}"
-    if not login_is_allowed(login_key):
-        return render(request, "login.html", {"error": "Too many login attempts. Try again shortly."})
-    user = db.scalar(select(User).where(User.username == username))
-    candidate_hash = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
-    password_valid = verify_password(password, candidate_hash)
-    if user is None or not user.is_active or not password_valid:
-        record_login_failure(login_key)
-        return render(request, "login.html", {"error": "Invalid username or password."})
-    clear_login_failures(login_key)
-    if password_needs_rehash(user.password_hash):
-        user.password_hash = hash_password(password)
-    user.last_login_at = utc_now()
-    db.commit()
+    try:
+        user = accounts.authenticate(db, username, password,
+                                     request.client.host if request.client else "unknown")
+    except HTTPException as exc:
+        message = "Too many login attempts. Try again shortly." if exc.status_code == 429 else "Invalid username or password."
+        return render(request, "login.html", {"error": message})
     response = redirect("/web")
     set_login_cookie(response, user)
     set_csrf_cookie(response, csrf_token(request))
@@ -300,8 +289,7 @@ def logout_submit(
     validate_csrf(request, csrf_token_value)
     user = get_cookie_user(request, db)
     if user is not None:
-        user.token_version += 1
-        db.commit()
+        accounts.revoke_sessions(db, user)
     response = redirect("/web/login")
     response.delete_cookie(TOKEN_COOKIE)
     return response
@@ -512,33 +500,10 @@ def pdfs_page(
     page_size = settings.web_page_size
     error = None
     if len(q) > settings.search_query_max_chars:
-        q = q[: settings.search_query_max_chars]
         error = f"Search queries are limited to {settings.search_query_max_chars} characters."
-    if q:
-        conditions = [
-            Pdf.is_deleted.is_(False),
-            Pdf.doi.is_not(None),
-        ]
-        try:
-            exact_doi = normalize_doi(q)
-        except ValueError:
-            exact_doi = None
-        exact_exists = (
-            db.scalar(
-                select(Pdf.id).where(Pdf.is_deleted.is_(False), Pdf.doi == exact_doi).limit(1)
-            )
-            if exact_doi
-            else None
-        )
-        conditions.append(Pdf.doi == exact_doi if exact_exists else pdf_contains_query(q))
-        query = (
-            select(Pdf, func.count(Pdf.id).over().label("total_count"))
-            .options(*pdf_read_options())
-            .where(*conditions)
-            .order_by(Pdf.uploaded_at.desc(), Pdf.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
+    if q and error is None:
+        query = (search_pdfs_query(db, q).add_columns(func.count(Pdf.id).over().label("total_count"))
+                 .offset((page - 1) * page_size).limit(page_size))
         rows = db.execute(query).unique().all()
         pdfs = [row[0] for row in rows]
         total = int(rows[0].total_count) if rows else 0
@@ -619,24 +584,8 @@ def web_doi_correction_history(
 ) -> list[dict]:
     admin = require_web_admin(request, db)
     if isinstance(admin, RedirectResponse):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
-    rows = db.execute(
-        select(PdfDoiCorrection, User)
-        .join(User, User.id == PdfDoiCorrection.corrected_by_id)
-        .where(PdfDoiCorrection.pdf_id == pdf_id)
-        .order_by(PdfDoiCorrection.corrected_at.desc(), PdfDoiCorrection.id.desc())
-    ).all()
-    return [
-        {
-            "id": correction.id,
-            "old_doi": correction.old_doi,
-            "new_doi": correction.new_doi,
-            "reason": correction.reason,
-            "corrected_by": user.username,
-            "corrected_at": correction.corrected_at.isoformat(),
-        }
-        for correction, user in rows
-    ]
+        raise HTTPException(status_code=401, detail="Login required")
+    return [row.model_dump(mode="json") for row in doi_correction_history(db, pdf_id)]
 
 
 @router.get("/web/cli", response_class=HTMLResponse, include_in_schema=False)
@@ -668,24 +617,14 @@ def admin_create_user(
     admin = require_web_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
-    username = username.strip()
-    password = password.strip()
     try:
-        user_role = UserRole(role)
-    except ValueError:
-        return admin_context(request, admin, db, error="Invalid role.")
-    if not username or not password:
-        return admin_context(request, admin, db, error="Username and password are required.")
-    if len(password) < 8 or len(password) > 128:
-        return admin_context(request, admin, db, error="Password must be 8-128 characters.")
-    if len(username) > 80 or not all(char.isalnum() or char in "._-" for char in username):
-        return admin_context(request, admin, db, error="Username may contain letters, numbers, dot, dash, and underscore.")
-    existing = db.scalar(select(User).where(User.username == username))
-    if existing is not None:
-        return admin_context(request, admin, db, error="Username already exists.")
-    db.add(User(username=username, password_hash=hash_password(password), role=user_role))
-    db.commit()
-    return admin_context(request, admin, db, message=f"Created {username} ({user_role.value}).")
+        payload = UserCreateRequest(username=username, password=password, role=role)
+        user = accounts.create_user(db, payload)
+    except ValidationError as exc:
+        return admin_context(request, admin, db, error=accounts.form_validation_message(exc))
+    except HTTPException as exc:
+        return admin_context(request, admin, db, error=exc.detail)
+    return admin_context(request, admin, db, message=f"Created {user.username} ({user.role.value}).")
 
 
 @router.post("/web/admin/users/reset-password", response_class=HTMLResponse, include_in_schema=False)
@@ -700,18 +639,12 @@ def admin_reset_password(
     admin = require_web_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
-    username = username.strip()
-    password = password.strip()
-    target = db.scalar(select(User).where(User.username == username))
-    if target is None:
-        return admin_context(request, admin, db, error="User not found.")
-    if not password:
-        return admin_context(request, admin, db, error="New password is required.")
-    if len(password) < 8 or len(password) > 128:
-        return admin_context(request, admin, db, error="Password must be 8-128 characters.")
-    target.password_hash = hash_password(password)
-    target.token_version += 1
-    db.commit()
+    try:
+        target = accounts.reset_password(db, username, PasswordResetRequest(password=password))
+    except ValidationError as exc:
+        return admin_context(request, admin, db, error=accounts.form_validation_message(exc))
+    except HTTPException as exc:
+        return admin_context(request, admin, db, error=exc.detail)
     return admin_context(request, admin, db, message=f"Updated password for {target.username}.")
 
 
@@ -727,14 +660,10 @@ def admin_set_user_active(
     admin = require_web_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
-    username = username.strip()
-    target = db.scalar(select(User).where(User.username == username))
-    if target is None:
-        return admin_context(request, admin, db, error="User not found.")
-    if target.id == admin.id and not active:
-        return admin_context(request, admin, db, error="You cannot deactivate your current account.")
-    target.is_active = active
-    db.commit()
+    try:
+        target = accounts.set_active(db, username, active, admin)
+    except HTTPException as exc:
+        return admin_context(request, admin, db, error=exc.detail)
     verb = "Activated" if active else "Deactivated"
     return admin_context(request, admin, db, message=f"{verb} {target.username}.")
 
@@ -847,22 +776,12 @@ async def web_existing_pdfs_by_sha256(
     validate_csrf(request, request.headers.get("x-csrf-token", ""))
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
-    payload = await request.json()
-    submitted = payload.get("sha256", [])
-    if not isinstance(submitted, list) or len(submitted) > 500:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At most 500 hashes are allowed")
-    hashes = sorted(
-        {
-            sha.lower()
-            for sha in submitted
-            if isinstance(sha, str) and len(sha) == 64 and all(char in "0123456789abcdefABCDEF" for char in sha)
-        }
-    )
-    if not hashes:
-        return {"existing": {}}
-    pdfs = db.scalars(select(Pdf).where(Pdf.is_deleted.is_(False), Pdf.sha256.in_(hashes))).all()
-    return {"existing": {pdf.sha256: pdf_to_read(pdf).model_dump(mode="json") for pdf in pdfs}}
+        raise HTTPException(status_code=401, detail="Login required")
+    try:
+        payload = Sha256ExistsRequest.model_validate(await request.json())
+    except (ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Provide at most 500 hashes and DOI values") from exc
+    return existing_pdfs(db, payload.sha256, payload.doi).model_dump(mode="json")
 
 
 @router.get("/web/download", response_class=HTMLResponse, include_in_schema=False)
@@ -918,22 +837,7 @@ def _resolve_web_pdf_file(
     doi: str | None,
     pdf_id: int | None,
 ) -> tuple[Pdf, Path]:
-    if pdf_id is not None:
-        pdf = db.scalar(select(Pdf).where(Pdf.id == pdf_id, Pdf.is_deleted.is_(False)))
-    elif doi:
-        try:
-            normalized_doi = normalize_doi(doi)
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid DOI") from None
-        pdf = db.scalar(select(Pdf).where(Pdf.doi == normalized_doi, Pdf.is_deleted.is_(False)))
-    else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing PDF identifier")
-    if pdf is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PDF not found")
-    path = object_path(pdf.sha256)
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Stored PDF missing")
-    return pdf, path
+    return resolve_pdf_file(db, doi=doi, pdf_id=pdf_id)
 
 
 @router.get("/web/pdfs/preview", include_in_schema=False)
@@ -946,16 +850,8 @@ def web_pdf_preview(
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    pdf, path = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
-    if not activity_is_allowed(f"preview:{user.id}", get_settings().download_rate_per_hour):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Preview rate limit exceeded")
-    return FileResponse(
-        path,
-        media_type="application/pdf",
-        filename=Path(pdf.original_name).name,
-        content_disposition_type="inline",
-        headers={"ETag": f'"{pdf.sha256}"'},
-    )
+    pdf, _ = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
+    return send_pdf_file(pdf, user, db, preview=True)
 
 
 @router.get("/web/pdfs/download", include_in_schema=False)
@@ -968,16 +864,8 @@ def web_pdf_download(
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    pdf, path = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
-    if not activity_is_allowed(f"download:{user.id}", get_settings().download_rate_per_hour):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")
-    return FileResponse(
-        path,
-        media_type="application/pdf",
-        filename=Path(pdf.original_name).name,
-        background=BackgroundTask(record_completed_downloads, [pdf.id], user.id),
-        headers={"ETag": f'"{pdf.sha256}"'},
-    )
+    pdf, _ = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
+    return send_pdf_file(pdf, user, db)
 
 
 @router.post("/web/pdfs/download-all", include_in_schema=False)

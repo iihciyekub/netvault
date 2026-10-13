@@ -9,17 +9,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from netvault_server.identity_shared import normalize_journal_key as normalize_journal_name
+
 DATA_DIR = Path(__file__).parent / "data"
 
 
-def normalize_journal_name(value: str | None) -> str:
-    if not value:
-        return ""
-    text = unescape(value).lower().strip()
-    text = text.replace("&", " and ")
-    text = re.sub(r"\bthe\b", " ", text)
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
 @lru_cache(maxsize=None)

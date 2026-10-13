@@ -34,7 +34,7 @@ dump_tmp="$destination/netvault.pg.dump.tmp"
 docker compose -f "$COMPOSE_FILE" exec -T db sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$dump_tmp"
 mv "$dump_tmp" "$destination/netvault.pg.dump"
-rsync -a --delete --exclude='/tmp/' --exclude='/locks/' --exclude='/quarantine/' \
+rsync -a --delete --exclude='/tmp/' --exclude='/locks/' --exclude='/locks-v2/' --exclude='/quarantine/' \
   "${link_args[@]}" storage/ "$destination/storage/"
 
 object_count="$(find "$destination/storage/objects" -type f -name '*.pdf' | wc -l | tr -d ' ')"

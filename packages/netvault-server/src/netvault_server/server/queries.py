@@ -12,7 +12,6 @@ def pdf_search_text():
         Pdf.container_title,
         Pdf.publisher,
         Pdf.original_name,
-        Pdf.sha256,
     )
     expression = func.coalesce(fields[0], "")
     for field in fields[1:]:

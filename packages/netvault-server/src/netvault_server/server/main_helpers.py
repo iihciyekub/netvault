@@ -134,7 +134,7 @@ def _ordered_automatic_candidates(
     client_doi: str | None,
     client_source: str | None,
 ) -> list[DoiCandidate]:
-    source_order = {"explicit": -1, "download-record": 0, "pdf-metadata": 1, "pdf-content": 2, "filename": 3}
+    source_order = {"explicit": -1, "download-index": 0, "download-record": 0, "pdf-metadata": 1, "pdf-content": 2, "filename": 3}
     candidates = list(evidence.candidates)
     if client_doi and not any(candidate.doi == client_doi for candidate in candidates):
         candidates.append(
@@ -449,10 +449,10 @@ async def process_upload(
     doi_lock = None
     try:
         pdf_by_sha = db.scalar(select(Pdf).where(Pdf.sha256 == sha256))
+        if pdf_by_sha is None and not force:
+            pdf_by_sha = db.scalar(select(Pdf).join(PdfFileAlias).where(PdfFileAlias.sha256 == sha256))
         if pdf_by_sha is not None and not force:
-            if staged_path is not None:
-                promote_staged_pdf(staged_path, sha256)
-                staged_path = None
+            changed = pdf_by_sha.is_deleted
             if doi and doi_source not in AUTOMATIC_CLIENT_DOI_SOURCES:
                 try:
                     normalized_explicit_doi = normalize_doi(doi)
@@ -467,6 +467,14 @@ async def process_upload(
                             "correct a wrong DOI identity."
                         ),
                     )
+            if staged_path is not None:
+                if pdf_by_sha.sha256 == sha256:
+                    promote_staged_pdf(staged_path, sha256)
+                else:
+                    if not object_path(pdf_by_sha.sha256).is_file():
+                        raise HTTPException(status_code=500, detail="Stored PDF missing")
+                    staged_path.unlink(missing_ok=True)
+                staged_path = None
             if pdf_by_sha.is_deleted:
                 pdf_by_sha.is_deleted = False
                 pdf_by_sha.deleted_at = None
@@ -476,11 +484,13 @@ async def process_upload(
             ):
                 metadata = await run_in_threadpool(fetch_doi_metadata, pdf_by_sha.doi)
                 apply_crossref_metadata(pdf_by_sha, metadata)
+                changed = True
             add_upload_record(pdf_by_sha, file, size, user, db, idempotency_key)
             db.commit()
             from netvault_server.server.stats import invalidate_stats_cache
 
-            invalidate_stats_cache()
+            if changed:
+                invalidate_stats_cache()
             db.refresh(pdf_by_sha)
             return UploadResponse(pdf=pdf_to_read(pdf_by_sha), deduplicated=True)
 
@@ -654,18 +664,21 @@ async def process_upload(
             pdf_by_doi is not None
             and pdf_by_doi.sha256 != sha256
             and (trusted_csv or (
-                automatic_resolution
-                and verified_metadata is not None
-                and verified_metadata.status == "ok"
+                verified_metadata is not None and verified_metadata.status == "ok"
             ))
             and not force
         ):
+            restored = pdf_by_doi.is_deleted
+            if restored:
+                pdf_by_doi.is_deleted = False
+                pdf_by_doi.deleted_at = None
+                pdf_by_doi.deleted_by_id = None
             if alias_pdf_id is None:
                 db.add(
                     PdfFileAlias(
                         pdf_id=pdf_by_doi.id,
                         sha256=sha256,
-                        source="csv-trusted" if trusted_csv else "automatic-doi-verified",
+                        source="csv-trusted" if trusted_csv else "doi-verified",
                         asserted_by_id=user.id,
                     )
                 )
@@ -676,7 +689,8 @@ async def process_upload(
                 staged_path = None
             from netvault_server.server.stats import invalidate_stats_cache
 
-            invalidate_stats_cache()
+            if restored:
+                invalidate_stats_cache()
             db.refresh(pdf_by_doi)
             return UploadResponse(pdf=pdf_to_read(pdf_by_doi), deduplicated=True)
 

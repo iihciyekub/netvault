@@ -72,7 +72,7 @@ def _prepare_correction(
             detail="The PDF already uses this DOI",
         )
 
-    target = db.scalar(select(Pdf).where(Pdf.doi == canonical_doi, Pdf.is_deleted.is_(False)))
+    target = db.scalar(select(Pdf).where(Pdf.doi == canonical_doi))
     if target is not None and target.id != pdf.id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

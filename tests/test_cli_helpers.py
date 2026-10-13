@@ -111,7 +111,7 @@ def test_doi_suffix_preserves_additional_slashes() -> None:
 
 
 def test_resolver_cache_version_invalidates_old_automatic_results() -> None:
-    assert netvault.doi.DOI_RESOLVER_VERSION == 8
+    assert netvault.doi.DOI_RESOLVER_VERSION == 9
 
 
 def test_doi_parser_stops_before_pdf_object_syntax() -> None:
@@ -684,7 +684,7 @@ def test_upload_no_index_uses_existing_pdf_resolver(
     assert "download index hits" not in result.output
     assert uploads[0]["doi"] == "10.1234/pdf.value"
     assert uploads[0]["doi_source"] == "pdf-content"
-    assert doi_checks == [[]]
+    assert doi_checks == []
 
 
 def test_upload_reports_server_duplicate_as_skipped(
@@ -820,13 +820,19 @@ def test_upload_reuses_manual_identity_without_parsing_pdf(tmp_path: Path, monke
     sha256 = file_sha256(pdf)
     save_identity_cache({sha256: manual_identity("10.1234/manual")})
 
+    sent = []
+    def send(path, **kwargs):
+        sent.append(kwargs)
+        return {"pdf": existing, "deduplicated": True}
+    monkeypatch.setattr(user_cli, "upload_pdf", send)
     result = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf)])
 
     assert result.exit_code == 0, result.output
     assert "1 skipped" in result.output
     assert "1 DOI cache hits" in result.output
     assert "DOI scans" not in result.output
-    assert registered == [(sha256, "10.1234/manual")]
+    assert registered == []
+    assert sent[0]["doi"] == "10.1234/manual" and sent[0]["doi_source"] == "user"
 
 
 def test_upload_collapses_local_duplicate_paths_before_server_check(

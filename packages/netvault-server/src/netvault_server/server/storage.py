@@ -11,13 +11,15 @@ from netvault_server.server.config import get_settings
 
 PDF_MAGIC = b"%PDF-"
 CHUNK_SIZE = 1024 * 1024
+LOCK_SLOTS = 4096
 
 
 def ensure_storage_dirs() -> None:
     root = get_settings().storage_root
     (root / "objects").mkdir(parents=True, exist_ok=True)
     (root / "tmp").mkdir(parents=True, exist_ok=True)
-    (root / "locks").mkdir(parents=True, exist_ok=True)
+    for namespace in ("objects", "doi"):
+        (root / "locks-v2" / namespace).mkdir(parents=True, exist_ok=True)
 
 
 def object_relative_path(sha256: str) -> str:
@@ -56,7 +58,7 @@ async def store_pdf(upload: UploadFile) -> tuple[str, int, str, bool, Path | Non
                 if size > settings.max_pdf_bytes:
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail="PDF exceeds the 100MB upload limit",
+                        detail=f"PDF exceeds the configured upload limit ({settings.max_pdf_bytes:,} bytes)",
                     )
                 digest.update(chunk)
                 tmp_file.write(chunk)
@@ -99,7 +101,13 @@ def promote_staged_pdf(staged_path: Path | None, sha256: str) -> bool:
 
 
 def acquire_object_lock(sha256: str) -> BinaryIO:
-    lock_path = get_settings().storage_root / "locks" / f"{sha256}.lock"
+    # Separate namespaces preserve the object -> DOI lock order even when
+    # unrelated keys share a slot. No file is unlinked while locks may be held.
+    namespace = "doi" if sha256.startswith("doi-") else "objects"
+    slot = int.from_bytes(hashlib.sha256(sha256.encode()).digest()[:2], "big") % LOCK_SLOTS
+    directory = get_settings().storage_root / "locks-v2" / namespace
+    directory.mkdir(parents=True, exist_ok=True)
+    lock_path = directory / f"{slot:04x}.lock"
     handle = lock_path.open("a+b")
     fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
     return handle

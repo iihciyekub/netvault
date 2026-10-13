@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from time import monotonic
+from time import monotonic, time_ns
 from typing import Iterable
 
 from pypdf import PdfReader
@@ -45,6 +45,7 @@ from netvault.cli.http import (
     server_url,
     upload_pdf,
 )
+from netvault.cli.cache import CacheWriter, load_cache, save_cache
 from netvault.cli.update import update_from_github
 from netvault.cli.export import default_export_destination, normalize_export_issn, save_issn_export
 from netvault.cli.identify import identify_pdfs
@@ -238,25 +239,11 @@ def file_signature(path: Path) -> tuple[int, int]:
 
 
 def load_hash_cache() -> dict[str, dict]:
-    if not HASH_CACHE_PATH.exists():
-        return {}
-    try:
-        payload = json.loads(HASH_CACHE_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if payload.get("version") != HASH_CACHE_VERSION:
-        return {}
-    files = payload.get("files")
-    return files if isinstance(files, dict) else {}
+    return load_cache(HASH_CACHE_PATH, "files", HASH_CACHE_VERSION)
 
 
 def save_hash_cache(files: dict[str, dict]) -> None:
-    HASH_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    HASH_CACHE_PATH.write_text(
-        json.dumps({"version": HASH_CACHE_VERSION, "files": files}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    HASH_CACHE_PATH.chmod(0o600)
+    save_cache(HASH_CACHE_PATH, "files", HASH_CACHE_VERSION, files)
 
 
 def cached_file_sha256(path: Path, cache: dict[str, dict], progress_callback=None) -> tuple[str, bool]:
@@ -279,35 +266,16 @@ def cached_file_sha256(path: Path, cache: dict[str, dict], progress_callback=Non
         stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_dev, stat.st_ino
     ):
         raise RuntimeError("File changed while hashing; retry after it stops changing")
-    cache[file_cache_key(path)] = {**signature, "sha256": sha256}
+    cache[file_cache_key(path)] = {**signature, "sha256": sha256, "cache_updated_ns": time_ns()}
     return sha256, False
 
 
 def load_identity_cache() -> dict[str, dict]:
-    if not IDENTITY_CACHE_PATH.exists():
-        return {}
-    try:
-        payload = json.loads(IDENTITY_CACHE_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if payload.get("version") != IDENTITY_CACHE_VERSION:
-        return {}
-    identities = payload.get("identities")
-    return identities if isinstance(identities, dict) else {}
+    return load_cache(IDENTITY_CACHE_PATH, "identities", IDENTITY_CACHE_VERSION)
 
 
-def save_identity_cache(identities: dict[str, dict]) -> None:
-    IDENTITY_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temporary = IDENTITY_CACHE_PATH.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(
-            {"version": IDENTITY_CACHE_VERSION, "identities": identities},
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    temporary.chmod(0o600)
-    temporary.replace(IDENTITY_CACHE_PATH)
+def save_identity_cache(identities: dict[str, dict], *, removed=()) -> None:
+    save_cache(IDENTITY_CACHE_PATH, "identities", IDENTITY_CACHE_VERSION, identities, removed=removed)
 
 
 def cached_identity(identities: dict[str, dict], sha256: str) -> dict | None:
@@ -451,8 +419,8 @@ def get_existing_pdfs_by_sha256(
             if progress_callback:
                 progress_callback(min(index + chunk_size, len(unique_hashes)))
         return existing
-    except (RuntimeError, requests.RequestException):
-        if not fallback:
+    except ApiError as exc:
+        if not fallback or exc.status_code not in {404, 405, 501}:
             raise
         existing = {}
         for index, sha256 in enumerate(unique_hashes, start=1):
@@ -482,7 +450,9 @@ def get_existing_pdfs_by_doi(dois: Iterable[str], progress_callback=None) -> dic
             if progress_callback:
                 progress_callback(min(index + chunk_size, len(unique_dois)))
         return existing
-    except (RuntimeError, requests.RequestException):
+    except ApiError as exc:
+        if exc.status_code not in {404, 405, 501}:
+            raise
         existing = {}
         for index, doi in enumerate(unique_dois, start=1):
             pdf = get_existing_pdf_by_doi(doi)
@@ -805,7 +775,7 @@ Examples:
   nv identify ./papers --issn 0025-1909 --rename
   nv identify ./papers --index ./netvault-0025-1909.csv --rename
   nv identify ./papers --check-content --rename
-  nv identify ./papers --csv ./report.csv
+  nv identify ./papers --report ./report.csv
 
 \b
 Notes:
@@ -835,7 +805,7 @@ def identify_command(
         help="Optional shared duplicate destination (default: duplicates/ beside each source PDF).",
     ),
     csv_path: Path | None = typer.Option(
-        None, "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
+        None, "--report", "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
     ),
     index_path: Path | None = typer.Option(
         None, "--index", exists=True, dir_okay=False, readable=True,
@@ -1037,7 +1007,7 @@ Notes:
 def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
-    no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip Crossref metadata lookup."),
+    no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip online DOI/title verification and metadata lookup."),
     jobs: int = typer.Option(3, "--jobs", min=1, max=3, help="Concurrent uploads (default: 3)."),
     force: bool = typer.Option(
         False,
@@ -1200,7 +1170,8 @@ def upload_command(
     ]
     if verbose:
         progress_columns.append(UploadRateColumn(stats))
-    with Progress(
+    identity_writer = CacheWriter(lambda: save_identity_cache(identity_cache))
+    with upload_report, identity_writer, Progress(
         *progress_columns,
         console=console,
         transient=True,
@@ -1286,6 +1257,23 @@ def upload_command(
             sha256 = hashes_by_path[pdf_path]
             existing_pdf = existing_by_sha.get(sha256)
             if existing_pdf and not force and csv_file is None:
+                try:
+                    asserted_doi = normalize_doi(doi) if doi else None
+                    cached = cached_identity(identity_cache, sha256)
+                    if not asserted_doi and cached and cached.get("source") == "user":
+                        asserted_doi = normalize_doi(cached["doi"])
+                    if index_file is not None:
+                        match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
+                        if match is not None:
+                            if asserted_doi and asserted_doi != match.record.doi:
+                                raise ApiError(409, "User-confirmed DOI conflicts with download index DOI")
+                            asserted_doi = match.record.doi
+                    if asserted_doi and asserted_doi != existing_pdf["doi"]:
+                        raise ApiError(409, f"This PDF is already linked to DOI {existing_pdf['doi']}. "
+                            "Ask an administrator to correct a wrong DOI identity.")
+                except (ValueError, RuntimeError, OSError) as exc:
+                    record_failure(pdf_path, exc)
+                    continue
                 latest_pdf = existing_pdf
                 skipped += 1
                 upload_report.record(pdf_path, "existing", sha256=sha256, pdf=existing_pdf)
@@ -1315,7 +1303,8 @@ def upload_command(
                             "context": context, "error": str(outcome.error),
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         }
-                        save_identity_cache(identity_cache)
+                        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+                        identity_writer.checkpoint()
                     record_failure(outcome.path, outcome.error)
                 else:
                     result = outcome.result
@@ -1331,7 +1320,8 @@ def upload_command(
                     entry = identity_cache.get(hashes_by_path[outcome.path], {})
                     rejections = entry.get("upload_rejections") if isinstance(entry, dict) else None
                     if isinstance(rejections, dict) and rejections.pop(upload_server, None) is not None:
-                        save_identity_cache(identity_cache)
+                        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+                        identity_writer.checkpoint()
                 progress.advance(task, 1)
                 update_counts()
 
@@ -1449,46 +1439,12 @@ def upload_command(
                         progress.advance(task, 1)
                     finally:
                         if identity_cache_pending >= 25:
-                            save_identity_cache(identity_cache)
+                            identity_writer.checkpoint()
                             identity_cache_pending = 0
                         update_counts()
-                trusted_dois = [
-                    dois_by_path[path]
-                    for path in upload_candidates
-                    if doi_sources_by_path[path] not in {"filename", "pdf-content", "pdf-metadata", "download-record", "csv-trusted"}
-                ]
-                existing_by_doi = get_existing_pdfs_by_doi(
-                    trusted_dois,
-                )
-                ready_paths = []
-                aliases_to_register: list[tuple[str, str]] = []
-                for pdf_path in upload_candidates:
-                    automatic_source = doi_sources_by_path[pdf_path] in {
-                        "filename",
-                        "pdf-content",
-                        "pdf-metadata",
-                        "download-record",
-                        "csv-trusted",
-                    }
-                    existing_pdf = None if automatic_source else existing_by_doi.get(dois_by_path[pdf_path])
-                    if existing_pdf and not force:
-                        latest_pdf = existing_pdf
-                        skipped += 1
-                        upload_report.record(pdf_path, "existing", sha256=hashes_by_path[pdf_path], pdf=existing_pdf)
-                        progress.advance(task, 1)
-                        update_counts()
-                        sha256 = hashes_by_path[pdf_path]
-                        if existing_pdf.get("sha256") != sha256:
-                            aliases_to_register.append((sha256, dois_by_path[pdf_path]))
-                    else:
-                        ready_paths.append(pdf_path)
-                if aliases_to_register:
-                    try:
-                        register_pdf_aliases(aliases_to_register)
-                    except (RuntimeError, requests.RequestException):
-                        # Alias persistence is only an optimization. The DOI duplicate is
-                        # already known to exist, so keep the user-facing result as skipped.
-                        pass
+                # Every new hash reaches server identity verification. A DOI match
+                # alone cannot establish a new file alias.
+                ready_paths = upload_candidates
 
                 preparation_seconds += monotonic() - prepare_started
                 record_outcomes(pipeline.collect())
@@ -1503,7 +1459,7 @@ def upload_command(
                     ))
             record_outcomes(pipeline.drain())
         if identity_cache_pending:
-            save_identity_cache(identity_cache)
+            identity_writer.checkpoint()
 
 
     upload_report.checkpoint(force=True, finished=True)
@@ -1613,7 +1569,7 @@ def doi_command(
         if remove:
             removed = identities.pop(sha256, None)
             if removed is not None:
-                save_identity_cache(identities)
+                save_identity_cache(identities, removed=(sha256,))
                 console.print(f"removed: {path} (sha256={sha256})")
             else:
                 console.print(f"no cached identity: {path} (sha256={sha256})")
@@ -1855,6 +1811,7 @@ def export_command(
         None, "--out", "--output", "-o",
         help="CSV path. Defaults to netvault-<ISSN>.csv; adds a number if it exists.",
     ),
+    primary_only: bool = typer.Option(False, "--primary-only", help="Export only retained PDF hashes, excluding aliases."),
     force: bool = typer.Option(False, "--force", help="Replace an existing output CSV."),
 ) -> None:
     """Export all active journal DOI and PDF SHA-256 pairs to CSV."""
@@ -1866,7 +1823,7 @@ def export_command(
         output.expanduser().resolve() if output is not None
         else default_export_destination(normalized, force=force)
     )
-    count = save_issn_export(normalized, destination, force=force)
+    count = save_issn_export(normalized, destination, force=force, **({"primary_only": True} if primary_only else {}))
     console.print(f"Exported {count:,} DOI/SHA-256 rows for ISSN {normalized} to {destination}",
                   markup=False)
 

@@ -108,8 +108,8 @@ def test_issn_csv_exports_complete_journal_inventory_with_current_hashes(client)
         db.add(models.PdfFileAlias(sha256="f" * 64, pdf_id=first.id,
                                   source="test", asserted_by_id=admin.id))
         db.commit()
-    printed = client.get("/pdfs/export", headers=headers, params={"issn": "00251909"})
-    electronic = client.get("/pdfs/export", headers=headers, params={"issn": "1526-5501"})
+    printed = client.get("/pdfs/export", headers=headers, params={"issn": "00251909", "include_aliases": False})
+    electronic = client.get("/pdfs/export", headers=headers, params={"issn": "1526-5501", "include_aliases": False})
     assert printed.status_code == electronic.status_code == 200
     assert printed.content == electronic.content
     assert printed.headers["x-netvault-rows"] == "552"
@@ -119,6 +119,9 @@ def test_issn_csv_exports_complete_journal_inventory_with_current_hashes(client)
     assert len(rows) == 552
     assert rows == [{"doi": f"10.1234/export.{i:04d}", "sha256": f"{i:064x}"}
                     for i in range(1, 553)]
+    with_aliases = client.get("/pdfs/export", headers=headers, params={"issn": "0025-1909"})
+    assert with_aliases.headers["x-netvault-rows"] == "553"
+    assert {"doi": "10.1234/export.0001", "sha256": "f" * 64} in list(csv.DictReader(io.StringIO(with_aliases.text)))
     direct = client.get("/pdfs/export", headers=headers, params={"issn": "1932-6203"})
     assert direct.status_code == 200
     assert direct.headers["x-netvault-rows"] == "2"
@@ -157,6 +160,17 @@ def upload(
         files={"file": (name, content, "application/pdf")},
     )
 
+
+
+def alias_content(doi=DOI):
+    return f"%PDF-1.4\nDOI: {doi}\nverified variant\n%%EOF\n".encode()
+
+
+def seed_verified_alias(client, headers, doi=DOI):
+    result = upload(client, headers, content=alias_content(doi), doi=doi)
+    assert result.status_code == 200, result.text
+    assert result.json()["deduplicated"]
+    return hashlib.sha256(alias_content(doi)).hexdigest()
 
 def test_admin_can_create_user_and_user_can_login(client: TestClient) -> None:
     admin_headers = login(client, "admin", "admin-pass")
@@ -333,7 +347,10 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
     )
     assert list(doi_exists.json()["existing_doi"]) == [DOI]
 
-    alternate_sha = hashlib.sha256(b"alternate rendering of the same article").hexdigest()
+    alternate_sha = hashlib.sha256(alias_content()).hexdigest()
+    assert client.post("/pdfs/aliases", headers=admin_headers,
+        json={"aliases": [{"sha256": alternate_sha, "doi": DOI}]}).status_code == 409
+    seed_verified_alias(client, admin_headers)
     alias = client.post(
         "/pdfs/aliases",
         headers=admin_headers,
@@ -443,7 +460,7 @@ def test_verified_duplicate_doi_with_new_sha_is_skipped_and_registered_as_alias(
     with database.SessionLocal() as db:
         alias = db.query(models.PdfFileAlias).filter_by(sha256=alternate_sha).one()
         assert alias.pdf_id == first.json()["pdf"]["id"]
-        assert alias.source == "automatic-doi-verified"
+        assert alias.source == "doi-verified"
         assert alias.asserted_by_id is not None
 
     third = upload(
@@ -735,7 +752,7 @@ def test_upload_idempotency_and_incomplete_pdf_validation(client: TestClient) ->
         assert "ix_pdf_file_aliases_sha256" in alias_indexes
         assert "ix_pdf_file_aliases_pdf_id" in alias_indexes
         assert "ix_pdf_doi_corrections_pdf_id" in correction_indexes
-        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 9
+        assert db.scalar(text("SELECT version FROM netvault_schema_version WHERE id = 1")) == 10
 
     incomplete = upload(
         client,
@@ -794,9 +811,13 @@ def test_rejects_missing_doi_and_conflicting_doi(client: TestClient, tmp_path: P
         name="other.pdf",
         content=OTHER_PDF_BYTES,
         doi="10.5555/manual",
+        no_crossref=True,
     )
     assert conflict.status_code == 409
 
+
+    same_hash_wrong_doi = upload(client, admin_headers, doi="10.5555/wrong")
+    assert same_hash_wrong_doi.status_code == 409
 
 def test_upload_records_download_index_doi_source(client: TestClient) -> None:
     headers = login(client, "admin", "admin-pass")
@@ -857,7 +878,7 @@ def test_force_upload_replaces_pdf_and_crossref_metadata_for_regular_user(
     )
     assert created.status_code == 200
     user_headers = login(client, "replacer", "replacer-pass")
-    alias_sha = "a" * 64
+    alias_sha = seed_verified_alias(client, admin_headers)
     assert client.post(
         "/pdfs/aliases",
         headers=admin_headers,
@@ -952,7 +973,7 @@ def test_admin_can_atomically_correct_doi_and_preserve_history(client: TestClien
     uploaded = upload(client, admin_headers)
     assert uploaded.status_code == 200
     original = uploaded.json()["pdf"]
-    alias_sha = "a" * 64
+    alias_sha = seed_verified_alias(client, admin_headers)
     assert client.post(
         "/pdfs/aliases",
         headers=admin_headers,
@@ -1009,7 +1030,7 @@ def test_admin_can_atomically_correct_doi_and_preserve_history(client: TestClien
     assert detail.status_code == 200
     assert detail.json()["id"] == original["id"]
     assert detail.json()["sha256"] == original["sha256"]
-    assert detail.json()["upload_count"] == 1
+    assert detail.json()["upload_count"] == 2
     assert detail.json()["doi_source"] == "admin-corrected"
     assert detail.json()["title"] == f"Title for {corrected_doi}"
     alias = client.post(
@@ -1030,7 +1051,7 @@ def test_admin_can_atomically_correct_doi_and_preserve_history(client: TestClien
     database = importlib.import_module("netvault_server.server.database")
     models = importlib.import_module("netvault_server.server.models")
     with database.SessionLocal() as db:
-        assert db.query(models.UploadRecord).filter_by(pdf_id=original["id"]).count() == 1
+        assert db.query(models.UploadRecord).filter_by(pdf_id=original["id"]).count() == 2
         assert db.query(models.DownloadRecord).filter_by(pdf_id=original["id"]).count() == 1
 
 
@@ -1138,7 +1159,7 @@ def test_pdf_alias_cannot_be_reassigned_to_another_doi(client: TestClient) -> No
     )
     assert first.status_code == 200
     assert second.status_code == 200
-    alias_sha = hashlib.sha256(b"another rendering").hexdigest()
+    alias_sha = seed_verified_alias(client, headers, "10.5555/first")
     assert client.post(
         "/pdfs/aliases",
         headers=headers,

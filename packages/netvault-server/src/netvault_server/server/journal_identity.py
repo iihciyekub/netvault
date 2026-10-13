@@ -5,34 +5,11 @@ Only reviewed aliases or matching serial identifiers establish equivalence.
 """
 
 import json
-import re
-import unicodedata
-from html import unescape
 
 from sqlalchemy import select
 
 
-def journal_display_name(value: str | None) -> str | None:
-    if not value:
-        return None
-    name = value
-    for _ in range(4):
-        decoded = unescape(name)
-        if decoded == name:
-            break
-        name = decoded
-    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", name)).strip().upper() or None
-
-
-def normalize_issn(value: str | None) -> str | None:
-    digits = re.sub(r"[\s-]", "", value or "").upper()
-    if not re.fullmatch(r"[0-9]{7}[0-9X]", digits):
-        return None
-    check = 10 if digits[-1] == "X" else int(digits[-1])
-    if (sum(int(v) * weight for v, weight in zip(digits[:7], range(8, 1, -1))) + check) % 11:
-        return None
-    return digits[:4] + "-" + digits[4:]
-
+from netvault_server.identity_shared import journal_display_name as journal_display_name, normalize_issn as normalize_issn
 
 def serial_identifiers(values) -> tuple[str, ...]:
     return tuple(sorted({issn for value in (values or ()) if (issn := normalize_issn(value))}))

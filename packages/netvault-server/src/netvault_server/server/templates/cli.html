@@ -143,7 +143,7 @@
           <button class="copy-button" type="button" data-copy="nv identify ./papers --index ./netvault-0025-1909.csv --rename" aria-label="Copy offline literature command"><span data-copy-label>Copy</span></button>
         </div>
         </div>
-        <p>Index misses stay in place. Exports keep existing CSVs and add a number to the filename if needed. Use the actual exported filename with <code>--index</code>.</p>
+        <p>Index misses stay in place. Exports include accepted file aliases; add --primary-only for retained hashes. Exports keep existing CSVs and add a number to the filename if needed. Use the actual exported filename with <code>--index</code>.</p>
         <p class="command-help-gap">For files with the same page content but different PDF bytes, add <code>--check-content</code>. This takes longer:</p>
         <div class="command-list">
         <div class="command-row">
@@ -151,7 +151,7 @@
           <button class="copy-button" type="button" data-copy="nv identify ./papers --check-content --rename" aria-label="Copy content duplicate check command"><span data-copy-label>Copy</span></button>
         </div>
         </div>
-        <p>Each run writes a new <code>netvault-index.csv</code> report in the scanned folder. Use <code>--csv ./report.csv</code> to choose a different new report.</p>
+        <p>Each run writes a new <code>netvault-index.csv</code> report in the scanned folder. Use <code>--report ./report.csv</code> to choose a different new report.</p>
       </details>
       <details class="command-advanced">
         <summary>CSV uploads and manual DOI</summary>

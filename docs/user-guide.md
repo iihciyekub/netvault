@@ -69,7 +69,8 @@ will ask for the server, username, and password before uploading.
 Browser logins persist for 400 days by default and renew when an authenticated
 page is visited. Valid existing logins are upgraded automatically. Administrators
 can shorten this with `NETVAULT_WEB_SESSION_DAYS` (1–400). Logging out, disabling
-the account, or resetting its password still invalidates the session.
+the account, or resetting its password invalidates browser and CLI sessions.
+`nv logout` and browser Logout both revoke all existing sessions for the account.
 
 PDF DOI resolution reads document information, decoded XMP metadata, DOI links,
 and text from the first three pages using both Poppler and pypdf. A damaged page
@@ -415,8 +416,8 @@ folder root) remains a `download-record` hint and still requires PDF title
 verification. Use explicit `--csv` even when the CSV is inside the upload folder
 if you want to trust its pairs.
 
-If an existing DOI is confirmed for a PDF with different bytes, NetVault records
-the new SHA-256 as a server-side alias of the canonical item. This handles
+When the server verifies an existing DOI for a PDF with different bytes, or accepts
+an explicit CSV pair, it records the new SHA-256 as an alias of the canonical item. This handles
 publisher copies, repository copies, and regenerated PDFs across devices without
 repeating DOI extraction on subsequent uploads.
 
@@ -477,7 +478,7 @@ precedence over automatic extraction. If an assertion is wrong, remove it with:
 nv doi ~/Downloads/paper.pdf --remove
 ```
 
-If Crossref should be skipped:
+To skip online DOI/title verification and metadata lookup:
 
 ```bash
 nv upload ~/Downloads/paper.pdf --no-crossref
@@ -584,8 +585,9 @@ nv export --issn 0025-1909 --out ./management-science.csv
 nv export --issn 1526-5501 --out ./management-science.csv --force
 ```
 
-The CSV columns are `doi,sha256`, with one row per active stored PDF and its
-current SHA-256 digest, ordered by DOI. There is no pagination limit. Print and
+The CSV columns are `doi,sha256`, with the current retained hash and accepted
+alias hashes for each active PDF, ordered by DOI and hash. Use `--primary-only`
+for one retained hash per PDF. There is no pagination limit. Print and
 online identifiers registered to the same journal export the same inventory,
 including historical articles without per-article ISSN metadata. Different
 historical journal identities remain separate. The command also matches stored

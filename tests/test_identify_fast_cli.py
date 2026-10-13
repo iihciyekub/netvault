@@ -193,7 +193,7 @@ def test_single_identify_entry_point_and_preview_options():
     assert result.exit_code == 0
     for option in ("--issn", "--index", "--rename", "--csv", "--check-content", "--workers"):
         assert option in result.output
-    assert "--dry-run" not in result.output and "--report" not in result.output
+    assert "--dry-run" not in result.output and "--report" in result.output
 
 
 @pytest.mark.parametrize("check_content", [False, True])

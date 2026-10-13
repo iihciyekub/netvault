@@ -872,22 +872,24 @@
       });
   };
 
-  const checkExistingPdfs = async (form, hashes, csrfToken) => {
+  const checkExistingPdfs = async (form, hashes, csrfToken, manualDoi) => {
     const url = form.getAttribute("data-precheck-url");
-    if (!url || !hashes.length) return {};
-    const response = await fetch(url, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": csrfToken,
-        "X-Requested-With": "fetch",
-      },
-      body: JSON.stringify({ sha256: hashes }),
-    });
-    if (!response.ok) throw new Error("Server check failed");
-    const payload = await response.json();
-    return payload.existing || {};
+    const existing = {};
+    const existingDoi = {};
+    if (!url) return { existing, existingDoi };
+    for (let offset = 0; offset < Math.max(1, hashes.length); offset += 500) {
+      const response = await fetch(url, {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken,
+                   "X-Requested-With": "fetch" },
+        body: JSON.stringify({ sha256: hashes.slice(offset, offset + 500), doi: manualDoi ? [manualDoi] : [] }),
+      });
+      if (!response.ok) throw new Error("Server check failed");
+      const payload = await response.json();
+      Object.assign(existing, payload.existing || {});
+      Object.assign(existingDoi, payload.existing_doi || {});
+    }
+    return { existing, existingDoi };
   };
 
   const uploadOneFile = (url, file, values, onProgress) =>
@@ -952,15 +954,31 @@
     if (progressBar) progressBar.style.width = "0%";
     if (progressText) progressText.textContent = "Hashing PDFs...";
 
-    if (manualDoi && selectedFiles.length !== 1) {
-      renderUploadRows([{ filename: "Upload", ok: false, error: "Manual DOI can only be used with one file." }]);
+    const stopUpload = (message) => {
+      renderUploadRows([{ filename: "Selection", ok: false, error: message }]);
       if (progressText) progressText.textContent = "Upload stopped";
       setFormBusy(form, false, "Upload");
-      return;
+      if (cancelButton) cancelButton.hidden = true;
+    };
+    const maxFiles = Number(form.dataset.maxFiles);
+    const maxBatchBytes = Number(form.dataset.maxBatchBytes);
+    if (selectedFiles.length > maxFiles) {
+      stopUpload(`Upload at most ${maxFiles} files at once.`); return;
+    }
+    if (selectedFiles.reduce((total, file) => total + file.size, 0) > maxBatchBytes) {
+      stopUpload("Upload batch exceeds the configured size limit."); return;
+    }
+    if (manualDoi && selectedFiles.length !== 1) {
+      stopUpload("Manual DOI can only be used with one file."); return;
     }
 
     const hashedFiles = [];
     for (const [index, file] of selectedFiles.entries()) {
+      if (form.dataset.uploadCancelled === "true") { stopUpload("Cancelled"); return; }
+      if (file.size > Number(form.dataset.maxFileBytes)) {
+        preRows.push({ filename: file.name, ok: false, error: "PDF exceeds the configured upload limit." });
+        continue;
+      }
       if (!file.name.toLowerCase().endsWith(".pdf") || !(await hasPdfHeader(file))) {
         preRows.push({ filename: file.name, ok: false, error: "invalid PDF file: expected %PDF- header" });
         continue;
@@ -975,11 +993,15 @@
     const existing = await checkExistingPdfs(
       form,
       hashedFiles.map((entry) => entry.sha256).filter(Boolean),
-      csrfToken
+      csrfToken, manualDoi
     );
     const newFiles = [];
     hashedFiles.forEach((entry) => {
-      const pdf = entry.sha256 ? existing[entry.sha256] : null;
+      const pdf = entry.sha256 ? existing.existing[entry.sha256] : null;
+      if (pdf && manualDoi && !Object.values(existing.existingDoi).some((item) => item.id === pdf.id)) {
+        preRows.push({ filename: entry.file.name, ok: false, error: `This PDF is already linked to DOI ${pdf.doi}. Ask an administrator to correct a wrong DOI identity.` });
+        return;
+      }
       if (pdf) {
         preRows.push({ filename: entry.file.name, ok: true, status: "existing", doi: pdf.doi });
       } else {

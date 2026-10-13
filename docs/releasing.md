@@ -13,6 +13,7 @@ Git tag, and GitHub Release. CI rejects a commit when any tracked version source
 
 ```bash
 python scripts/check-version-consistency.py --tag vX.Y.Z
+python scripts/sync-identity-contract.py --check
 ```
 
 Commit the complete release with the exact subject:
@@ -28,3 +29,8 @@ CLI and server source distributions and wheels are attached to the release.
 
 Do not manually publish a release tag before this workflow. Rerunning the workflow is
 safe only when an existing tag already points to the same release commit.
+
+For identity/schema changes, run one isolated PostgreSQL contract check in addition
+to the relevant test suite. The database must end in `_test`; the check creates
+and removes only its own schemas. A production upgrade needs a database/source
+backup and a complete stop of old writers before the locks-v2 service starts.

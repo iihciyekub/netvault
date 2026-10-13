@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.7.38 — 2026-10-13
+
+- Enforce explicit/cached/indexed DOI conflicts before CLI hash skips; send every new hash through server verification before establishing a file alias. Keep explicit CSV trust for scanned PDFs.
+- Share API/web PDF lookup, alias prechecks, exact hash/prefix search, downloads, correction history and account validation; preserve password whitespace and explain global session logout.
+- Generate the CLI/server DOI and ISSN primitives from one contract, with consistent candidate priorities and no additional runtime package. Align PostgreSQL journal entity decoding and ISSN validation with Python.
+- Add schema migration 10 to align DOI/metadata nullability, database defaults and UTC metadata timestamps. Build a narrower text-search index concurrently while retaining precise main/alias hash queries.
+- Bound object and DOI locks to separate 4,096-slot namespaces; retain safe move auditing, coalesce preview flushes, and exclude temporary locks from backups.
+- Coalesce failed-upload report/cache writes, maintain incremental report counts, flush recoverable checkpoints on interruption, and atomically merge bounded caches across processes.
+- Limit legacy serial lookup fallback to explicitly unsupported endpoints. Export accepted hash aliases by default; offer --primary-only for retained objects and --report for identify with --csv compatibility.
+- Apply configured upload limits consistently to JavaScript and HTML forms, batch web prechecks, clarify verification opt-outs, and classify unretained aliases separately in identity audits.
+
 ## 0.7.37 — 2026-10-13
 
 - Keep upload output concise with a single progress bar whose fixed total counts final file outcomes; save individual errors and index warnings to the atomic report, and show diagnostics only with `--verbose`.

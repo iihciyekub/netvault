@@ -15,7 +15,7 @@ Recognized server DOI/title verification failures become `needs-review`. An unch
 
 Use `nv upload ./papers --refresh-doi` to retry rejected identities, or `nv upload ./papers --retry-failed` to select failed, pending and review files from the last report. A successful upload clears the remembered rejection. New rejections/errors exit with status 1; skipping remembered review files alone exits with status 0. Older servers without version information require `--refresh-doi` after verification rules change.
 
-A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. These legacy records continue through server-side primary-title verification; unlike a SHA-256-bound JSON index, they cannot cause an unverified DOI-only skip. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
+A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. These legacy records continue through server-side primary-title verification; every new hash, including a SHA-256-bound JSON index hint, passes through server identity checks. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
 
 With automatic CSV discovery, renamed PDFs can be matched by SHA-256 or a unique article-title column matched against the PDF first page; server title verification still applies. Without a usable match, automatic uploads fall back to PDF DOI extraction.
 
@@ -91,8 +91,9 @@ https://iiaide.com/nv/web
 It uses the same users and passwords as the CLI. Browser sessions are stored in
 an HttpOnly JWT cookie.
 
-Passwords are always entered interactively. Do not place passwords in command
-arguments, documentation, shell history, or copied examples.
+Login supports interactive prompts and optional `--username` / `--password`
+arguments. The commands below use example credentials; interactive password
+entry is available for everyday use.
 
 ## SSH Tunnel
 
@@ -224,8 +225,10 @@ not need to be parsed again even after they are renamed. Automatic `no-doi` and
 conflict results are cached too; use `--refresh-doi` to rerun automatic DOI
 resolution. User-confirmed identities are never invalidated automatically.
 When a local file has the DOI of an existing vault item but a different SHA-256,
-the CLI also registers that digest as a server-side alias. Later uploads from
-this or another machine can then skip the file during the initial SHA-256 check.
+the server validates the uploaded file before recording its digest as an alias.
+A manual DOI or local confirmation is a hint, not permission to register a new hash
+without server verification. Explicit CSV pairs remain user-trusted. Later uploads
+from either CLI or web can skip accepted aliases during the initial hash check.
 
 Automatically discovered indexes skip invalid entries with one warning and use
 independent PDF extraction for those files. Valid SHA-bound entries remain usable.

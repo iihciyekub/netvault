@@ -3,7 +3,7 @@
 {% block heading %}Upload PDFs{% endblock %}
 {% block content %}
 {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
-<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide" data-upload-form data-file-upload-url="{{ path_for('/web/upload/file') }}" data-precheck-url="{{ path_for('/web/pdfs/exists') }}">
+<form method="post" action="{{ path_for('/web/upload') }}" enctype="multipart/form-data" class="form wide" data-upload-form data-max-files="{{ upload_limits.max_upload_files }}" data-max-file-bytes="{{ upload_limits.max_pdf_bytes }}" data-max-batch-bytes="{{ upload_limits.max_batch_bytes }}" data-file-upload-url="{{ path_for('/web/upload/file') }}" data-precheck-url="{{ path_for('/web/pdfs/exists') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="dropzone" id="dropzone">
     <input id="file-input" name="files" type="file" accept="application/pdf,.pdf" multiple required>
@@ -12,7 +12,8 @@
     <span class="drop-meta" id="file-summary">Choose files</span>
   </label>
   <label>Manual DOI <input name="doi" placeholder="Only when uploading one file"></label>
-  <label class="check"><input name="no_crossref" type="checkbox" value="true"> Skip Crossref metadata</label>
+  <label class="check"><input name="no_crossref" type="checkbox" value="true"> Skip online DOI/title verification and metadata</label>
+  <p class="help">Up to {{ upload_limits.max_upload_files }} PDFs per selection; {{ "%.1f"|format(upload_limits.max_pdf_bytes / 1048576) }} MiB per file and {{ "%.1f"|format(upload_limits.max_batch_bytes / 1048576) }} MiB total. Files over 32 MiB are checked after transfer.</p>
   <div class="upload-progress" aria-live="polite" hidden>
     <div class="upload-progress-bar"><span></span></div>
     <p>Preparing upload...</p>

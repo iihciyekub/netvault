@@ -245,8 +245,9 @@ def _add_journal_identity(engine: Engine) -> None:
                 "OR journal_key <> :key OR journal_key IS NULL)"
             ), updates)
         if engine.dialect.name == "postgresql":
+            connection.execute(text((Path(__file__).parent / "data" / "html_entities.sql").read_text()))
             sql = (Path(__file__).parent / "data" / "journal_identity.sql").read_text()
-            connection.exec_driver_sql(sql)
+            connection.execute(text(sql))
             # Catch an old-version writer that inserted a row during backfill;
             # the trigger also normalizes any writes after this transaction.
             connection.execute(text(
@@ -254,6 +255,51 @@ def _add_journal_identity(engine: Engine) -> None:
                 "WHERE container_title IS DISTINCT FROM netvault_journal_display_name(container_title) "
                 "OR (container_title IS NOT NULL AND journal_raw_title IS NULL)"
             ))
+
+
+def _align_identity_schema(engine: Engine) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    columns = {row["name"]: row for row in inspect(engine).get_columns("pdfs")}
+    with engine.begin() as connection:
+        connection.execute(text("SET LOCAL statement_timeout = 0"))
+        connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+        if connection.scalar(text("SELECT count(*) FROM pdfs WHERE doi IS NULL OR doi = ''")):
+            raise RuntimeError("Cannot enforce DOI identity: resolve missing DOI records before upgrading")
+        connection.execute(text("UPDATE pdfs SET crossref_status = 'pending' WHERE crossref_status IS NULL"))
+        connection.execute(text("ALTER TABLE pdfs ALTER COLUMN crossref_status SET DEFAULT 'pending'"))
+        connection.execute(text("ALTER TABLE users ALTER COLUMN token_version SET DEFAULT 0"))
+        connection.execute(text("ALTER TABLE users ALTER COLUMN dashboard_journal_limit SET DEFAULT 20"))
+        if columns["doi"]["nullable"]:
+            connection.execute(text("ALTER TABLE pdfs ALTER COLUMN doi SET NOT NULL"))
+        if columns["crossref_status"]["nullable"]:
+            connection.execute(text("ALTER TABLE pdfs ALTER COLUMN crossref_status SET NOT NULL"))
+        if not columns["crossref_fetched_at"]["type"].timezone:
+            # Historical providers write datetime.now(timezone.utc). The old
+            # PostgreSQL container uses UTC; preserve those instants explicitly.
+            connection.execute(text("ALTER TABLE pdfs ALTER COLUMN crossref_fetched_at "
+                                    "TYPE TIMESTAMPTZ USING crossref_fetched_at AT TIME ZONE 'UTC'"))
+        for filename in ("html_entities.sql", "journal_identity.sql"):
+            connection.execute(text((Path(__file__).parent / "data" / filename).read_text()))
+        connection.execute(text("UPDATE pdfs SET container_title = container_title "
+            "WHERE container_title IS DISTINCT FROM netvault_journal_display_name(container_title)"))
+    # Build the narrower search index without blocking writers. Keep the old
+    # index until the replacement has completed, and recover interrupted builds.
+    expression = "lower(coalesce(doi, '') || ' ' || coalesce(title, '') || ' ' || " \
+                 "coalesce(authors, '') || ' ' || coalesce(container_title, '') || ' ' || " \
+                 "coalesce(publisher, '') || ' ' || coalesce(original_name, ''))"
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(text("SET statement_timeout = 0"))
+        try:
+            valid = connection.scalar(text("SELECT indisvalid FROM pg_index "
+                "WHERE indexrelid = to_regclass('ix_pdfs_search_text_trgm')"))
+            if valid is False:
+                connection.execute(text("DROP INDEX CONCURRENTLY ix_pdfs_search_text_trgm"))
+            connection.execute(text("CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_pdfs_search_text_trgm "
+                f"ON pdfs USING gin (({expression}) gin_trgm_ops) WHERE is_deleted IS FALSE"))
+            connection.execute(text("DROP INDEX CONCURRENTLY IF EXISTS ix_pdfs_search_trgm"))
+        finally:
+            connection.execute(text("RESET statement_timeout"))
 
 
 MIGRATIONS: tuple[Migration, ...] = (
@@ -266,6 +312,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _add_pdf_doi_corrections,
     _add_last_login_at,
     _add_journal_identity,
+    _align_identity_schema,
 )
 
 

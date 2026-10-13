@@ -52,3 +52,22 @@ The production 2026-10-12 plan and original database/source backups are stored i
 633 representative DOIs rather than re-fetching every article. Registry ISSNs
 belong to the venue identity; unsampled articles are not assigned sample ISSNs.
 Names without serial evidence are only formatted or individually reviewed.
+
+## Shared contract and schema migration 10
+
+Edit `contracts/identity.py`, then run `python scripts/sync-identity-contract.py`.
+The two packages receive generated identity primitives and ship independently.
+`--check` verifies their copies and the SQL HTML5 entity data. PostgreSQL uses
+those entity mappings and the same ISSN format/checksum rules, including direct
+SQL writers. DOI candidate source priorities now agree between CLI and server.
+
+Migration 10 enforces non-null DOI and metadata status, aligns database defaults,
+and converts legacy UTC metadata timestamps to TIMESTAMPTZ. Historical metadata
+providers produced UTC values; confirm the legacy database/session timezone
+before deployment. Missing DOI records stop the migration rather than inventing
+identities. The replacement text-search index is built concurrently before the
+old index is removed; complete hashes and hash prefixes use dedicated queries.
+
+Run `scripts/verify-postgres-contract.py` with `NETVAULT_TEST_DATABASE_URL` pointing
+to an isolated database whose name ends in `_test`. It compares fresh and upgraded
+schemas, checks UTC preservation, and exercises Python/SQL journal and ISSN rules.

@@ -21,6 +21,7 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip build uv
       - run: python scripts/check-version-consistency.py
+      - run: python scripts/sync-identity-contract.py --check
       - run: uv lock --check && uv lock --project packages/netvault-server --check
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: python -m pip install -e ".[dev]" -e packages/netvault-server
@@ -28,3 +29,27 @@ jobs:
       - run: pytest --cov=src/netvault --cov=packages/netvault-server/src/netvault_server --cov-fail-under=60
       - run: python -m build .
       - run: python -m build packages/netvault-server
+
+  postgres-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: netvault_contract_test
+          POSTGRES_USER: contract
+          POSTGRES_PASSWORD: fixture-test-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U contract -d netvault_contract_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e packages/netvault-server
+      - run: python scripts/verify-postgres-contract.py
+        env:
+          NETVAULT_TEST_DATABASE_URL: postgresql+psycopg://contract:fixture-test-only@127.0.0.1:5432/netvault_contract_test
