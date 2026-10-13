@@ -72,6 +72,7 @@ class Sha256ExistsRequest(BaseModel):
 class Sha256ExistsResponse(BaseModel):
     existing: dict[str, PdfRead]
     existing_doi: dict[str, PdfRead] = Field(default_factory=dict)
+    server_version: str | None = None
 
 
 class PdfAliasClaim(BaseModel):

@@ -331,6 +331,7 @@ def existing_pdfs_by_sha256(
     return Sha256ExistsResponse(
         existing=existing,
         existing_doi={pdf.doi: pdf_to_read(pdf) for pdf in doi_pdfs},
+        server_version=__version__,
     )
 
 

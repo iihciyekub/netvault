@@ -125,8 +125,9 @@ def test_report_separates_new_existing_failed_and_local_duplicates_and_resumes(t
     saved = json.loads(report.read_text())
     assert saved["finished"]
     assert saved["summary"] == dict(pending=0, uploaded=1, existing=1, replaced=0, failed=1,
-                                    **{"local-duplicate": 1}, found_paths=4, processed=4)
-    assert "only uploaded is new" in result.output
+                                    **{"local-duplicate": 1, "needs-review": 0, "review-skipped": 0},
+                                    found_paths=4, processed=4)
+    assert "uploaded: 1" in result.output
     calls = []
     def recovered(path, **kwargs):
         calls.append(path.name)

@@ -592,7 +592,7 @@ def test_upload_uses_sibling_download_index_without_parsing_pdf(
 
     monkeypatch.setattr(user_cli, "upload_pdf", fake_upload)
 
-    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+    result = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf)])
 
     assert result.exit_code == 0, result.output
     assert "1 download index hits" in result.output
@@ -624,7 +624,7 @@ def test_upload_does_not_fall_back_when_indexed_filename_hash_is_stale(
         sha256="b" * 64,
     )
 
-    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+    result = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf)])
 
     assert result.exit_code == 1, result.output
     assert "SHA-256 mismatch" in result.output
@@ -677,7 +677,7 @@ def test_upload_no_index_uses_existing_pdf_resolver(
 
     monkeypatch.setattr(user_cli, "upload_pdf", fake_upload)
 
-    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--no-index"])
+    result = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf), "--no-index"])
 
     assert result.exit_code == 0, result.output
     assert "1 DOI scans" in result.output
@@ -820,7 +820,7 @@ def test_upload_reuses_manual_identity_without_parsing_pdf(tmp_path: Path, monke
     sha256 = file_sha256(pdf)
     save_identity_cache({sha256: manual_identity("10.1234/manual")})
 
-    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+    result = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf)])
 
     assert result.exit_code == 0, result.output
     assert "1 skipped" in result.output
@@ -867,7 +867,7 @@ def test_upload_collapses_local_duplicate_paths_before_server_check(
         lambda *args, **kwargs: pytest.fail("existing unique PDF must not be uploaded"),
     )
 
-    result = CliRunner().invoke(user_cli.app, ["upload", str(tmp_path)])
+    result = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert server_checks == [[sha256]]
@@ -963,15 +963,15 @@ def test_upload_retries_local_no_doi_and_lets_server_resolve(tmp_path: Path, mon
 
     monkeypatch.setattr(user_cli, "extract_doi_evidence", extract)
     monkeypatch.setattr(user_cli, "upload_pdf", server_upload)
-    first = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
-    second = CliRunner().invoke(user_cli.app, ["upload", str(pdf)])
+    first = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf)])
+    second = CliRunner().invoke(user_cli.app, ["upload", "--verbose", str(pdf)])
 
     assert first.exit_code == 1, first.output
     assert second.exit_code == 0, second.output
-    assert len(scans) == 2
+    assert len(scans) == 1
     assert all(call["doi"] is None for call in uploads)
     assert all(call["doi_source"] is None for call in uploads)
-    assert "1 DOI scans" in second.output
+    assert "1 DOI cache hits" in second.output
     assert "uploaded: 1" in second.output
 
 
@@ -1121,7 +1121,7 @@ def test_bad_index_row_does_not_block_unrelated_uploads(tmp_path, monkeypatch):
         return {'deduplicated': False, 'pdf': {'doi': kwargs['doi'], 'original_name': path.name}}
 
     monkeypatch.setattr(user_cli, 'upload_pdf', upload)
-    result = CliRunner().invoke(user_cli.app, ['upload', str(tmp_path)])
+    result = CliRunner().invoke(user_cli.app, ['upload', '--verbose', str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert {item['doi'] for item in uploads} == {'10.1016/j.actpsy.2025.106071', '10.5555/good.index'}
     assert '1 download index hits' in result.output

@@ -7,7 +7,13 @@ a small authenticated web UI.
 
 ## Upload results and recovery
 
-`nv upload ./papers` reports **new**, **existing**, **failed**, and **replaced** separately. The request progress bar counts completed requests, including failed and deduplicated requests; it is not the number of newly stored articles. An atomic `nv-upload-report.json` in the current directory records every file and its outcome while the command runs. Use `--report PATH` to choose another location, and `nv upload ./papers --retry-failed` to retry only failed or still-pending files from that report. Already stored hashes are checked again before retries.
+`nv upload ./papers` shows one progress bar with a fixed total of files needing processing. It advances when each file has a final result, including server deduplication, errors and remembered rejections. Existing hashes and local duplicates are summarized once before that stage. Only newly stored PDFs count as uploaded.
+
+Individual errors and index warnings go to the atomic `nv-upload-report.json` instead of printing a line for every failed PDF. Use `--report PATH` for another location or `--verbose` to display individual errors, cache statistics, transfer speed and request timings.
+
+Recognized server DOI/title verification failures become `needs-review`. An unchanged PDF is subsequently `review-skipped`, even after moving or renaming it without a new DOI hint. Rejections are keyed by SHA-256 and server, and stored with the DOI cache; ordinary uploads still check server hashes first. File contents, DOI/index/CSV evidence, filename DOI hints, CLI/resolver version or reported server version changes permit another attempt. Temporary network/provider errors and unrelated request-validation errors never block later uploads. A local missing DOI still gets a server attempt.
+
+Use `nv upload ./papers --refresh-doi` to retry rejected identities, or `nv upload ./papers --retry-failed` to select failed, pending and review files from the last report. A successful upload clears the remembered rejection. New rejections/errors exit with status 1; skipping remembered review files alone exits with status 0. Older servers without version information require `--refresh-doi` after verification rules change.
 
 A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. These legacy records continue through server-side primary-title verification; unlike a SHA-256-bound JSON index, they cannot cause an unverified DOI-only skip. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
 
@@ -196,11 +202,10 @@ idempotency remain enabled. Force replacements run serially in input order.
 Use `nv upload ./papers --jobs 1` to diagnose a connection with serial requests;
 `--jobs` accepts 1 through 3 and requires no change to the usual command.
 
-Progress shows aggregate multipart bytes sent and average MiB/s since the first
-request. The summary separates body-send time from response wait, which includes
-network and server processing. Updated servers also report average storage, PDF
-parsing, verification, persistence and total handler time. Per-request averages
-can overlap under concurrency; they do not sum to the command's elapsed time.
+Default output contains concise result counts, elapsed time and the report path.
+Add `--verbose` for aggregate multipart bytes, average MiB/s, DOI/cache statistics
+and detailed send, response-wait and server timings. Timings overlap under
+concurrency and do not sum to total elapsed time.
 
 ```bash
 nv upload ~/Documents/papers
@@ -212,7 +217,7 @@ Before uploading bytes, the CLI checks the local PDF's DOI and sha256 against
 the server. If the PDF is already in the vault, it is reported as `skipped`
 without re-uploading the file.
 
-The CLI caches file hashes by path, size, and modification time in
+The CLI caches file hashes by path, size, modification/change time and file identity in
 `~/.config/netvault/hash-cache.json`. DOI identity results are cached separately
 by SHA-256 in `~/.config/netvault/identity-cache.json`, so unchanged files do
 not need to be parsed again even after they are renamed. Automatic `no-doi` and
@@ -283,7 +288,7 @@ paper's first-page heading. DOI strings found only in references receive lower
 confidence; a matching filename never overrides verified PDF evidence.
 Renamed files with a known `--<hex fingerprint>` suffix are recognized.
 Use `nv upload . --retry-failed` after a transient identity error to retry
-previously failed or pending files from `nv-upload-report.json`.
+previously failed, pending or review files from `nv-upload-report.json`.
 
 Change the sibling filenames in `~/.config/netvault/config.toml`:
 
@@ -304,6 +309,14 @@ project-specific exclusions by repeating `--exclude-dir`:
 
 ```bash
 nv upload . --exclude-dir archive --exclude-dir generated
+```
+
+Directory-name exclusions ignore case at every depth. `identify --rename` uses
+`unidentifys/` for files absent from the vault, which can be valid new articles;
+it does not establish upload eligibility. To intentionally omit collection folders:
+
+```bash
+nv upload ./papers --exclude-dir unidentifys --exclude-dir duplicates
 ```
 
 If a scanned or unusually encoded PDF cannot be parsed, provide the DOI explicitly:

@@ -324,6 +324,7 @@ def test_pdf_upload_list_search_download_and_dedup(client: TestClient, tmp_path:
         json={"sha256": [hashlib.sha256(PDF_BYTES).hexdigest(), "f" * 64]},
     )
     assert exists.status_code == 200
+    assert exists.json()["server_version"] == importlib.import_module("netvault_server").__version__
     assert list(exists.json()["existing"]) == [hashlib.sha256(PDF_BYTES).hexdigest()]
     doi_exists = client.post(
         "/pdfs/exists",

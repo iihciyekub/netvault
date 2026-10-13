@@ -282,11 +282,10 @@ idempotency remain enabled. Force replacements run serially in input order.
 Use `nv upload ./papers --jobs 1` to diagnose a connection with serial requests;
 `--jobs` accepts 1 through 3 and requires no change to the usual command.
 
-Progress shows aggregate multipart bytes sent and average MiB/s since the first
-request. The summary separates body-send time from response wait, which includes
-network and server processing. Updated servers also report average storage, PDF
-parsing, verification, persistence and total handler time. Per-request averages
-can overlap under concurrency; they do not sum to the command's elapsed time.
+Default output contains concise result counts, elapsed time and the report path.
+Add `--verbose` for aggregate multipart bytes, average MiB/s, DOI/cache statistics
+and detailed send, response-wait and server timings. Timings overlap under
+concurrency and do not sum to total elapsed time.
 
 
 Upload one PDF:
@@ -323,6 +322,36 @@ identity results in `~/.config/netvault/identity-cache.json`. The identity cache
 is keyed by SHA-256 rather than path, so moving or renaming an unchanged PDF
 does not trigger another DOI scan. Automatic missing/conflict results are also
 cached; pass `--refresh-doi` when you want to retry them.
+
+Upload uses one progress bar with a fixed total of files requiring processing.
+It advances on final results; existing hashes and local duplicates are summarized
+before this stage. Individual errors and index warnings are saved in the atomic
+`nv-upload-report.json`; `--report PATH` changes its location. Default output
+contains result counts and elapsed time; `--verbose` adds individual errors and
+technical diagnostics.
+
+Recognized server DOI/title rejections are recorded as `needs-review` and remembered
+with SHA-256 and server address in the identity cache. Normal repeated uploads
+skip them as `review-skipped` without parsing or sending the same PDF. Moving or
+renaming without a new DOI hint preserves this behavior. Changed PDF bytes,
+DOI/index/CSV evidence, filename DOI hints, CLI/resolver version or the server
+version returned by the existing bulk hash query allow another attempt. Server
+hash matches take precedence. Local missing DOI results still get a server attempt;
+network errors, provider outages and unrelated request validation are not remembered
+as identity rejections.
+
+```bash
+nv upload ./papers --refresh-doi
+nv upload ./papers --retry-failed
+nv upload ./papers --verbose
+```
+
+`--retry-failed` selects failed, pending, `needs-review` and `review-skipped` files
+from the chosen report. Both retry options bypass remembered rejections; explicit
+force uploads also bypass them. Success clears a remembered rejection. Fresh errors
+or rejections exit with status 1; skipping remembered review files alone exits with
+status 0. With older servers that do not report their version, use `--refresh-doi`
+after server verification rules change.
 
 ### Download index files
 
@@ -395,6 +424,13 @@ Recursive uploads prune common technical directories (`.git`, `.venv`,
 `node_modules`, `Library`, `dist`, `build`, and `output`). Use repeated
 `--exclude-dir NAME` options for additional project-specific directories. If
 you explicitly pass an excluded directory as an upload path, NetVault scans it.
+Directory-name exclusions ignore case at every depth. `unidentifys/` means absent
+from the vault, not rejected by upload, and remains uploadable by default. To
+intentionally omit identify collection folders:
+
+```bash
+nv upload ./papers --exclude-dir unidentifys --exclude-dir duplicates
+```
 
 If DOI extraction fails, provide the DOI manually:
 

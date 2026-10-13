@@ -227,7 +227,8 @@ def test_cli_explicit_csv_unmatched_never_uses_cached_or_pdf_identity(cli_setup,
     )})
     result = CliRunner().invoke(user.app, ["upload", str(pdf), "--csv", str(csv_path)])
     assert result.exit_code == 1, result.output
-    assert "PDF fallback is disabled" in " ".join(result.output.split())
+    saved = json.loads((root / "nv-upload-report.json").read_text())
+    assert "PDF fallback is disabled" in saved["files"][0]["error"]
     assert not calls
     report = json.loads((root / "nv-upload-report.json").read_text())
     assert report["summary"]["failed"] == 1
@@ -257,7 +258,8 @@ def test_identical_files_cannot_have_different_csv_dois(cli_setup):
     write_csv(csv_path, [csv_row(first), csv_row(second, doi="10.1234/different")])
     result = CliRunner().invoke(user.app, ["upload", str(docs), "--csv", str(csv_path)])
     assert result.exit_code == 1, result.output
-    assert "different DOIs to identical PDFs" in result.output
+    saved = json.loads((root / "nv-upload-report.json").read_text())
+    assert all("different DOIs to identical PDFs" in row["error"] for row in saved["files"])
     assert not calls
     report = json.loads((root / "nv-upload-report.json").read_text())
     assert report["summary"]["failed"] == 2

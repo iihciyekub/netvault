@@ -36,6 +36,7 @@ from netvault.cli.config import (
     save_credentials,
 )
 from netvault.cli.http import (
+    ApiError,
     api_get,
     api_post,
     auth_headers,
@@ -57,6 +58,7 @@ from netvault.doi import (
     DoiEvidence,
     extract_doi_evidence,
     find_dois_in_text,
+    find_filename_doi_from_name,
     normalize_doi,
 )
 
@@ -156,10 +158,10 @@ def iter_pdf_paths(path: Path, excluded_dir_names: set[str] | None = None) -> li
             raise typer.BadParameter(f"{path} is not a PDF file")
         return [path]
     if path.is_dir():
-        excluded = excluded_dir_names or set()
+        excluded = {name.casefold() for name in (excluded_dir_names or set())}
         pdfs: list[Path] = []
         for root, directory_names, file_names in os.walk(path):
-            directory_names[:] = sorted(name for name in directory_names if name not in excluded)
+            directory_names[:] = sorted(name for name in directory_names if name.casefold() not in excluded)
             root_path = Path(root)
             pdfs.extend(
                 root_path / name
@@ -258,19 +260,26 @@ def save_hash_cache(files: dict[str, dict]) -> None:
 
 
 def cached_file_sha256(path: Path, cache: dict[str, dict], progress_callback=None) -> tuple[str, bool]:
-    size, mtime_ns = file_signature(path)
+    stat = path.stat()
+    signature = {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
+                 "ctime_ns": stat.st_ctime_ns, "device": stat.st_dev, "inode": stat.st_ino}
+    size = stat.st_size
     cached = cache.get(file_cache_key(path))
     if (
         isinstance(cached, dict)
-        and cached.get("size") == size
-        and cached.get("mtime_ns") == mtime_ns
+        and all(cached.get(key) == value for key, value in signature.items())
         and isinstance(cached.get("sha256"), str)
     ):
         if progress_callback:
             progress_callback(size)
         return cached["sha256"], True
     sha256 = file_sha256(path, progress_callback=progress_callback)
-    cache[file_cache_key(path)] = {"size": size, "mtime_ns": mtime_ns, "sha256": sha256}
+    after = path.stat()
+    if (after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_dev, after.st_ino) != (
+        stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_dev, stat.st_ino
+    ):
+        raise RuntimeError("File changed while hashing; retry after it stops changing")
+    cache[file_cache_key(path)] = {**signature, "sha256": sha256}
     return sha256, False
 
 
@@ -312,10 +321,56 @@ def cached_identity(identities: dict[str, dict], sha256: str) -> dict | None:
         return identity
     if (
         identity.get("resolver_version") == DOI_RESOLVER_VERSION
-        and identity.get("status") == "ok"
-        and isinstance(identity.get("doi"), str)
+        and identity.get("status") in {"ok", "no-doi", "conflict"}
+        and (identity.get("status") != "ok" or isinstance(identity.get("doi"), str))
     ):
         return identity
+    return None
+
+
+def store_identity(identities: dict[str, dict], sha256: str, identity: dict) -> None:
+    previous = identities.get(sha256, {})
+    identities[sha256] = dict(identity)
+    if isinstance(previous, dict) and isinstance(previous.get("upload_rejections"), dict):
+        identities[sha256]["upload_rejections"] = previous["upload_rejections"]
+
+
+def is_identity_rejection(error: Exception) -> bool:
+    # Do not remember generic 422 request validation, authentication or outages.
+    if not isinstance(error, ApiError):
+        return False
+    if error.status_code == 400:
+        return "No DOI found" in str(error)
+    return error.status_code == 422 and any(
+        reason in str(error) for reason in (
+            "No DOI candidate could be verified against metadata and the PDF title",
+            "DOI candidates are ambiguous",
+            "Multiple metadata DOI values",
+            "Multiple PDF content DOI values have similar confidence",
+        )
+    )
+
+
+def upload_identity_context(server: str, doi: str | None, source: str | None,
+                            no_crossref: bool, server_version: str | None = None,
+                            filename_doi: str | None = None) -> dict:
+    return {
+        "server": server.rstrip("/"), "client_version": __version__,
+        "resolver_version": DOI_RESOLVER_VERSION, "doi": doi,
+        "source": source, "no_crossref": no_crossref,
+        "server_version": server_version,
+        "filename_doi": filename_doi,
+    }
+
+
+def cached_upload_rejection(identity: dict | None, context: dict) -> dict | None:
+    rejections = (identity or {}).get("upload_rejections")
+    if not isinstance(rejections, dict):
+        return None
+    rejection = rejections.get(context["server"])
+    if (isinstance(rejection, dict) and rejection.get("context") == context
+            and isinstance(rejection.get("error"), str)):
+        return rejection
     return None
 
 
@@ -378,6 +433,7 @@ def get_existing_pdf_by_sha256(sha256: str) -> dict | None:
 
 def get_existing_pdfs_by_sha256(
     hashes: Iterable[str], progress_callback=None, *, fallback: bool = True,
+    server_version_callback=None,
 ) -> dict[str, dict]:
     unique_hashes = sorted({sha256 for sha256 in hashes if sha256})
     if not unique_hashes:
@@ -387,6 +443,8 @@ def get_existing_pdfs_by_sha256(
     try:
         for index in range(0, len(unique_hashes), chunk_size):
             response = api_post("/pdfs/exists", json={"sha256": unique_hashes[index : index + chunk_size]})
+            if server_version_callback and isinstance(response.get("server_version"), str):
+                server_version_callback(response["server_version"])
             existing_payload = response.get("existing", {})
             if isinstance(existing_payload, dict):
                 existing.update(existing_payload)
@@ -970,6 +1028,10 @@ Notes:
   It matches SHA-256 or filename and size; unmatched/ambiguous files fail without PDF fallback.
   Automatic CSV discovery still requires server title verification.
   Metadata lookup continues; ordinary CSV uploads do not require metadata availability.
+  Identity verification rejections are remembered by hash; unchanged files are skipped next time.
+  --refresh-doi retries identities; --retry-failed selects failed, pending and review files.
+  Errors are saved in --report; --verbose shows individual errors and detailed timings.
+  unidentifys/ means absent from the vault, not rejected; exclude it only intentionally.
 """,
 )
 def upload_command(
@@ -985,7 +1047,7 @@ def upload_command(
     refresh_doi: bool = typer.Option(
         False,
         "--refresh-doi",
-        help="Re-run automatic DOI resolution, but keep user-confirmed identities.",
+        help="Re-run automatic DOI resolution and retry rejected identities; keep user-confirmed DOIs.",
     ),
     exclude_dir: list[str] | None = typer.Option(
         None,
@@ -1014,7 +1076,8 @@ def upload_command(
         help="Ignore download index files and use cached or PDF-derived DOI identities.",
     ),
     report: Path = typer.Option(Path("nv-upload-report.json"), "--report", help="Save incremental results and failures."),
-    retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed or pending files from --report."),
+    retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed, pending or review files from --report."),
+    verbose: bool = typer.Option(False, "--verbose", help="Show individual errors, cache statistics and upload timings."),
 ) -> None:
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
     pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
@@ -1042,13 +1105,20 @@ def upload_command(
         configured_index_enabled, index_names = load_upload_index_settings()
     except RuntimeError as exc:
         raise typer.BadParameter(str(exc)) from exc
+    index_warnings: list[str] = []
+
+    def record_index_warning(message: str) -> None:
+        index_warnings.append(message)
+        if verbose or dry_run:
+            console.print(f"warning: {message}", style="yellow", highlight=False, markup=False)
+
     index_resolver = DownloadIndexResolver(
         index_names,
         explicit_path=index_file,
         explicit_csv=csv_file,
         csv_roots=tuple(path.resolve() for path in paths if path.is_dir()),
         enabled=not no_index and (configured_index_enabled or index_file is not None or csv_file is not None),
-        warning_callback=lambda message: console.print(f"warning: {message}", style="yellow", highlight=False),
+        warning_callback=record_index_warning,
     )
 
     if dry_run:
@@ -1092,14 +1162,19 @@ def upload_command(
         return
 
     ensure_logged_in()
-    upload_report = UploadReport(report, pdfs)
+    upload_report = UploadReport(report, pdfs, warnings=index_warnings)
     uploaded = 0
     replaced = 0
     skipped = 0
+    needs_review = 0
+    review_skipped = 0
     failed: list[tuple[Path, str]] = []
     latest_pdf: dict | None = None
     hash_cache = load_hash_cache()
     identity_cache = load_identity_cache()
+    upload_server = str(load_credentials().get("server_url") or DEFAULT_SERVER_URL).rstrip("/")
+    upload_server_version = None
+    upload_contexts: dict[Path, dict] = {}
     cache_changed = False
     identity_cache_pending = 0
     doi_cache_hits = 0
@@ -1115,31 +1190,48 @@ def upload_command(
     preparation_seconds = 0.0
     started = monotonic()
 
-    with Progress(
+    progress_columns = [
         SpinnerColumn(),
         TextColumn("{task.description}"),
         BarColumn(),
-        TextColumn("{task.completed:.0f}/{task.total:.0f} processed"),
+        TextColumn("{task.completed:.0f}/{task.total:.0f}"),
         TextColumn("{task.fields[outcomes]}"),
         TimeElapsedColumn(),
-        UploadRateColumn(stats),
+    ]
+    if verbose:
+        progress_columns.append(UploadRateColumn(stats))
+    with Progress(
+        *progress_columns,
         console=console,
         transient=True,
     ) as progress:
         task = progress.add_task("Hashing PDFs", total=len(pdfs), outcomes="")
 
         def record_failure(path, error):
+            nonlocal needs_review
+            rejection = is_identity_rejection(error)
+            if rejection:
+                needs_review += 1
             failed.append((path, str(error)))
-            upload_report.record(path, "failed", error=str(error))
-            console.print(f"failed: {path.name}: {error}", highlight=False)
+            upload_report.record(path, "needs-review" if rejection else "failed",
+                                 sha256=hashes_by_path.get(path), error=str(error))
+            if verbose:
+                console.print(f"failed: {path.name}: {error}", highlight=False, markup=False)
 
         def update_counts():
-            counts = f"new {uploaded} | existing {skipped} | failed {len(failed)} | replaced {replaced}"
-            progress.update(task, outcomes=counts)
-            if upload_task is not None:
-                progress.update(upload_task, outcomes=counts)
+            counts = [f"new {uploaded}"]
+            if needs_review or review_skipped:
+                counts.append(f"review {needs_review + review_skipped}")
+            if len(failed) > needs_review:
+                counts.append(f"failed {len(failed) - needs_review}")
+            if replaced:
+                counts.append(f"replaced {replaced}")
+            progress.update(task, outcomes=" | ".join(counts))
 
-        upload_task = None
+        def remember_server_version(version):
+            nonlocal upload_server_version
+            upload_server_version = version
+
         for pdf_path in pdfs:
             try:
                 if not has_pdf_header(pdf_path):
@@ -1186,6 +1278,7 @@ def upload_command(
         existing_by_sha = get_existing_pdfs_by_sha256(
             pdf_paths_by_sha,
             progress_callback=lambda completed: progress.update(task, completed=completed),
+            server_version_callback=remember_server_version,
         )
 
         new_pdfs: list[Path] = []
@@ -1199,14 +1292,30 @@ def upload_command(
             else:
                 new_pdfs.append(pdf_path)
 
-        upload_task = progress.add_task("Upload requests completed", total=0, visible=False, outcomes="")
+        initial_skips = []
+        if skipped:
+            initial_skips.append(f"{skipped} existing")
+        if local_duplicate_paths:
+            initial_skips.append(f"{local_duplicate_paths} local duplicates")
+        if initial_skips:
+            console.print("Skipped: " + ", ".join(initial_skips))
         update_counts()
-        progress.reset(task, total=len(new_pdfs), completed=0, description="Preparing DOI identities")
+        progress.reset(task, total=len(new_pdfs), completed=0, description="Processing uploads")
 
         def record_outcomes(outcomes) -> None:
             nonlocal latest_pdf, replaced, skipped, uploaded
             for outcome in outcomes:
                 if outcome.error is not None:
+                    if is_identity_rejection(outcome.error):
+                        context = upload_contexts[outcome.path]
+                        entry = identity_cache.setdefault(hashes_by_path[outcome.path], {})
+                        if not isinstance(entry.get("upload_rejections"), dict):
+                            entry["upload_rejections"] = {}
+                        entry.setdefault("upload_rejections", {})[upload_server] = {
+                            "context": context, "error": str(outcome.error),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        save_identity_cache(identity_cache)
                     record_failure(outcome.path, outcome.error)
                 else:
                     result = outcome.result
@@ -1219,7 +1328,11 @@ def upload_command(
                         uploaded += 1
                     status = "replaced" if result.get("replaced") else "existing" if result["deduplicated"] else "uploaded"
                     upload_report.record(outcome.path, status, sha256=hashes_by_path[outcome.path], pdf=latest_pdf)
-                progress.advance(upload_task, 1)
+                    entry = identity_cache.get(hashes_by_path[outcome.path], {})
+                    rejections = entry.get("upload_rejections") if isinstance(entry, dict) else None
+                    if isinstance(rejections, dict) and rejections.pop(upload_server, None) is not None:
+                        save_identity_cache(identity_cache)
+                progress.advance(task, 1)
                 update_counts()
 
         # Preserve input order for force replacements. Only the coordinator
@@ -1236,7 +1349,10 @@ def upload_command(
                     try:
                         sha256 = hashes_by_path[pdf_path]
                         identity = cached_identity(identity_cache, sha256)
-                        if refresh_doi and identity and identity.get("source") != "user":
+                        if (identity and identity.get("source") != "user" and (
+                            refresh_doi or retry_failed
+                            or (identity.get("status") == "conflict" and not no_crossref)
+                        )):
                             identity = None
 
                         index_match = None
@@ -1251,7 +1367,7 @@ def upload_command(
 
                         if doi:
                             identity = manual_identity(doi)
-                            identity_cache[sha256] = identity
+                            store_identity(identity_cache, sha256, identity)
                             identity_cache_pending += 1
                         elif csv_file is not None:
                             if identity and identity.get("source") == "user" and normalize_doi(identity["doi"]) != index_match.record.doi:
@@ -1269,7 +1385,7 @@ def upload_command(
                             doi_cache_hits += 1
                         elif index_match:
                             identity = download_index_identity(index_match)
-                            identity_cache[sha256] = identity
+                            store_identity(identity_cache, sha256, identity)
                             identity_cache_pending += 1
                             download_index_hits += 1
                             if index_match.renamed:
@@ -1293,7 +1409,7 @@ def upload_command(
                                     source=best.source,
                                 )
                             identity = identity_from_evidence(evidence)
-                            identity_cache[sha256] = identity
+                            store_identity(identity_cache, sha256, identity)
                             identity_cache_pending += 1
                             doi_scans += 1
 
@@ -1303,22 +1419,38 @@ def upload_command(
                             # prevent it from examining the actual document.
                             dois_by_path[pdf_path] = None
                             doi_sources_by_path[pdf_path] = "pdf-content"
-                            upload_candidates.append(pdf_path)
-                            continue
-                        if identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
+                        elif identity.get("status") not in {"ok", "confirmed"} or not isinstance(extracted, str):
                             reason = identity.get("reason") or "No DOI found"
                             record_failure(pdf_path, f"{reason}. Confirm with: nv doi {pdf_path} --set DOI")
+                            progress.advance(task, 1)
                             continue
-                        dois_by_path[pdf_path] = extracted
-                        doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
+                        else:
+                            dois_by_path[pdf_path] = extracted
+                            doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
+                        filename_hint = find_filename_doi_from_name(pdf_path.name)
+                        context = upload_identity_context(
+                            upload_server, dois_by_path[pdf_path],
+                            doi_sources_by_path[pdf_path] if dois_by_path[pdf_path] else None,
+                            no_crossref,
+                            upload_server_version,
+                            filename_hint.doi if filename_hint else None,
+                        )
+                        upload_contexts[pdf_path] = context
+                        rejection = cached_upload_rejection(identity_cache.get(sha256), context)
+                        if rejection and not (refresh_doi or retry_failed or force):
+                            review_skipped += 1
+                            upload_report.record(pdf_path, "review-skipped", sha256=sha256,
+                                                 error=rejection["error"])
+                            progress.advance(task, 1)
+                            continue
                         upload_candidates.append(pdf_path)
                     except (RuntimeError, OSError, ValueError) as exc:
                         record_failure(pdf_path, exc)
+                        progress.advance(task, 1)
                     finally:
                         if identity_cache_pending >= 25:
                             save_identity_cache(identity_cache)
                             identity_cache_pending = 0
-                        progress.advance(task, 1)
                         update_counts()
                 trusted_dois = [
                     dois_by_path[path]
@@ -1343,6 +1475,7 @@ def upload_command(
                         latest_pdf = existing_pdf
                         skipped += 1
                         upload_report.record(pdf_path, "existing", sha256=hashes_by_path[pdf_path], pdf=existing_pdf)
+                        progress.advance(task, 1)
                         update_counts()
                         sha256 = hashes_by_path[pdf_path]
                         if existing_pdf.get("sha256") != sha256:
@@ -1360,7 +1493,6 @@ def upload_command(
                 preparation_seconds += monotonic() - prepare_started
                 record_outcomes(pipeline.collect())
                 for pdf_path in ready_paths:
-                    progress.update(upload_task, total=progress.tasks[upload_task].total + 1, visible=True)
                     record_outcomes(pipeline.submit(
                         pdf_path,
                         doi=dois_by_path[pdf_path],
@@ -1375,42 +1507,46 @@ def upload_command(
 
 
     upload_report.checkpoint(force=True, finished=True)
-    parts = [
-        "Completed requests include failures and existing PDFs; only uploaded is new.",
-        f"report: {upload_report.path}",
-        f"found paths: {len(pdfs)}",
-        f"unique PDFs: {len(unique_pdf_paths)}",
-        f"local duplicate paths: {local_duplicate_paths}",
-        f"already stored: {skipped} skipped",
-        f"uploaded: {uploaded}",
-    ]
-    parts.append(f"elapsed: {monotonic() - started:.1f}s; DOI preparation: {preparation_seconds:.1f}s")
-    if stats.started is not None:
+    parts = [f"done: {len(pdfs)}/{len(pdfs)} processed in {monotonic() - started:.1f}s",
+             f"uploaded: {uploaded}; already stored: {skipped} skipped"]
+    if local_duplicate_paths:
+        parts.append(f"local duplicate paths: {local_duplicate_paths}")
+    if needs_review:
+        parts.append(f"needs review: {needs_review}")
+    if review_skipped:
+        parts.append(f"previously rejected: {review_skipped} skipped (needs review)")
+    if len(failed) > needs_review:
+        parts.append(f"failed: {len(failed) - needs_review}")
+    if index_warnings:
+        parts.append(f"index warnings: {len(index_warnings)} (details in report)")
+    if replaced:
+        parts.append(f"{replaced} replaced")
+    parts.append(f"report: {upload_report.path}")
+    if verbose:
+        parts.extend([f"found paths: {len(pdfs)}", f"unique PDFs: {len(unique_pdf_paths)}",
+                      f"DOI preparation: {preparation_seconds:.1f}s"])
+    if verbose and stats.started is not None:
         parts.append(stats.display())
-    if stats.measured:
+    if verbose and stats.measured:
         parts.append(
             f"average request timing: send {stats.transfer_seconds / stats.measured:.2f}s; "
             f"response wait {stats.response_seconds / stats.measured:.2f}s "
             "(includes network and server processing)"
         )
-    if stats.server_timings:
+    if verbose and stats.server_timings:
         parts.append("average server timing: " + "; ".join(
             f"{name} {seconds / count:.2f}s"
             for name, (seconds, count) in stats.server_timings.items()
         ))
-    if replaced:
-        parts.append(f"{replaced} replaced")
-    if doi_cache_hits:
+    if verbose and doi_cache_hits:
         parts.append(f"{doi_cache_hits} DOI cache hits")
-    if doi_scans:
+    if verbose and doi_scans:
         parts.append(f"{doi_scans} DOI scans")
-    if download_index_hits:
+    if verbose and download_index_hits:
         parts.append(f"{download_index_hits} download index hits")
-    if download_index_renames:
+    if verbose and download_index_renames:
         parts.append(f"{download_index_renames} matched after rename")
-    if failed:
-        parts.append(f"{len(failed)} failed")
-    if latest_pdf:
+    if verbose and latest_pdf:
         title = latest_pdf.get("title") or latest_pdf["original_name"]
         parts.append(f"latest: {latest_pdf['doi']}  {title}")
     console.print("\n".join(parts))

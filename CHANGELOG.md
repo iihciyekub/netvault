@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.37 — 2026-10-13
+
+- Keep upload output concise with a single progress bar whose fixed total counts final file outcomes; save individual errors and index warnings to the atomic report, and show diagnostics only with `--verbose`.
+- Remember recognized server DOI/title verification rejections by SHA-256 and server, so unchanged rejected PDFs are skipped even after renaming or moving. Reuse local missing/conflicting DOI results without treating a local miss as a server rejection.
+- Retry after file contents, DOI/index/CSV evidence, client/resolver version or server version changes; `--refresh-doi`, `--retry-failed` and explicit force uploads also permit retries. Temporary errors and generic request validation are never remembered as identity rejections.
+- Add `needs-review` and `review-skipped` report outcomes; include both in `--retry-failed`, and clear remembered rejection after a successful upload.
+- Return server version with the existing bulk hash query, without another request; make recursive upload exclusions case-insensitive at every depth. Keep `unidentifys/` uploadable by default because vault misses can be new articles.
+
 ## 0.7.36 — 2026-10-13
 
 - Add a complete login example with the server URL, `--username example-user` and `--password example-password` to the web CLI guide and copy button, CLI login help, README and user guide; retain interactive login.

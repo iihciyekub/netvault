@@ -8,8 +8,9 @@ from time import monotonic
 
 
 class UploadReport:
-    def __init__(self, path: Path, pdfs: list[Path]):
+    def __init__(self, path: Path, pdfs: list[Path], *, warnings: list[str] | None = None):
         self.path = path.resolve()
+        self.warnings = warnings if warnings is not None else []
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.rows = {str(p.resolve()): {"path": str(p.resolve()), "status": "pending"} for p in pdfs}
         self.last_saved = 0.0
@@ -25,17 +26,20 @@ class UploadReport:
             row.update({k: pdf.get(k) for k in ("id", "doi", "title", "container_title")})
         if error:
             row["error"] = error
-        self.checkpoint(force=status == "failed")
+        self.checkpoint(force=status in {"failed", "needs-review"})
 
     def checkpoint(self, *, force: bool = False, finished: bool = False):
         if not force and monotonic() - self.last_saved < 1:
             return
         summary = {status: sum(r["status"] == status for r in self.rows.values())
-                   for status in ("pending", "uploaded", "existing", "replaced", "failed", "local-duplicate")}
+                   for status in ("pending", "uploaded", "existing", "replaced", "failed",
+                                  "local-duplicate", "needs-review", "review-skipped")}
         summary.update(found_paths=len(self.rows), processed=len(self.rows) - summary["pending"])
         payload = {"version": 1, "started_at": self.started_at,
                    "updated_at": datetime.now(timezone.utc).isoformat(), "finished": finished,
                    "summary": summary, "files": list(self.rows.values())}
+        if self.warnings:
+            payload["warnings"] = self.warnings
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -49,4 +53,4 @@ def failed_paths(report_path: Path) -> set[Path]:
     if payload.get("version") != 1 or not isinstance(payload.get("files"), list):
         raise ValueError("Unsupported upload report")
     return {Path(row["path"]).resolve() for row in payload["files"]
-            if row.get("status") in {"failed", "pending"}}
+            if row.get("status") in {"failed", "pending", "needs-review", "review-skipped"}}
