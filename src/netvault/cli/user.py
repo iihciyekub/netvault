@@ -747,9 +747,9 @@ Notes:
   Scans PDFs recursively and looks up SHA-256 values without uploading files.
   Without --rename, only writes a CSV preview; no PDFs are renamed or moved.
   --rename names matched PDFs by DOI, moves identical copies, equivalent page content,
-  and same-DOI filename conflicts with different hashes to ./duplicates,
-  and moves unmatched retained PDFs to ./unidentifys, under the current working directory.
-  Both collection directories are excluded from scanning. --duplicates-to is optional.
+  and same-DOI filename conflicts with different hashes to duplicates/,
+  and moves unmatched retained PDFs to unidentifys/, under each PDF's original parent directory.
+  Both collection folder names are excluded at every depth. --duplicates-to overrides duplicates.
   Existing PDFs and reports are never overwritten. CSV paths are absolute.
 """,
 )
@@ -762,8 +762,8 @@ def identify_command(
         False, "--rename", help="Rename by DOI; collect duplicates and unidentified PDFs automatically.",
     ),
     duplicates_to: Path | None = typer.Option(
-        Path("duplicates"), "--duplicates-to",
-        help="Optional duplicate destination (default: ./duplicates under the current directory).",
+        None, "--duplicates-to",
+        help="Optional shared duplicate destination (default: duplicates/ beside each source PDF).",
     ),
     csv_path: Path | None = typer.Option(
         None, "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
@@ -796,7 +796,7 @@ def identify_command(
             report, counts = identify_pdfs(
                 directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
                 hash_file=file_sha256, lookup=lookup, progress=update_progress,
-                unidentified_to=Path.cwd() / "unidentifys",
+                collect_by_parent=True,
             )
     except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
         console.print(f"identify failed: {exc}")

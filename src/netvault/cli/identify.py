@@ -20,6 +20,8 @@ CSV_FIELDS = (
     "content_duplicate_of", "content_duplicate_of_sha256", "error",
 )
 
+COLLECTION_DIRECTORY_NAMES = frozenset({"duplicates", "unidentifys"})
+
 
 @dataclass
 class LocalPdf:
@@ -45,8 +47,10 @@ def doi_filename(doi: str) -> str:
     return filename
 
 
-def scan_pdfs(directory: Path, excluded_directories: set[Path]) -> list[LocalPdf]:
+def scan_pdfs(directory: Path, excluded_directories: set[Path], *,
+              excluded_directory_names: Iterable[str] = ()) -> list[LocalPdf]:
     pdfs = []
+    excluded_names = {name.casefold() for name in excluded_directory_names}
 
     def scan_error(error: OSError) -> None:
         raise error
@@ -55,7 +59,8 @@ def scan_pdfs(directory: Path, excluded_directories: set[Path]) -> list[LocalPdf
         parent = Path(root)
         directories[:] = sorted(
             name for name in directories
-            if not (parent / name).is_symlink()
+            if name.casefold() not in excluded_names
+            and not (parent / name).is_symlink()
             and (parent / name).resolve() not in excluded_directories
         )
         for name in sorted(filenames):
@@ -133,6 +138,7 @@ def identify_pdfs(
     hash_file: Callable[[Path], str],
     lookup: Callable[[Iterable[str]], dict[str, dict]],
     unidentified_to: Path | None = None,
+    collect_by_parent: bool = False,
     progress: Callable[[str, int, int], None] | None = None,
 ) -> tuple[Path, dict[str, int]]:
     directory = directory.expanduser().resolve()
@@ -150,7 +156,20 @@ def identify_pdfs(
                 or unidentified_to.is_relative_to(duplicates_to)):
             raise ValueError("Duplicate and unidentified destinations must not overlap")
     excluded = {path for path in (duplicates_to, unidentified_to) if path is not None}
-    pdfs = scan_pdfs(directory, excluded)
+    pdfs = scan_pdfs(
+        directory, excluded,
+        excluded_directory_names=COLLECTION_DIRECTORY_NAMES if collect_by_parent else (),
+    )
+    if collect_by_parent:
+        # Validate all automatic destinations before hashing or changing any PDFs.
+        for parent in {pdf.path.parent for pdf in pdfs}:
+            for name, override in (("duplicates", duplicates_to), ("unidentifys", unidentified_to)):
+                if override is None:
+                    destination = parent / name
+                    if destination.is_symlink():
+                        raise ValueError(f"Collection destination must not be a symbolic link: {destination}")
+                    if destination.exists() and not destination.is_dir():
+                        raise ValueError(f"Collection destination must be a directory: {destination}")
     for index, pdf in enumerate(pdfs, 1):
         try:
             if pdf.path.is_symlink() or not pdf.path.is_file():
@@ -180,7 +199,7 @@ def identify_pdfs(
                 pdf.error = f"Invalid DOI from server: {exc}"
                 continue
 
-    if duplicates_to is not None:
+    if duplicates_to is not None or collect_by_parent:
         content_cache: dict[str, str | None] = {}
         for index, pdf in enumerate(pdfs, 1):
             if not pdf.error:
@@ -241,6 +260,11 @@ def identify_pdfs(
         report.flush()
         os.fsync(report.fileno())
         for index, pdf in enumerate(ordered, 1):
+            duplicate_directory = duplicates_to
+            unidentified_directory = unidentified_to
+            if collect_by_parent:
+                duplicate_directory = duplicates_to or pdf.path.parent / "duplicates"
+                unidentified_directory = unidentified_to or pdf.path.parent / "unidentifys"
             keeper = keepers.get(pdf.sha256)
             duplicate = keeper is not None and keeper is not pdf
             current = pdf.path
@@ -258,22 +282,22 @@ def identify_pdfs(
             status = "error" if error else "not_found"
             if not error:
                 try:
-                    if duplicate and duplicates_to is not None:
-                        proposed = available_destination(duplicates_to, pdf, reserved)
+                    if duplicate and duplicate_directory is not None:
+                        proposed = available_destination(duplicate_directory, pdf, reserved)
                         status = "would_move_duplicate"
-                    elif content_duplicate and duplicates_to is not None:
-                        proposed = available_destination(duplicates_to, pdf, reserved)
+                    elif content_duplicate and duplicate_directory is not None:
+                        proposed = available_destination(duplicate_directory, pdf, reserved)
                         status = "would_move_content_duplicate"
                         content_duplicate_of = str(actual_paths[id(content_keeper)])
                         content_duplicate_of_sha256 = content_keeper.sha256
                     elif pdf.doi:
                         proposed = current.with_name(doi_filename(pdf.doi))
                         status = "already_named" if proposed == current else "would_rename"
-                    elif unidentified_to is not None:
-                        proposed = available_destination(unidentified_to, pdf, reserved)
+                    elif unidentified_directory is not None:
+                        proposed = available_destination(unidentified_directory, pdf, reserved)
                         status = "would_move_unidentified"
 
-                    if status == "would_rename" and duplicates_to is not None:
+                    if status == "would_rename" and duplicate_directory is not None:
                         owner = destination_owners.get(str(proposed).casefold())
                         if (owner is not None and owner is not pdf and owner.doi == pdf.doi
                                 and owner.sha256 != pdf.sha256
@@ -282,7 +306,7 @@ def identify_pdfs(
                             doi_conflict = owner
                             conflict_with = str(actual_paths[id(owner)])
                             conflict_with_sha256 = owner.sha256
-                            proposed = available_destination(duplicates_to, pdf, reserved)
+                            proposed = available_destination(duplicate_directory, pdf, reserved)
                             status = "would_move_doi_conflict"
 
                     if proposed != current:
@@ -295,7 +319,7 @@ def identify_pdfs(
                             if rename:
                                 if file_signature(current) != pdf.signature:
                                     raise RuntimeError("File changed since hashing; left in place")
-                                if duplicate and duplicates_to is not None:
+                                if duplicate and duplicate_directory is not None:
                                     keeper_path = actual_paths[id(keeper)]
                                     if (keeper_path.is_symlink()
                                             or file_signature(keeper_path) != keeper.signature):
@@ -314,13 +338,13 @@ def identify_pdfs(
                                 current = proposed
                                 actual_paths[id(pdf)] = current
                                 pdf.signature = file_signature(current)
-                                if duplicate and duplicates_to is not None:
+                                if duplicate and duplicate_directory is not None:
                                     status = "moved_duplicate"
                                 elif content_duplicate:
                                     status = "moved_content_duplicate"
                                 elif doi_conflict is not None:
                                     status = "moved_doi_conflict"
-                                elif not pdf.doi and unidentified_to is not None:
+                                elif not pdf.doi and unidentified_directory is not None:
                                     status = "moved_unidentified"
                                 else:
                                     status = "renamed"

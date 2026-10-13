@@ -101,13 +101,14 @@ Rename matched PDFs by DOI and automatically collect duplicates and unmatched PD
 nv identify ~/Downloads/papers --rename
 ```
 
-No destination arguments are required. Under the directory where you run the
-command, `duplicates/` receives identical extra copies, equivalent page content,
-and same-DOI filename
-conflicts with different hashes. `unidentifys/` receives
-retained PDFs whose hashes have no DOI match on the server. These are relative to
-the command's current working directory, even when the scanned directory is
-elsewhere. Collection directories are created when needed, only with `--rename`.
+No destination arguments are required. Under each PDF's original parent directory,
+`duplicates/` receives identical extra copies, equivalent page content, and
+same-DOI filename conflicts with different hashes. `unidentifys/` receives
+retained PDFs whose hashes have no DOI match on the server. For example,
+`papers/A/copy.pdf` moves to `papers/A/duplicates/copy.pdf`, and an unmatched
+`papers/A/deeper/unknown.pdf` moves to `papers/A/deeper/unidentifys/unknown.pdf`.
+This applies at every depth and does not depend on the command's current working
+directory. Collection directories are created when needed, only with `--rename`.
 
 For example, DOI `10.1177/00222437241234567` produces
 `10.1177_00222437241234567.pdf`. Path separators, Windows-reserved punctuation,
@@ -129,7 +130,8 @@ nv identify
 nv identify --rename
 ```
 
-An optional `--duplicates-to PATH` overrides only the duplicate destination.
+An optional `--duplicates-to PATH` collects duplicates into one shared destination
+instead. Unidentified PDFs still move under their own original parent directories.
 
 One copy per hash is retained. A copy already named for the DOI is preferred;
 otherwise the first absolute path in sorted order is retained. Other copies move
@@ -156,9 +158,11 @@ No DOI suffix is stripped: `_2`, `_3`, etc. can be valid parts of registered DOI
 Content duplicates are collected before applying the unmatched-file rule, across
 the full recursively scanned directory. Both archive directories remain excluded.
 
-Both collection directories may be inside the scan directory and are excluded
-from scanning, including subsequent runs. They cannot equal or contain the scan
-directory, or overlap each other. Original basenames are kept when collecting
+Folders named `duplicates` or `unidentifys` are excluded at every depth, ignoring
+case, including subsequent runs. An explicit shared duplicate destination is also
+excluded. Explicit destinations cannot equal or contain the scan directory, or
+overlap each other. Automatic collection folders must be directories rather than
+symbolic links. Original basenames are kept when collecting
 unmatched PDFs; a hash and number prevent overwriting prior runs or same-name files.
 Symbolic links are skipped. Cross-filesystem moves verify the copied hash before
 removing the original file. Files changed after scanning are left in place.

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Collect `nv identify --rename` duplicates and unidentified PDFs into `duplicates/` and `unidentifys/` under each PDF's original parent directory, at every recursive depth.
+- Exclude both collection folder names throughout the scan and preserve shared duplicate collection only when `--duplicates-to` is explicitly supplied.
+- Validate automatic collection folders before file operations and cover deep nesting, content duplicates, repeated runs and existing filenames in regression tests.
+
 ## 0.7.35 — 2026-10-12
 
 - Add `nv rename` for exact-hash DOI renaming with an offline `doi,sha256` inventory (`--index`), a journal inventory downloaded once (`--issn`), or existing server bulk hash lookup with aliases.

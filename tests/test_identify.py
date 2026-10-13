@@ -26,12 +26,13 @@ def read_rows(report: Path) -> list[dict]:
 
 
 def run(directory: Path, *, rename=False, duplicates_to=None, csv_path=None, lookup=None,
-        unidentified_to=None):
+        unidentified_to=None, collect_by_parent=False):
     return identify.identify_pdfs(
         directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
         hash_file=cli.file_sha256,
         lookup=lookup or (lambda hashes: {sha: {"doi": DOI} for sha in hashes}),
         unidentified_to=unidentified_to,
+        collect_by_parent=collect_by_parent,
     )
 
 
@@ -482,15 +483,17 @@ def test_bulk_query_chunks_hashes_without_uploading(monkeypatch):
     assert sizes == [500, 500, 1]
 
 
-def test_cli_rename_automatically_collects_into_working_directory(tmp_path, monkeypatch):
+def test_cli_rename_collects_beside_each_original_pdf_at_every_depth(tmp_path, monkeypatch):
     working = tmp_path / "working"
     working.mkdir()
     source = tmp_path / "papers"
     matched = write_pdf(source, "a.pdf")
     alternative = write_pdf(source, "b.pdf", b"%PDF-alternate-server-hash")
     write_pdf(source / "nested", "copy.pdf")
-    unmatched = write_pdf(source, "unknown.pdf", b"%PDF-not-on-server")
+    unmatched = write_pdf(source, "a-unknown.pdf", b"%PDF-not-on-server")
     write_pdf(source / "nested", "unknown-copy.pdf", b"%PDF-not-on-server")
+    nested_unknown = write_pdf(source / "nested", "nested.pdf", b"%PDF-nested-unknown")
+    deep_unknown = write_pdf(source / "nested/deeper", "deep.pdf", b"%PDF-deep-unknown")
     matched_sha = cli.file_sha256(matched)
     alternative_sha = cli.file_sha256(alternative)
     monkeypatch.chdir(working)
@@ -504,40 +507,56 @@ def test_cli_rename_automatically_collects_into_working_directory(tmp_path, monk
     assert matched.exists() and unmatched.exists()
     assert not (working / "duplicates").exists()
     assert not (working / "unidentifys").exists()
+    assert not (source / "duplicates").exists()
+    assert not (source / "unidentifys").exists()
+    assert not (nested_unknown.parent / "unidentifys").exists()
+    assert not (deep_unknown.parent / "unidentifys").exists()
     preview_rows = read_rows(source / "netvault-index.csv")
     assert sorted(row["status"] for row in preview_rows) == [
         "would_move_doi_conflict", "would_move_duplicate", "would_move_duplicate",
-        "would_move_unidentified", "would_rename",
+        "would_move_unidentified", "would_move_unidentified", "would_move_unidentified",
+        "would_rename",
     ]
 
     applied = runner.invoke(cli.app, ["identify", str(source), "--rename"])
     assert applied.exit_code == 0, applied.output
     rows = read_rows(source / "netvault-index-2.csv")
     assert sorted(row["status"] for row in rows) == [
-        "moved_doi_conflict", "moved_duplicate", "moved_duplicate", "moved_unidentified", "renamed",
+        "moved_doi_conflict", "moved_duplicate", "moved_duplicate", "moved_unidentified",
+        "moved_unidentified", "moved_unidentified", "renamed",
     ]
-    assert len(list((working / "duplicates").glob("*.pdf"))) == 3
-    assert len(list((working / "unidentifys").glob("*.pdf"))) == 1
-    assert not (source / "duplicates").exists()
-    assert not (source / "unidentifys").exists()
+    assert len(list((source / "duplicates").glob("*.pdf"))) == 1
+    assert len(list((source / "nested/duplicates").glob("*.pdf"))) == 2
+    assert not (working / "duplicates").exists()
+    assert not (working / "unidentifys").exists()
     for row in rows:
         actual = Path(row["path"])
         assert actual.exists() and cli.file_sha256(actual) == row["sha256"]
         assert row["directory"] == str(actual.parent)
+        if row["status"].startswith("moved_"):
+            folder = "unidentifys" if row["status"] == "moved_unidentified" else "duplicates"
+            assert actual.parent == Path(row["original_path"]).parent / folder
         if row["duplicate_of"]:
             assert cli.file_sha256(Path(row["duplicate_of"])) == row["sha256"]
         if row["conflict_with"]:
             assert row["status"] == "moved_doi_conflict"
             assert cli.file_sha256(Path(row["conflict_with"])) == row["conflict_with_sha256"]
         if row["status"] == "moved_unidentified":
-            assert actual.parent == working / "unidentifys"
             assert row["doi"] == "" and row["match_status"] == "not_found"
+
+    repeated = runner.invoke(cli.app, ["identify", str(source), "--rename"])
+    assert repeated.exit_code == 0, repeated.output
+    assert [row["status"] for row in read_rows(source / "netvault-index-3.csv")] == ["already_named"]
 
 
 def test_default_scan_excludes_both_collection_directories_on_repeated_runs(tmp_path, monkeypatch):
     first = write_pdf(tmp_path, "new.pdf", b"%PDF-new-unmatched")
     old_unmatched = write_pdf(tmp_path / "unidentifys", "old.pdf", b"%PDF-old-unmatched")
     old_duplicate = write_pdf(tmp_path / "duplicates", "old-copy.pdf", b"%PDF-old-duplicate")
+    nested_archives = [
+        write_pdf(tmp_path / "nested/deeper" / folder, "archived.pdf", folder.encode())
+        for folder in ("duplicates", "unidentifys", "Duplicates", "UNIDENTIFYS")
+    ]
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
     queried = []
@@ -558,6 +577,67 @@ def test_default_scan_excludes_both_collection_directories_on_repeated_runs(tmp_
     result = CliRunner().invoke(cli.app, ["identify", "--rename"])
     assert result.exit_code == 0, result.output
     assert read_rows(tmp_path / "netvault-index-2.csv") == []
+    assert all(path.exists() for path in nested_archives)
+    assert len(queried) == 1
+
+
+def test_cli_duplicate_override_keeps_unidentified_local(tmp_path, monkeypatch):
+    source = tmp_path / "papers"
+    write_pdf(source, "a.pdf")
+    duplicate = write_pdf(source / "nested/deeper", "copy.pdf")
+    unknown = write_pdf(source / "nested", "unknown.pdf", b"%PDF-unknown")
+    matched_sha = cli.file_sha256(duplicate)
+    shared = tmp_path / "shared-duplicates"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(cli, "api_post", lambda path, json: {
+        "existing": {matched_sha: {"doi": DOI}},
+    })
+    result = CliRunner().invoke(cli.app, [
+        "identify", str(source), "--rename", "--duplicates-to", str(shared),
+    ])
+    assert result.exit_code == 0, result.output
+    assert (shared / duplicate.name).exists()
+    assert (unknown.parent / "unidentifys" / unknown.name).exists()
+    assert not (duplicate.parent / "duplicates").exists()
+
+
+@pytest.mark.parametrize("rename", [False, True])
+def test_parent_collection_handles_content_duplicates_and_local_basename_collision(tmp_path, rename):
+    retained = make_pdf(tmp_path / "10.1234_example.pdf")
+    alternative = make_pdf(tmp_path / "nested/deeper/copy.pdf", metadata="other")
+    existing = write_pdf(alternative.parent / "duplicates", "copy.pdf", b"%PDF-archived")
+    mapping = {cli.file_sha256(retained): {"doi": DOI}}
+    report, counts = run(tmp_path, rename=rename, collect_by_parent=True,
+                         lookup=lambda hashes: mapping)
+    assert counts == {"already_named": 1,
+                      "moved_content_duplicate" if rename else "would_move_content_duplicate": 1}
+    row = next(row for row in read_rows(report) if row["original_path"] == str(alternative))
+    destination = Path(row["proposed_path"])
+    assert destination.parent == alternative.parent / "duplicates"
+    assert destination.name.startswith("copy__")
+    assert row["content_duplicate_of"] == str(retained)
+    assert existing.read_bytes() == b"%PDF-archived"
+    assert alternative.exists() is not rename
+    assert destination.exists() is rename
+
+
+@pytest.mark.parametrize("folder", ["duplicates", "unidentifys"])
+@pytest.mark.parametrize("symlink", [False, True])
+def test_invalid_parent_collection_destination_prevents_all_operations(tmp_path, folder, symlink):
+    first = write_pdf(tmp_path / "papers", "a.pdf")
+    nested = write_pdf(first.parent / "nested", "b.pdf")
+    destination = nested.parent / folder
+    if symlink:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        destination.symlink_to(outside, target_is_directory=True)
+    else:
+        destination.write_text("keep")
+    with pytest.raises(ValueError, match="Collection destination"):
+        run(first.parent, rename=True, collect_by_parent=True)
+    assert first.exists() and nested.exists()
+    assert not (first.parent / "netvault-index.csv").exists()
 
 
 def test_unidentified_basename_collisions_keep_every_pdf(tmp_path):
