@@ -1611,6 +1611,18 @@ button:disabled,
   padding: 18px;
 }
 
+.command-management > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.command-management > summary::-webkit-details-marker { display: none; }
+.command-management > summary::after { content: "+"; margin-left: auto; font-size: 24px; }
+.command-management[open] > summary::after { content: "−"; }
+.command-management > summary:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }
+.command-management:not([open]) > summary { border-bottom: 0; border-radius: 8px; }
+.command-management h3 { margin: 20px 0 12px; font-size: 14px; }
+.command-management h3:first-child { margin-top: 0; }
+
 .command-help-gap { margin-top: 14px !important; }
 .command-advanced { margin-top: 14px; }
 .command-advanced summary {

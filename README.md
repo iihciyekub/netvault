@@ -426,24 +426,30 @@ per-article serial identifiers. Without `--out`, output defaults to
 `netvault-<ISSN>-2.csv`, `netvault-<ISSN>-3.csv`, and so on. Saving is atomic.
 Use `--force` to replace the default file or an existing explicit `--out` path.
 
-Quickly rename local PDFs using that exported index, with no login, PDF parsing
-or network requests:
+Identify and organize local PDFs with one command. Preview first; add `--rename`
+to apply changes:
 
 ```bash
-nv rename ./papers --index ./netvault-0025-1909.csv --dry-run
-nv rename ./papers --index ./netvault-0025-1909.csv
-nv rename ./papers --issn 0025-1909
+nv identify ./papers
+nv identify ./papers --rename
+nv identify ./papers --issn 0025-1909 --rename
+nv identify ./papers --index ./netvault-0025-1909.csv --rename
 ```
 
-`--issn` downloads the current inventory once and then matches locally. With
-neither `--index` nor `--issn`, `nv rename ./papers` uses the server's bulk hash
-lookup, including registered file aliases. Matching uses full SHA-256 and
-preserves unmatched PDFs in their original directories. Four parallel readers
-are used by default (`--workers 1` for serial disk access), and unchanged hashes
-are reused within the run before renaming. No existing file is overwritten.
-The audit CSV defaults to `netvault-index.csv` in the scanned directory; use
-`--report` to choose a new path. Use `nv identify --rename` for the existing
-page-content duplicate checks and collection workflow.
+With no inventory option, `identify` queries the complete vault, including hash
+aliases. `--issn` downloads one journal inventory for fast local matching;
+`--index` uses an exported CSV offline, without login or network requests.
+Both retain unmatched PDFs with status `not_in_index`, since absence from one
+inventory does not mean absence from the vault. Do not combine these options.
+
+All modes use parallel hashing, a bounded processing pipeline and a verified
+per-run hash cache by default, without parsing PDF pages. Identical copies and
+verified same-DOI filename conflicts are collected into `duplicates/` beside
+each source PDF. Full-vault misses move to the source's `unidentifys/`; index
+misses stay in place. Archive folders are skipped recursively and existing
+files are never overwritten. Use `--check-content` for slower page-content
+duplicate checks, `--workers 1` for serial reads, or `--csv` for a custom report.
+The default report is `netvault-index.csv` in the scanned directory.
 
 List and download by DOI:
 

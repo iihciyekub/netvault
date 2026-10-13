@@ -567,31 +567,39 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">NetVault command-line interface</h1>' in cli_page.text
     assert "Install / Update" in cli_page.text
     assert "nv update" in cli_page.text
-    assert "nv login https://iiaide.com/nv --username polyu" in cli_page.text
-    assert "--password" in cli_page.text
-    assert "--password &#39;!1@2#3Qwe&#39;" in cli_page.text
+    assert 'data-copy="nv login"' in cli_page.text
+    assert 'data-copy="nv status"' in cli_page.text
+    assert "--username" not in cli_page.text
+    assert "--password" not in cli_page.text
+    assert "shared NetVault server account" not in cli_page.text
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
     assert "nv upload ./papers --dry-run" in cli_page.text
     assert "nv upload ./papers --csv ./cli-downloads.csv --dry-run" in cli_page.text
     assert "NetVault finds it automatically" in cli_page.text
-    assert "renamed PDF can still be identified" in cli_page.text
-    assert "Trust your CSV for scanned PDFs" in cli_page.text
-    assert "without PDF title or content verification" in cli_page.text
     assert "Unmatched or ambiguous files are reported as failures" in cli_page.text
-    assert "With automatic CSV discovery" in cli_page.text
     assert "status=downloaded" in cli_page.text
-    assert "no files are uploaded" in cli_page.text
     assert "data-copy" in cli_page.text
     assert 'class="command-timeline"' in cli_page.text
     assert cli_page.text.count('class="timeline-node"') == 5
     assert "Step 01" in cli_page.text
     assert "Step 04" in cli_page.text
+    assert "Step 05" in cli_page.text
+    assert '<h2>Advanced Management</h2>' in cli_page.text
+    management = re.search(r'<details class="command-management"([^>]*)>', cli_page.text)
+    assert management and "open" not in management.group(1)
+    assert '<h3>Literature Management</h3>' in cli_page.text
+    assert 'data-copy="nv identify ./papers"' in cli_page.text
+    assert 'data-copy="nv identify ./papers --rename"' in cli_page.text
+    assert 'data-copy="nv identify ./papers --issn 0025-1909 --rename"' in cli_page.text
+    assert 'data-copy="nv identify ./papers --index ./netvault-0025-1909.csv --rename"' in cli_page.text
+    assert 'data-copy="nv identify ./papers --check-content --rename"' in cli_page.text
+    assert "Files absent from that index stay in place" in cli_page.text
+    assert "nv rename" not in cli_page.text
     assert "fa-cloud-arrow-down" in cli_page.text
     assert "data-copy-label" in cli_page.text
     assert "syntax-command" in cli_page.text
     assert "syntax-option" in cli_page.text
-    assert "syntax-url" in cli_page.text
     assert "syntax-path" in cli_page.text
     info_page = client.get("/web/info")
     assert info_page.status_code == 200

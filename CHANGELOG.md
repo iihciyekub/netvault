@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Simplify the web CLI guide to everyday install, interactive login/status, upload and download commands; keep literature management and DOI tools in a collapsed Advanced Management section.
+- Remove hard-coded account credentials from the rendered page and copy buttons.
+
+- Unify local literature management under `nv identify`: automatic vault lookup, `--issn` inventory matching, or offline `--index`; preview by default and apply with `--rename`.
+- Preserve the fast bounded parallel hash pipeline and per-run cache; make slower page-content comparison opt-in with `--check-content`, and retain inventory misses with status `not_in_index`.
+- Remove the separate `nv rename` command and add a concise Literature Management category to the web CLI guide.
+
 - Collect `nv identify --rename` duplicates and unidentified PDFs into `duplicates/` and `unidentifys/` under each PDF's original parent directory, at every recursive depth.
 - Exclude both collection folder names throughout the scan and preserve shared duplicate collection only when `--duplicates-to` is explicitly supplied.
 - Validate automatic collection folders before file operations and cover deep nesting, content duplicates, repeated runs and existing filenames in regression tests.

@@ -129,22 +129,10 @@ def open_report(directory: Path, requested: Path | None):
             index += 1
 
 
-def identify_pdfs(
-    directory: Path,
-    *,
-    rename: bool,
-    duplicates_to: Path | None,
-    csv_path: Path | None,
-    hash_file: Callable[[Path], str],
-    lookup: Callable[[Iterable[str]], dict[str, dict]],
-    unidentified_to: Path | None = None,
-    collect_by_parent: bool = False,
-    progress: Callable[[str, int, int], None] | None = None,
-) -> tuple[Path, dict[str, int]]:
-    directory = directory.expanduser().resolve()
-    duplicates_to = duplicates_to.expanduser().resolve() if duplicates_to else None
-    unidentified_to = unidentified_to.expanduser().resolve() if unidentified_to else None
-    csv_path = csv_path.expanduser().absolute() if csv_path else None
+def scan_for_collections(
+    directory: Path, duplicates_to: Path | None, unidentified_to: Path | None = None,
+    *, collect_by_parent: bool = False, collect_unidentified: bool = True,
+) -> list[LocalPdf]:
     for label, destination in (("Duplicate", duplicates_to), ("Unidentified", unidentified_to)):
         if destination is not None:
             if directory == destination or directory.is_relative_to(destination):
@@ -164,12 +152,38 @@ def identify_pdfs(
         # Validate all automatic destinations before hashing or changing any PDFs.
         for parent in {pdf.path.parent for pdf in pdfs}:
             for name, override in (("duplicates", duplicates_to), ("unidentifys", unidentified_to)):
+                if name == "unidentifys" and not collect_unidentified:
+                    continue
                 if override is None:
                     destination = parent / name
                     if destination.is_symlink():
                         raise ValueError(f"Collection destination must not be a symbolic link: {destination}")
                     if destination.exists() and not destination.is_dir():
                         raise ValueError(f"Collection destination must be a directory: {destination}")
+    return pdfs
+
+
+def identify_pdfs(
+    directory: Path,
+    *,
+    rename: bool,
+    duplicates_to: Path | None,
+    csv_path: Path | None,
+    hash_file: Callable[[Path], str],
+    lookup: Callable[[Iterable[str]], dict[str, dict]],
+    unidentified_to: Path | None = None,
+    collect_by_parent: bool = False,
+    collect_unidentified: bool = True,
+    progress: Callable[[str, int, int], None] | None = None,
+) -> tuple[Path, dict[str, int]]:
+    directory = directory.expanduser().resolve()
+    duplicates_to = duplicates_to.expanduser().resolve() if duplicates_to else None
+    unidentified_to = unidentified_to.expanduser().resolve() if unidentified_to else None
+    csv_path = csv_path.expanduser().absolute() if csv_path else None
+    pdfs = scan_for_collections(
+        directory, duplicates_to, unidentified_to, collect_by_parent=collect_by_parent,
+        collect_unidentified=collect_unidentified,
+    )
     for index, pdf in enumerate(pdfs, 1):
         try:
             if pdf.path.is_symlink() or not pdf.path.is_file():
@@ -265,6 +279,8 @@ def identify_pdfs(
             if collect_by_parent:
                 duplicate_directory = duplicates_to or pdf.path.parent / "duplicates"
                 unidentified_directory = unidentified_to or pdf.path.parent / "unidentifys"
+                if not collect_unidentified:
+                    unidentified_directory = None
             keeper = keepers.get(pdf.sha256)
             duplicate = keeper is not None and keeper is not pdf
             current = pdf.path
@@ -279,7 +295,7 @@ def identify_pdfs(
             conflict_with = ""
             conflict_with_sha256 = ""
             error = pdf.error
-            status = "error" if error else "not_found"
+            status = "error" if error else ("not_found" if collect_unidentified else "not_in_index")
             if not error:
                 try:
                     if duplicate and duplicate_directory is not None:
@@ -354,12 +370,14 @@ def identify_pdfs(
                     status, error = "conflict", "Destination appeared during processing; source retained"
                 except (OSError, ValueError, RuntimeError) as exc:
                     status, error = "error", str(exc)
+            match_status = ("error" if pdf.error else "matched" if pdf.doi
+                            else "not_found" if collect_unidentified else "not_in_index")
             writer.writerow({
                 "sha256": pdf.sha256, "doi": pdf.doi,
                 "directory": str(current.parent), "original_filename": pdf.path.name,
                 "filename": current.name, "original_path": str(pdf.path),
                 "path": str(current), "proposed_path": str(proposed), "status": status,
-                "match_status": "error" if pdf.error else ("matched" if pdf.doi else "not_found"),
+                "match_status": match_status,
                 "duplicate_of": duplicate_of, "conflict_with": conflict_with,
                 "conflict_with_sha256": conflict_with_sha256, "error": error,
                 "content_sha256": pdf.content_sha256,

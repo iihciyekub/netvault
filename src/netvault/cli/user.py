@@ -47,7 +47,8 @@ from netvault.cli.http import (
 from netvault.cli.update import update_from_github
 from netvault.cli.export import default_export_destination, normalize_export_issn, save_issn_export
 from netvault.cli.identify import identify_pdfs
-from netvault.cli.rename import RunHashCache, fast_rename_pdfs, index_lookup, load_hash_index
+from netvault.cli.hash_index import RunHashCache, index_lookup, load_hash_index
+from netvault.cli.identify_fast import fast_identify_pdfs
 from netvault.cli.upload_pipeline import UploadPipeline, UploadRateColumn, UploadStats
 from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
 from netvault.cli.upload_report import UploadReport, failed_paths
@@ -98,7 +99,7 @@ Examples:
   nv check-pdfs ./papers
   nv doi ./paper.pdf --verbose
   nv identify ./papers --rename
-  nv rename ./papers --index ./netvault-0025-1909.csv
+  nv identify ./papers --issn 0025-1909 --rename
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
   nv export --issn 0025-1909
@@ -740,16 +741,23 @@ Examples:
   nv identify ~/Downloads/papers
   nv identify ~/Downloads/papers --rename
   nv identify ~/Downloads/papers --rename --duplicates-to ~/Downloads/duplicates
+  nv identify ./papers --issn 0025-1909 --rename
+  nv identify ./papers --index ./netvault-0025-1909.csv --rename
+  nv identify ./papers --check-content --rename
   nv identify ./papers --csv ./report.csv
 
 \b
 Notes:
-  Scans PDFs recursively and looks up SHA-256 values without uploading files.
+  Scans recursively with parallel SHA-256 readers; no uploads or PDF page parsing by default.
+  Without --issn or --index, uses the server's bulk hash lookup, including aliases.
+  --issn downloads one journal inventory once; --index uses an exported CSV offline.
+  Choose --issn or --index, not both. Index misses stay in place (not_in_index).
   Without --rename, only writes a CSV preview; no PDFs are renamed or moved.
-  --rename names matched PDFs by DOI, moves identical copies, equivalent page content,
+  --rename names matched PDFs by DOI, moves identical copies,
   and same-DOI filename conflicts with different hashes to duplicates/,
-  and moves unmatched retained PDFs to unidentifys/, under each PDF's original parent directory.
+  and moves full-vault unmatched PDFs to unidentifys/, under each PDF's original parent directory.
   Both collection folder names are excluded at every depth. --duplicates-to overrides duplicates.
+  --check-content additionally compares PDF pages for equivalent content; this is slower.
   Existing PDFs and reports are never overwritten. CSV paths are absolute.
 """,
 )
@@ -768,86 +776,23 @@ def identify_command(
     csv_path: Path | None = typer.Option(
         None, "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
     ),
-) -> None:
-    try:
-        ensure_logged_in()
-        with Progress(
-            SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
-            TextColumn("{task.completed:.0f}/{task.total:.0f}"), TimeElapsedColumn(),
-            console=console, transient=True,
-        ) as progress:
-            task = progress.add_task("Scanning PDFs", total=0)
-
-            def update_progress(stage: str, completed: int, total: int) -> None:
-                progress.update(task, description=stage, completed=completed, total=total)
-
-            def lookup(hashes: Iterable[str]) -> dict[str, dict]:
-                values = list(hashes)
-                total = len(set(values))
-                update_progress("Querying server hashes", 0, total)
-                return get_existing_pdfs_by_sha256(
-                    values,
-                    progress_callback=lambda completed: update_progress(
-                        "Querying server hashes", completed, total,
-                    ),
-                    fallback=False,
-                )
-
-            report, counts = identify_pdfs(
-                directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
-                hash_file=file_sha256, lookup=lookup, progress=update_progress,
-                collect_by_parent=True,
-            )
-    except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
-        console.print(f"identify failed: {exc}")
-        raise typer.Exit(1) from exc
-    console.print("done: " + ("; ".join(f"{count} {status}" for status, count in counts.items())
-                              or "0 PDFs"))
-    console.print(f"CSV: {report}")
-    if not rename:
-        console.print("Preview only. Add --rename to apply renames and collection moves.")
-    if counts.get("error") or counts.get("conflict"):
-        raise typer.Exit(1)
-
-
-@app.command("rename", epilog="""\b
-Examples:
-  nv rename ./papers --index ./netvault-0025-1909.csv --dry-run
-  nv rename ./papers --index ./netvault-0025-1909.csv
-  nv rename ./papers --issn 0025-1909
-  nv rename ./papers
-
-\b
-Notes:
-  --index reads an exported doi,sha256 CSV without login or network requests.
-  --issn downloads that journal's current inventory once, then matches locally.
-  With neither option, uses the server's bulk hash lookup, including aliases.
-  Only exact hash matches are renamed. Unmatched PDFs stay in place.
-  Uses parallel SHA-256 hashing without PDF content parsing or duplicate collection.
-  Existing PDFs and CSV reports are never overwritten.
-""")
-def rename_command(
-    directory: Path = typer.Argument(
-        Path("."), exists=True, file_okay=False, readable=True,
-        help="Directory of PDFs to scan recursively.",
-    ),
     index_path: Path | None = typer.Option(
         None, "--index", exists=True, dir_okay=False, readable=True,
-        help="Exported doi,sha256 CSV for offline matching.",
+        help="Exported doi,sha256 CSV for offline matching; index misses stay in place.",
     ),
     issn: str | None = typer.Option(
-        None, "--issn", "-i", help="Download a print/electronic ISSN inventory once.",
+        None, "--issn", "-i", help="Download one journal inventory once for fast local matching.",
     ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Write a preview report without renaming."),
-    workers: int = typer.Option(4, "--workers", min=1, max=32, help="Parallel hash readers."),
-    report_path: Path | None = typer.Option(
-        None, "--report", help="New CSV report path (default: netvault-index.csv in the scan directory).",
+    workers: int = typer.Option(4, "--workers", min=1, max=32, help="Parallel hash readers in fast mode."),
+    check_content: bool = typer.Option(
+        False, "--check-content", help="Also compare PDF pages for content duplicates (slower).",
     ),
 ) -> None:
-    """Quickly rename matched PDFs by DOI using exact SHA-256 identities."""
+    """Identify local PDFs; add --rename to apply changes."""
     if index_path is not None and issn is not None:
         raise typer.BadParameter("Choose --index or --issn, not both")
     try:
+        scoped = index_path is not None or issn is not None
         if index_path is not None:
             records = load_hash_index(index_path)
             lookup = index_lookup(records)
@@ -855,7 +800,7 @@ def rename_command(
         elif issn is not None:
             normalized = normalize_export_issn(issn)
             ensure_logged_in()
-            with tempfile.TemporaryDirectory(prefix="nv-rename-index-") as temporary:
+            with tempfile.TemporaryDirectory(prefix="nv-identify-index-") as temporary:
                 path = Path(temporary) / "index.csv"
                 save_issn_export(normalized, path)
                 records = load_hash_index(path)
@@ -863,10 +808,7 @@ def rename_command(
             console.print(f"ISSN {normalized}: {len(records):,} hashes downloaded once")
         else:
             ensure_logged_in()
-
-            def lookup(hashes: Iterable[str]) -> dict[str, dict]:
-                return get_existing_pdfs_by_sha256(hashes, fallback=False)
-
+            lookup = None
         hash_cache = RunHashCache(file_sha256)
         with Progress(
             SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
@@ -878,20 +820,38 @@ def rename_command(
             def update_progress(stage: str, completed: int, total: int) -> None:
                 progress.update(task, description=stage, completed=completed, total=total)
 
-            report, counts = fast_rename_pdfs(
-                directory, rename=not dry_run, csv_path=report_path,
-                hash_file=hash_cache, lookup=lookup, progress=update_progress,
-                workers=workers, batch_size=500 if index_path is None and issn is None else 1,
+            def server_lookup(hashes: Iterable[str]) -> dict[str, dict]:
+                values = list(hashes)
+                total = len(set(values))
+                update_progress("Querying server hashes", 0, total)
+                return get_existing_pdfs_by_sha256(
+                    values,
+                    progress_callback=lambda completed: update_progress(
+                        "Querying server hashes", completed, total,
+                    ),
+                    fallback=False,
+                )
+
+            options = dict(
+                rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
+                hash_file=hash_cache, lookup=lookup or server_lookup, progress=update_progress,
+                collect_unidentified=not scoped,
             )
+            if check_content:
+                report, counts = identify_pdfs(directory, collect_by_parent=True, **options)
+            else:
+                report, counts = fast_identify_pdfs(
+                    directory, workers=workers, batch_size=1 if scoped else 500, **options,
+                )
     except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
-        console.print(f"rename failed: {exc}", markup=False)
+        console.print(f"identify failed: {exc}", markup=False)
         raise typer.Exit(1) from exc
     console.print("done: " + ("; ".join(f"{count} {status}" for status, count in counts.items())
                               or "0 PDFs"))
     console.print(f"CSV: {report}", markup=False)
     console.print(f"Hash reads: {hash_cache.reads:,}; unchanged hashes reused: {hash_cache.hits:,}")
-    if dry_run:
-        console.print("Preview only. Remove --dry-run to apply renames.")
+    if not rename:
+        console.print("Preview only. Add --rename to apply renames and collection moves.")
     if counts.get("error") or counts.get("conflict"):
         raise typer.Exit(1)
 
