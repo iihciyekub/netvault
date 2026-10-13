@@ -482,10 +482,16 @@ nv logout
 ```
 
 `nv download --file` extracts DOI values from any text file using the same DOI
-regex as upload metadata parsing. Downloads use 8 parallel workers by default
-and automatically resume incomplete `.part` files. Completed downloads are verified
-against the server SHA-256 digest. Upload and download both use
-a single-line progress bar.
+regex as upload metadata parsing. Downloads look up DOI file information in batches
+of 200, prefetch the next batch, and start downloading before the full list is
+looked up. Downloads use 8 parallel workers by default with a bounded queue and
+automatically resume incomplete `.part` files. SHA-256 is computed while writing
+and checked against the server digest before the file is finalized; existing
+matching files are skipped. The single-line progress bar shows processed PDFs
+and the number of DOIs looked up. If interrupted or disconnected, run the same
+command with the same `--to` directory: completed matching files are skipped
+and partial files resume from their saved byte offset. Ctrl+C cancels queued
+downloads and preserves partial files.
 
 Web uploads send each PDF in its own request with at most two concurrent files,
 so one failure can be retried without repeating the whole batch. Files larger

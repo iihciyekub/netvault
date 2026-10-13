@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.39 — 2026-10-13
+
+- Look up download DOI file information in batches of 200, prefetch the next batch, and start parallel downloads before the entire DOI list has been queried. Bound the queue to two slots per download worker and retry transient bulk lookup failures.
+- Compute SHA-256 while writing downloads, without a second full-file read; hash the existing prefix before continuing a resumed download. Keep size and checksum verification before finalizing files.
+- Cancel queued downloads on Ctrl+C, preserve partial files, and continue the same `nv download --file ... --to ...` command by skipping verified complete files and resuming `.part` files with HTTP Range.
+- Deduplicate large DOI lists using a set while preserving input order. Add regression coverage for pipelining, filename collisions, missing files, transient lookup failures, interrupted downloads, resume ranges, and corrupt or incomplete responses.
+
 ## 0.7.38 — 2026-10-13
 
 - Enforce explicit/cached/indexed DOI conflicts before CLI hash skips; send every new hash through server verification before establishing a file alias. Keep explicit CSV trust for scanned PDFs.

@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
@@ -7,7 +7,8 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from time import monotonic, time_ns
+from threading import Event
+from time import monotonic, sleep, time_ns
 from typing import Iterable
 
 from pypdf import PdfReader
@@ -68,6 +69,7 @@ HASH_CACHE_VERSION = 1
 IDENTITY_CACHE_VERSION = 1
 PDF_MAGIC = b"%PDF-"
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+DOWNLOAD_LOOKUP_BATCH_SIZE = 200
 UPLOAD_PREPARE_BATCH_SIZE = 12
 DEFAULT_UPLOAD_EXCLUDED_DIRS = {
     ".cache",
@@ -496,13 +498,15 @@ def get_existing_pdf_by_doi(doi: str) -> dict | None:
 
 def collect_dois(raw_dois: Iterable[str], doi_files: Iterable[Path]) -> list[str]:
     dois: list[str] = []
+    seen: set[str] = set()
 
     def add(value: str) -> None:
         try:
             doi = normalize_doi(value)
         except ValueError:
             return
-        if doi not in dois:
+        if doi not in seen:
+            seen.add(doi)
             dois.append(doi)
 
     for raw_doi in raw_dois:
@@ -1828,11 +1832,71 @@ def export_command(
                   markup=False)
 
 
-def fetch_pdf_detail_for_download(doi: str) -> tuple[str, dict | None, str | None]:
-    try:
-        return doi, api_get("/pdfs/by-doi", doi=doi), None
-    except (RuntimeError, requests.RequestException) as exc:
-        return doi, None, str(exc)
+def fetch_download_batch(dois: list[str]) -> dict[str, dict]:
+    # This POST is a read-only lookup, so transient failures are safe to retry.
+    for attempt in range(3):
+        try:
+            return get_existing_pdfs_by_doi(dois)
+        except ApiError as exc:
+            if exc.status_code not in {429, 502, 503, 504} or attempt == 2:
+                raise
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == 2:
+                raise
+        sleep(0.4 * 2**attempt)
+    raise RuntimeError("DOI lookup failed")
+
+
+def run_download_plan(
+    plan: DownloadPlan, base_url: str, headers: dict[str, str], stop: Event | None = None,
+) -> str:
+    def check_stopped() -> None:
+        if stop is not None and stop.is_set():
+            raise InterruptedError("Download interrupted; partial file kept")
+
+    check_stopped()
+    request_headers = dict(headers)
+    mode = "wb"
+    did_resume = False
+    digest = hashlib.sha256()
+    if plan.resume_offset > 0:
+        request_headers["Range"] = f"bytes={plan.resume_offset}-"
+    with http_session().get(
+        f"{base_url}/pdfs/by-doi/download",
+        headers=request_headers,
+        params={"doi": plan.doi},
+        timeout=(15, 30),
+        stream=True,
+    ) as response:
+        raise_for_api_error(response)
+        if plan.resume_offset > 0 and response.status_code == 206:
+            content_range = response.headers.get("Content-Range", "")
+            if not content_range.startswith(f"bytes {plan.resume_offset}-"):
+                raise RuntimeError("server returned an invalid Content-Range")
+            # Hash only the existing prefix, then update while writing new bytes.
+            with plan.part_path.open("rb") as prefix:
+                for chunk in iter(lambda: prefix.read(DOWNLOAD_CHUNK_SIZE), b""):
+                    check_stopped()
+                    digest.update(chunk)
+            mode = "ab"
+            did_resume = True
+        elif plan.resume_offset > 0:
+            plan.part_path.unlink(missing_ok=True)
+        with plan.part_path.open(mode) as handle:
+            for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
+                check_stopped()
+                if chunk:
+                    handle.write(chunk)
+                    digest.update(chunk)
+    actual_size = plan.part_path.stat().st_size
+    if actual_size != plan.size:
+        raise RuntimeError(f"incomplete download: expected {plan.size} bytes, got {actual_size}")
+    actual_sha256 = digest.hexdigest()
+    if actual_sha256 != plan.sha256:
+        raise RuntimeError(f"checksum mismatch: expected {plan.sha256}, got {actual_sha256}")
+    check_stopped()
+    plan.part_path.replace(plan.destination)
+    return "resumed" if did_resume else "downloaded"
 
 
 @app.command(
@@ -1848,7 +1912,10 @@ Examples:
 Notes:
   --file reads any text file and extracts DOI values with NetVault's DOI regex.
   Duplicate DOI values are downloaded once.
+  DOI file information is fetched in batches while earlier batches download.
   Downloads use parallel workers and automatically resume .part files.
+  SHA-256 is verified while writing; existing matching files are skipped.
+  After interruption, run the same command with the same --to to continue.
 """,
 )
 def download(
@@ -1869,9 +1936,19 @@ def download(
     if not requested_dois:
         raise typer.BadParameter("Provide at least one DOI or --file PATH")
 
-    details_by_doi: dict[str, dict] = {}
+    to.mkdir(parents=True, exist_ok=True)
     failed: list[tuple[str, str]] = []
-    worker_count = min(workers, max(1, len(requested_dois)))
+    downloaded = resumed = skipped = looked_up = 0
+    used_destinations: set[Path] = set()
+    pending = {}
+    stop = Event()
+    worker_count = min(workers, len(requested_dois))
+    base_url = server_url()
+    headers = auth_headers()
+    batches = iter(
+        requested_dois[index:index + DOWNLOAD_LOOKUP_BATCH_SIZE]
+        for index in range(0, len(requested_dois), DOWNLOAD_LOOKUP_BATCH_SIZE)
+    )
     with Progress(
         SpinnerColumn(),
         TextColumn("{task.description}"),
@@ -1881,127 +1958,94 @@ def download(
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("Checking PDFs", total=len(requested_dois))
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = [executor.submit(fetch_pdf_detail_for_download, doi) for doi in requested_dois]
-            for future in as_completed(futures):
-                doi, detail, error = future.result()
-                if detail is None:
-                    failed.append((doi, error or "PDF not found"))
-                else:
-                    details_by_doi[doi] = detail
-                progress.advance(task, 1)
+        task = progress.add_task("Looking up DOI files", total=len(requested_dois))
 
-        details = [details_by_doi[doi] for doi in requested_dois if doi in details_by_doi]
-
-        if not details:
-            progress.update(task, description="Done", completed=len(requested_dois), total=len(requested_dois))
-            console.print(f"done: 0/{len(requested_dois)} downloaded; {len(failed)} failed")
-            for doi, error in failed:
-                console.print(f"failed: {doi}: {error}")
-            raise typer.Exit(1)
-
-        to.mkdir(parents=True, exist_ok=True)
-        downloaded = 0
-        resumed = 0
-        skipped = 0
-        used_destinations: set[Path] = set()
-        plans: list[DownloadPlan] = []
-        for detail in details:
-            size = int(detail["size"])
-            destination, part_path, resume_offset, complete = plan_download_destination(
-                to,
-                detail["original_name"],
-                size,
-                used_destinations,
-                expected_sha256=detail["sha256"],
+        def finish_downloads(*, block: bool) -> None:
+            nonlocal downloaded, resumed
+            if not pending:
+                return
+            done = (
+                wait(pending, return_when=FIRST_COMPLETED).done if block
+                else {future for future in pending if future.done()}
             )
-            if complete:
-                skipped += 1
-                continue
-            plans.append(
-                DownloadPlan(
-                    doi=detail["doi"],
-                    original_name=detail["original_name"],
-                    size=size,
-                    destination=destination,
-                    part_path=part_path,
-                    sha256=detail["sha256"],
-                    resume_offset=resume_offset,
-                )
-            )
-
-        if not plans:
-            progress.update(task, description="Done", completed=len(requested_dois), total=len(requested_dois))
-            parts = [f"done: {skipped}/{len(requested_dois)} processed"]
-            if skipped:
-                parts.append(f"{skipped} skipped")
-            if failed:
-                parts.append(f"{len(failed)} failed")
-            parts.append(f"to: {to}")
-            console.print("; ".join(parts))
-            for doi, error in failed:
-                console.print(f"failed: {doi}: {error}")
-            if failed:
-                raise typer.Exit(1)
-            return
-
-        base_url = server_url()
-        headers = auth_headers()
-        worker_count = min(workers, max(1, len(plans)))
-        progress.reset(task, total=len(plans), completed=0, description="Downloading PDFs")
-
-        def run_plan(plan: DownloadPlan) -> tuple[str, str, Path]:
-            request_headers = dict(headers)
-            mode = "wb"
-            did_resume = False
-            if plan.resume_offset > 0:
-                request_headers["Range"] = f"bytes={plan.resume_offset}-"
-            with http_session().get(
-                f"{base_url}/pdfs/by-doi/download",
-                headers=request_headers,
-                params={"doi": plan.doi},
-                timeout=300,
-                stream=True,
-            ) as response:
-                raise_for_api_error(response)
-                if plan.resume_offset > 0 and response.status_code == 206:
-                    content_range = response.headers.get("Content-Range", "")
-                    if not content_range.startswith(f"bytes {plan.resume_offset}-"):
-                        raise RuntimeError("server returned an invalid Content-Range")
-                    mode = "ab"
-                    did_resume = True
-                elif plan.resume_offset > 0:
-                    plan.part_path.unlink(missing_ok=True)
-                with plan.part_path.open(mode) as handle:
-                    for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
-                        if chunk:
-                            handle.write(chunk)
-            actual_size = plan.part_path.stat().st_size
-            if actual_size != plan.size:
-                raise RuntimeError(f"incomplete download: expected {plan.size} bytes, got {actual_size}")
-            actual_sha256 = file_sha256(plan.part_path)
-            if actual_sha256 != plan.sha256:
-                raise RuntimeError(
-                    f"checksum mismatch: expected {plan.sha256}, got {actual_sha256}"
-                )
-            plan.part_path.replace(plan.destination)
-            return plan.doi, "resumed" if did_resume else "downloaded", plan.destination
-
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = {executor.submit(run_plan, plan): plan for plan in plans}
-            for future in as_completed(futures):
-                plan = futures[future]
+            for future in done:
+                plan = pending.pop(future)
                 try:
-                    _, status_name, _ = future.result()
+                    status_name = future.result()
                     if status_name == "resumed":
                         resumed += 1
                     else:
                         downloaded += 1
                 except (RuntimeError, OSError, requests.RequestException) as exc:
                     failed.append((plan.doi, str(exc)))
-                finally:
-                    progress.advance(task, 1)
+                progress.advance(task)
+
+        # One prefetched metadata batch and at most two download slots per worker.
+        # This keeps memory bounded and avoids waiting for the entire DOI list.
+        with ThreadPoolExecutor(max_workers=1) as lookup_executor, \
+                ThreadPoolExecutor(max_workers=worker_count) as download_executor:
+            try:
+                batch = next(batches, None)
+                lookup_future = lookup_executor.submit(fetch_download_batch, batch)
+                while batch is not None:
+                    try:
+                        details = lookup_future.result()
+                    except (RuntimeError, OSError, requests.RequestException) as exc:
+                        details = {}
+                        lookup_error = str(exc)
+                    else:
+                        lookup_error = "404: PDF not found for DOI"
+                    looked_up += len(batch)
+                    next_batch = next(batches, None)
+                    if next_batch is not None:
+                        lookup_future = lookup_executor.submit(fetch_download_batch, next_batch)
+                    progress.update(
+                        task, description=f"Downloading PDFs (DOIs looked up: {looked_up}/{len(requested_dois)})",
+                    )
+                    for doi in batch:
+                        finish_downloads(block=False)
+                        detail = details.get(doi)
+                        if detail is None:
+                            failed.append((doi, lookup_error))
+                            progress.advance(task)
+                            continue
+                        # Allocate filenames in one thread to prevent concurrent collisions.
+                        try:
+                            size = int(detail["size"])
+                            destination, part_path, resume_offset, complete = plan_download_destination(
+                                to, detail["original_name"], size, used_destinations,
+                                expected_sha256=detail["sha256"],
+                            )
+                        except OSError as exc:
+                            failed.append((doi, str(exc)))
+                            progress.advance(task)
+                            continue
+                        if complete:
+                            skipped += 1
+                            progress.advance(task)
+                            continue
+                        plan = DownloadPlan(
+                            doi=doi, original_name=detail["original_name"], size=size,
+                            destination=destination, part_path=part_path, sha256=detail["sha256"],
+                            resume_offset=resume_offset,
+                        )
+                        while len(pending) >= worker_count * 2:
+                            finish_downloads(block=True)
+                        pending[download_executor.submit(run_download_plan, plan, base_url, headers, stop)] = plan
+                    batch = next_batch
+                while pending:
+                    finish_downloads(block=True)
+            except KeyboardInterrupt:
+                stop.set()
+                lookup_future.cancel()
+                for future in pending:
+                    future.cancel()
+                console.print(
+                    f"Interrupted. Partial files kept in {to}. "
+                    "Run the same download command to continue.", markup=False,
+                )
+                raise typer.Exit(130) from None
+
 
     ok_count = downloaded + resumed + skipped
     parts = [f"done: {ok_count}/{len(requested_dois)} processed"]
