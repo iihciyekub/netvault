@@ -15,6 +15,10 @@ Recognized server DOI/title verification failures become `needs-review`. An unch
 
 Use `nv upload ./papers --refresh-doi` to retry rejected identities, or `nv upload ./papers --retry-failed` to select failed, pending and review files from directory state (with legacy report fallback). A successful upload clears the remembered rejection. Directory state is independent of per-run reports and global cache eviction; copying the complete directory preserves it. PaperDock automatically reads the same state through a private integration interface; no extra nv command is required. New rejections/errors exit with status 1; skipping remembered review files alone exits with status 0. Use `--refresh-doi` explicitly after server verification rules change.
 
+Run the same upload command to continue. Keep the hidden state file with the PDFs
+when copying a directory. The [web CLI guide](https://iiaide.com/nv/web/cli), this
+README and the [user guide](docs/user-guide.md) describe the same commands.
+
 A sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. These legacy records continue through server-side primary-title verification; every new hash, including a SHA-256-bound JSON index hint, passes through server identity checks. `--no-index` disables both index formats. PDFs without a usable DOI may use first-page title lookup; an unresolved identity remains a failure and does not increase dashboard counts. MIS Quarterly and MIS Quarterly Executive remain separate journals.
 
 With automatic CSV discovery, renamed PDFs can be matched by SHA-256 or a unique article-title column matched against the PDF first page; server title verification still applies. Without a usable match, automatic uploads fall back to PDF DOI extraction.

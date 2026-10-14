@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -94,6 +95,12 @@ def consistent_version(tag: str | None = None) -> str:
         raise RuntimeError(f"Version sources do not match {canonical}:\n{details}")
     if tag is not None and tag != f"v{canonical}":
         raise RuntimeError(f"Release tag {tag!r} must be v{canonical}")
+    guide = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check-cli-guide.py")],
+        capture_output=True, text=True, check=False,
+    )
+    if guide.returncode:
+        raise RuntimeError(f"Web CLI guide does not match CLI declarations:\n{guide.stderr}")
     return canonical
 
 

@@ -179,7 +179,7 @@ Repeated runs produce `netvault-index-2.csv`, `netvault-index-3.csv`, etc., keep
 earlier audit records. Choose a different new report filename with:
 
 ```bash
-nv identify ~/Downloads/papers --rename --csv ~/Downloads/papers-report.csv
+nv identify ~/Downloads/papers --rename --report ~/Downloads/papers-report.csv
 ```
 
 An explicitly specified existing CSV is never overwritten. The parent directory
@@ -271,7 +271,8 @@ It can also be combined with `--issn` or `--index`; retained index misses still
 stay in place. All lookups and content checks complete before its first move.
 
 Each run writes `netvault-index.csv`, then `netvault-index-2.csv`, and so on,
-in the scanned directory. Use `--csv PATH.csv` for a different new report.
+in the scanned directory. Use `--report PATH.csv` for a different new report
+(`--csv` remains a compatible alias).
 Without `--rename`, only the preview CSV is written. File errors or unresolved
 filename conflicts produce exit status 1.
 
@@ -311,12 +312,16 @@ NetVault only accepts PDF files. On upload it:
 
 1. Checks the file is a PDF.
 2. Computes sha256 locally.
-3. Extracts DOI locally when possible.
-4. Skips the upload if the DOI or sha256 is already in the vault.
-5. Uploads only new PDFs.
-6. Fetches Crossref metadata.
-7. Stores the PDF by sha256.
-8. Stores DOI and metadata in PostgreSQL.
+3. Checks server hashes before extracting DOI text or sending PDF bytes.
+4. Reuses directory state and skips unchanged confirmed identity rejections.
+5. Resolves DOI evidence for remaining files and sends them for server verification.
+6. Stores a new PDF, or registers an accepted alternate hash for an existing DOI.
+7. Stores metadata in PostgreSQL and commits each local upload outcome.
+
+Run the same `nv upload` command to continue an interrupted or repeated upload.
+Keep `.netvault-upload.sqlite3` with each PDF directory when copying it; no extra
+command or option is needed. New files, changed evidence and temporary errors can
+be processed again. Per-run reports can be removed without losing directory state.
 
 NetVault caches SHA-256 values in `~/.config/netvault/hash-cache.json` and DOI
 identity results in `~/.config/netvault/identity-cache.json`. The identity cache

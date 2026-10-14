@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.41 — 2026-10-14
+
+- Require direct VPS deployment of the matching server/web package alongside each CLI release. Add a live API/web/asset version check and keep GitHub Actions responsible for package publication.
+- Use one package version for the web badge and both static asset URLs. Prevent caching rendered HTML so the browser receives the current version after deployment.
+- Make journal and search pagination compact. Reduce footer spacing, use 26px controls and override inherited form minimum heights that kept the old pager oversized.
+- Align web CLI guidance, command help and user documentation for incremental uploads, directory state, explicit retries, download resume and PaperDock integration. Check displayed/copied guide commands against CLI declarations in CI without adding commands.
+- Derive web and release consistency assertions from the package version instead of maintaining separate version literals in tests.
+
 ## 0.7.40 — 2026-10-14
 
 - Persist hashes, identities and upload outcomes in a transactional `.netvault-upload.sqlite3` beside PDFs. Keep rejection state when global caches or per-run reports are removed, and commit each outcome before continuing.

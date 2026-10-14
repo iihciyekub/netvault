@@ -986,6 +986,8 @@ Examples:
   nv upload ./paper.pdf
   nv upload ./paper-a.pdf ./paper-b.pdf
   nv upload ~/Downloads/papers
+  nv upload ~/Downloads/papers --retry-failed
+  nv upload ~/Downloads/papers --refresh-doi
   nv upload ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
   nv upload ./new-paper.pdf --force
   nv upload ~/Downloads/papers --no-crossref
@@ -1006,7 +1008,9 @@ Notes:
   Metadata lookup continues; ordinary CSV uploads do not require metadata availability.
   Upload state is committed beside PDFs in .netvault-upload.sqlite3.
   Identity rejections survive cache/report removal and ordinary release upgrades.
+  Run the same command to continue; keep the hidden state file when copying a folder.
   --refresh-doi retries identities; --retry-failed selects failed, pending and review files.
+  PaperDock reads the same directory state automatically when preparing download lists.
   Errors are saved in --report; --verbose shows individual errors and detailed timings.
   unidentifys/ means absent from the vault, not rejected; exclude it only intentionally.
 """,

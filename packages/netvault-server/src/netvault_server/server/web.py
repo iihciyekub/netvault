@@ -185,11 +185,12 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "request": request,
         "csrf_token": token,
         "path_for": external_path,
-        "asset_version": f"{__version__}-ui29",
+        "asset_version": __version__,
         "app_version": __version__,
         "upload_limits": get_settings(),
     }
     response = templates.TemplateResponse(request, name, context)
+    response.headers["Cache-Control"] = "no-store"
     set_csrf_cookie(response, token)
     if user := context.get("user"):
         set_login_cookie(response, user)

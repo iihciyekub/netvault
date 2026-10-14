@@ -43,8 +43,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-top: 18px;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.pagination .button {
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  gap: 4px;
 }
 
 * { box-sizing: border-box; }
@@ -2368,35 +2377,48 @@ body.with-sidebar {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  min-height: 42px;
-  margin-top: 8px;
-  padding-top: 8px;
+  flex-shrink: 0;
+  gap: 4px 12px;
+  min-height: 30px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px solid var(--line);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.2;
   color: var(--muted);
 }
 .heatmap-pagination .heatmap-page-controls {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
 }
 .heatmap-pagination button {
-  width: 32px;
-  min-width: 32px;
-  height: 30px;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
+  border-radius: 4px;
   display: inline-grid;
   place-items: center;
 }
+.heatmap-pagination button i { font-size: 10px; }
 .heatmap-pagination button:disabled { cursor: default; opacity: .4; }
 .heatmap-pagination input {
-  width: 54px;
-  min-width: 54px;
-  height: 30px;
-  padding: 0 5px;
+  width: 40px;
+  min-width: 40px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 3px;
+  border-radius: 4px;
   text-align: center;
-  font-size: 12px;
+  font-size: inherit;
+}
+.heatmap-pagination .heatmap-page-label {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
 }
 @media (max-width: 760px) {
   .heatmap-pagination { justify-content: center; }

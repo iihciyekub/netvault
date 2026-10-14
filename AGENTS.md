@@ -1,5 +1,13 @@
 # NetVault Development Guidelines
 
+## Release consistency
+
+- A versioned release includes CLI, server, rendered web UI, static asset URLs and usage guides.
+- Keep the public CLI command set small; update existing help and examples when behavior changes.
+- Use the package version for UI and asset versions; do not add separately maintained frontend versions.
+- GitHub Actions handles package publication. Deploy the matching server/web version directly on the VPS when releasing; verify live CLI/API/web versions before reporting completion.
+- Keep web guide copy buttons aligned with the displayed commands and CLI declarations; version consistency checks include `scripts/check-cli-guide.py`.
+
 ## Web Interface Language
 
 - All user-visible text in the NetVault web interface must be written in English.

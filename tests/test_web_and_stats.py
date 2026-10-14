@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from netvault_server import __version__
 
 PDF_BYTES = b"%PDF-1.4\nDOI: 10.1234/web.test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n"
 
@@ -577,6 +578,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv download --file ./dois.txt --to ./downloads" in cli_page.text
     assert "nv upload ./papers" in cli_page.text
     assert "nv upload ./papers --dry-run" in cli_page.text
+    assert 'data-copy="nv upload ./papers --retry-failed"' in cli_page.text
+    assert 'data-copy="nv upload ./papers --refresh-doi"' in cli_page.text
+    assert ".netvault-upload.sqlite3" in cli_page.text
+    assert "PaperDock" in cli_page.text
+    assert cli_page.headers["cache-control"] == "no-store"
     assert "nv upload ./papers --csv ./cli-downloads.csv --dry-run" in cli_page.text
     assert "NetVault finds it automatically" in cli_page.text
     assert "Unmatched or ambiguous files are reported as failures" in cli_page.text
@@ -607,8 +613,10 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert info_page.status_code == 200
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
-    assert "0.7.40" in info_page.text
-    assert "app.js?v=0.7.40-ui29" in info_page.text
+    assert f"NetVault v{__version__}" in info_page.text
+    assert f"app.js?v={__version__}\"" in info_page.text
+    assert f"styles.css?v={__version__}\"" in info_page.text
+    assert client.get("/openapi.json").json()["info"]["version"] == __version__
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
     assert 'id="usage-policy-title"' in info_page.text

@@ -10,7 +10,7 @@
       <h2>Install / Update</h2>
     </header>
     <div class="command-card-body">
-      <p>Install the lightweight local CLI, then keep it current from GitHub.</p>
+      <p>Install the lightweight local CLI, then keep it current from GitHub. This server runs NetVault v{{ app_version }}.</p>
       <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">curl</span> <span class="syntax-option">-fsSL</span> <span class="syntax-url">https://raw.githubusercontent.com/iihciyekub/netvault/main/scripts/install.sh</span> <span class="syntax-operator">|</span> <span class="syntax-command">bash</span></code>
@@ -72,7 +72,22 @@
         </div>
       </div>
       <p class="command-help-gap">If <code>cli-downloads.csv</code> is in the folder, NetVault finds it automatically. PDF filenames stay unchanged.</p>
-      <p>Uploads show a concise summary and remember identity rejections. Use <code>--refresh-doi</code> to retry rejected files, or <code>--verbose</code> to see individual errors. Full results are saved in <code>nv-upload-report.json</code>.</p>
+      <p>Run the same upload command to continue. NetVault saves <code>.netvault-upload.sqlite3</code> beside the PDFs, skips files already on the server and remembers confirmed DOI/title rejections. New or changed files are processed; temporary errors can retry. Keep this hidden file when copying a folder. Full run results are saved in <code>nv-upload-report.json</code>; <code>--verbose</code> shows individual errors.</p>
+      <details class="command-advanced">
+        <summary>Retry files and PaperDock integration</summary>
+        <div class="command-list">
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--retry-failed</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./papers --retry-failed" aria-label="Copy failed upload retry command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--refresh-doi</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./papers --refresh-doi" aria-label="Copy DOI resolution retry command"><span data-copy-label>Copy</span></button>
+          </div>
+        </div>
+        <p><code>--retry-failed</code> selects failed, pending and review files from directory state, with the upload report as a fallback for older records. <code>--refresh-doi</code> resolves automatic DOI identities again and retries rejections while keeping user-confirmed DOIs. Use it after correcting DOI evidence or changing server verification rules.</p>
+        <p>PaperDock reads this state when preparing a download list and checks which DOI/PDF hashes are already on the server. No extra command is needed. A server lookup failure is shown as unavailable rather than treated as a missing PDF.</p>
+      </details>
     </div>
   </article>
 
@@ -94,6 +109,7 @@
           <button class="copy-button" type="button" data-copy="nv download --file ./dois.txt --to ./downloads" aria-label="Copy DOI list download command"><span data-copy-label>Copy</span></button>
         </div>
       </div>
+      <p class="command-help-gap">After an interruption, run the same command with the same <code>--to</code> directory. Verified complete files are skipped and <code>.part</code> files resume with checksum verification.</p>
     </div>
   </article>
 
