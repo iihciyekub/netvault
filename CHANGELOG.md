@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.42 — 2026-10-14
+
+- Widen the dashboard journal search to 680px on desktop while fitting narrower screens. Reduce bottom padding to 4px plus device safe-area needs so the heatmap uses the space above the compact pager.
+- Use the installer's curl transport for public deployment version checks through the reverse proxy.
+
 ## 0.7.41 — 2026-10-14
 
 - Require direct VPS deployment of the matching server/web package alongside each CLI release. Add a live API/web/asset version check and keep GitHub Actions responsible for package publication.

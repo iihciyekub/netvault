@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Verify the public API, rendered UI and asset versions after deployment."""
 import json
+import subprocess
 import sys
-from urllib.request import Request, urlopen
 
 
 def verify(base_url: str, version: str) -> None:
     base_url = base_url.rstrip("/")
 
     def read(path: str) -> str:
-        request = Request(base_url + path, headers={"Cache-Control": "no-cache"})
-        with urlopen(request, timeout=20) as response:
-            return response.read().decode("utf-8")
+        # Use the same curl/TLS transport as the installer through the public proxy.
+        response = subprocess.run(
+            ["curl", "--fail", "--silent", "--show-error", "--location", "--max-time", "20",
+             "--header", "Cache-Control: no-cache", base_url + path],
+            capture_output=True, text=True, check=True,
+        )
+        return response.stdout
 
     if json.loads(read("/health")).get("status") != "ok":
         raise RuntimeError("Health check failed")

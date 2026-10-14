@@ -197,7 +197,7 @@ html.is-loading nav a.active {
   flex-direction: column;
   height: calc(100dvh - 64px);
   min-height: 0;
-  padding: 24px 0;
+  padding: 24px 0 max(4px, env(safe-area-inset-bottom));
 }
 
 .page-head {
@@ -1054,7 +1054,7 @@ tr:last-child td { border-bottom: 0; }
 
 .heatmap-filter-field {
   position: relative;
-  width: min(360px, 100%);
+  width: min(680px, 100%);
 }
 
 .heatmap-filter-field i {
