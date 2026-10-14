@@ -3,7 +3,7 @@ from html.parser import HTMLParser
 import logging
 import secrets
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -489,12 +489,16 @@ def pdfs_page(
     request: Request,
     q: str = "",
     page: int = Query(default=1, ge=1),
+    journal: str = Query(default="", max_length=255),
+    year: int | None = Query(default=None, ge=1, le=9999),
     db: Session = Depends(get_db),
 ) -> Any:
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         return user
     q = q.strip()
+    journal = journal.strip()
+    searched = bool(q or journal or year is not None)
     pdfs = []
     total = 0
     settings = get_settings()
@@ -502,13 +506,19 @@ def pdfs_page(
     error = None
     if len(q) > settings.search_query_max_chars:
         error = f"Search queries are limited to {settings.search_query_max_chars} characters."
-    if q and error is None:
-        query = (search_pdfs_query(db, q).add_columns(func.count(Pdf.id).over().label("total_count"))
+    if searched and error is None:
+        query = (search_pdfs_query(db, q, journal=journal, year=year)
+                 .add_columns(func.count(Pdf.id).over().label("total_count"))
                  .offset((page - 1) * page_size).limit(page_size))
         rows = db.execute(query).unique().all()
         pdfs = [row[0] for row in rows]
         total = int(rows[0].total_count) if rows else 0
     total_pages = max(1, (total + page_size - 1) // page_size)
+    search_params = {"q": q}
+    if journal:
+        search_params["journal"] = journal
+    if year is not None:
+        search_params["year"] = str(year)
     return render(
         request,
         "pdfs.html",
@@ -516,7 +526,10 @@ def pdfs_page(
             "user": user,
             "pdfs": pdfs,
             "q": q,
-            "searched": bool(q),
+            "journal": journal,
+            "year": year,
+            "search_params": urlencode(search_params),
+            "searched": searched,
             "page": page,
             "total": total,
             "total_pages": total_pages,

@@ -109,7 +109,7 @@
   </form>
 </dialog>
 
-<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}">
+<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">

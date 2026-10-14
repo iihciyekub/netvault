@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.44 — 2026-10-14
+
+- Open populated journal-year heatmap nodes in the existing PDF Search page with exact canonical journal and year filters. Use parameterized queries and the existing journal/year index, with no schema or CLI command changes.
+- Show active filters and preserve them in pagination and subsequent keyword searches. Use standard links for keyboard access, browser back and opening a node in a new tab.
+- Cover heatmap/result count parity, similar journal names, deleted PDFs, year filtering, pagination, keyword refinement and invalid query inputs in CI.
+
 ## 0.7.43 — 2026-10-14
 
 - Keep dashboard journal controls on one line. Let the search field shrink from its 680px maximum as space narrows; preserve controls in a horizontally scrollable row on very small screens.

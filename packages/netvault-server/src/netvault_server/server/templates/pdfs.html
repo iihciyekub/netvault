@@ -4,11 +4,19 @@
 {% block content %}
 {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
 <form method="get" action="{{ path_for('/web/pdfs') }}" class="searchbar">
+  {% if journal %}<input type="hidden" name="journal" value="{{ journal }}">{% endif %}
+  {% if year is not none %}<input type="hidden" name="year" value="{{ year }}">{% endif %}
   <label class="sr-only" for="pdf-search">Search by DOI or metadata</label>
-  <input id="pdf-search" name="q" value="{{ q }}" placeholder="DOI, title, author, journal, publisher, filename">
+  <input id="pdf-search" name="q" value="{{ q }}" placeholder="{% if journal or year is not none %}Search within these results{% else %}DOI, title, author, journal, publisher, filename{% endif %}">
   <button class="primary" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span data-button-label>Search</span></button>
-  {% if q %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear</span></a>{% endif %}
+  {% if searched %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear</span></a>{% endif %}
 </form>
+{% if journal or year is not none %}
+<div class="search-filters" aria-label="Active search filters">
+  {% if journal %}<span title="{{ journal }}">Journal: {{ journal }}</span>{% endif %}
+  {% if year is not none %}<span>Year: {{ year }}</span>{% endif %}
+</div>
+{% endif %}
 {% if searched %}
 <div class="result-summary">
   <p class="result-count"><i class="fa-solid fa-book-open" aria-hidden="true"></i>{{ total }} result{% if total != 1 %}s{% endif %}</p>
@@ -72,9 +80,9 @@
 </section>
 {% if total_pages > 1 %}
 <nav class="pagination" aria-label="Search result pages">
-  {% if page > 1 %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page - 1 }}"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>Previous</span></a>{% endif %}
+  {% if page > 1 %}<a class="button" href="{{ path_for('/web/pdfs') }}?{{ search_params }}&page={{ page - 1 }}"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>Previous</span></a>{% endif %}
   <span>Page {{ page }} of {{ total_pages }}</span>
-  {% if page < total_pages %}<a class="button" href="{{ path_for('/web/pdfs') }}?q={{ q|urlencode }}&page={{ page + 1 }}"><span>Next</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
+  {% if page < total_pages %}<a class="button" href="{{ path_for('/web/pdfs') }}?{{ search_params }}&page={{ page + 1 }}"><span>Next</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>{% endif %}
 </nav>
 {% endif %}
 {% else %}

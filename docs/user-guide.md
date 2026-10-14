@@ -661,6 +661,11 @@ update locally 200 ms after typing stops; Enter applies immediately. Right-click
 a journal name, or press Shift+F10 while it is focused, and select **Open in Web
 of Science** to search its full publication name in a new tab.
 
+Click a populated journal-year heatmap cell to open its PDFs in the existing
+Search page. Journal identity and publication year are matched exactly using the
+same journal key as the dashboard. Active filters stay visible and are retained
+when paging or searching within the results. **Clear** returns to ordinary search.
+
 The dashboard includes All, UTD24, FT50, ABS 4*, ABS 4, ABS 3, ABS 2, ABS 1,
 and Custom filters. Custom is always shown last.
 

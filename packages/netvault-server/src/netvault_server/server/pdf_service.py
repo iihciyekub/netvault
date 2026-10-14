@@ -14,6 +14,8 @@ from netvault_server.server.config import get_settings
 from netvault_server.server.doi import normalize_doi
 from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.main_helpers import pdf_to_read
+from netvault_server.server.journal_filters import normalize_journal_name
+from netvault_server.server.journal_identity import journal_display_name
 from netvault_server.server.models import Pdf, PdfDoiCorrection, PdfFileAlias, User
 from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.schemas import PdfDoiCorrectionRead, Sha256ExistsResponse
@@ -85,7 +87,7 @@ def find_pdf_by_doi(doi: str, db: Session) -> Pdf:
     return pdf
 
 
-def search_pdfs_query(db: Session, value: str):
+def search_pdfs_query(db: Session, value: str, *, journal: str = "", year: int | None = None):
     value = value.strip()
     if len(value) > get_settings().search_query_max_chars:
         raise HTTPException(status_code=400, detail="Search query is too long")
@@ -93,7 +95,17 @@ def search_pdfs_query(db: Session, value: str):
         select(Pdf)
         .options(*pdf_read_options())
         .where(Pdf.is_deleted.is_(False), Pdf.doi.is_not(None))
+        .order_by(Pdf.uploaded_at.desc(), Pdf.id.desc())
     )
+    if journal:
+        query = query.where(
+            Pdf.journal_key == normalize_journal_name(journal),
+            Pdf.container_title == journal_display_name(journal),
+        )
+    if year is not None:
+        query = query.where(Pdf.published_year == year)
+    if not value:
+        return query
     if re.fullmatch(r"[0-9a-fA-F]{64}", value):
         try:
             found = find_pdf(value, db)
@@ -120,7 +132,7 @@ def search_pdfs_query(db: Session, value: str):
             else None
         )
         condition = Pdf.doi == doi if exact else pdf_contains_query(value)
-    return query.where(condition).order_by(Pdf.uploaded_at.desc(), Pdf.id.desc())
+    return query.where(condition)
 
 
 def resolve_pdf_file(db: Session, *, doi: str | None = None, pdf_id: int | None = None):

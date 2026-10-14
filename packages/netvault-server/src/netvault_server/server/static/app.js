@@ -547,7 +547,7 @@
     return result;
   };
 
-  const renderJournalRow = (row, years) => {
+  const renderJournalRow = (row, years, searchUrl) => {
     if (row.elements) return row.elements;
     const elements = [];
     const label = document.createElement("div");
@@ -565,11 +565,12 @@
     elements.push(label);
     years.forEach((year, index) => {
       const data = row.counts.get(index);
-      const cell = document.createElement(data ? "button" : "span");
+      const cell = document.createElement(data ? "a" : "span");
       cell.className = "heat-cell level-" + (data ? data[1] : 0);
       cell.dataset.journalRow = String(row.id);
       if (data) {
-        cell.type = "button";
+        const params = new URLSearchParams({ journal: row.label, year });
+        cell.href = searchUrl + "?" + params.toString();
         const count = data[0];
         cell.dataset.tip = year + " · " + count.toLocaleString("en-US") + " PDF" + (count === 1 ? "" : "s");
         cell.setAttribute("aria-label", row.label + " " + year + " " + count.toLocaleString("en-US") + " PDFs");
@@ -664,7 +665,8 @@
     }
     const fragment = document.createDocumentFragment();
     qsa(".heat-corner, .heat-year, .heat-total-head", heatmap).forEach((node) => fragment.append(node));
-    shown.forEach((row) => renderJournalRow(row, years).forEach((node) => fragment.append(node)));
+    shown.forEach((row) => renderJournalRow(row, years, panel.dataset.pdfSearchUrl)
+      .forEach((node) => fragment.append(node)));
     heatmap.replaceChildren(fragment);
 
     const status = qs("[data-journal-filter-status], .heatmap-filter-status", panel);

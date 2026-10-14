@@ -5,7 +5,9 @@ import io
 import re
 import sys
 import zipfile
+from html import unescape
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1104,6 +1106,84 @@ def test_search_pagination_shows_crossref_metadata_cards(client: TestClient) -> 
     assert third.status_code == 200
     assert third.text.count('class="paper-result"') == 1
     assert "Page 3 of 3" in third.text
+
+
+def test_heatmap_search_matches_node_and_retains_filters_on_pagination(client: TestClient) -> None:
+    web_login(client)
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    stats = importlib.import_module("netvault_server.server.stats")
+    journal = "Research & Evidence"
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        records = [(journal, 2026, False, f"Heatmap paper {index}") for index in range(26)]
+        records.extend([
+            (journal, 2025, False, "Wrong year"),
+            ("Research and Evidence", 2026, False, "Heatmap paper 0"),
+            ("Research & Evidence Studies", 2026, False, "Wrong journal"),
+            (journal, 2026, True, "Deleted paper"),
+        ])
+        for index, (name, year, deleted, title) in enumerate(records):
+            db.add(models.Pdf(
+                doi=f"10.5555/heatmap.{index}", sha256=f"{index + 4000:064x}",
+                original_name=f"heatmap-{index}.pdf", title=title,
+                container_title=name, published_year=year, is_deleted=deleted,
+                size=100, storage_path=f"objects/aa/heatmap-{index}.pdf",
+                uploaded_by_id=admin.id,
+            ))
+        db.commit()
+    stats.invalidate_stats_cache()
+
+    dashboard = client.get("/web")
+    row = next(row for row in dashboard_journal_data(dashboard) if row[0] == journal.upper())
+    assert row[1] == 27
+    assert next(cell[1] for cell in row[2] if cell[0] == 0) == 26
+    assert 'data-pdf-search-url="/web/pdfs"' in dashboard.text
+
+    first = client.get("/web/pdfs", params={"journal": journal, "year": 2026})
+    assert first.status_code == 200
+    assert "26 results" in first.text
+    assert first.text.count('class="paper-result"') == 25
+    assert "Wrong year" not in first.text
+    assert "Wrong journal" not in first.text
+    assert "Deleted paper" not in first.text
+    assert 'name="journal" value="Research &amp; Evidence"' in first.text
+    assert 'name="year" value="2026"' in first.text
+    assert "Search within these results" in first.text
+    next_link = re.search(r'<a class="button" href="([^"]+)"><span>Next</span>', first.text)
+    assert next_link
+    next_url = unescape(next_link.group(1))
+    assert parse_qs(urlparse(next_url).query) == {
+        "journal": [journal], "year": ["2026"], "page": ["2"],
+    }
+    second = client.get(next_url)
+    assert second.status_code == 200
+    assert "26 results" in second.text
+    assert second.text.count('class="paper-result"') == 1
+    assert "Page 2 of 2" in second.text
+
+    narrowed = client.get("/web/pdfs", params={
+        "journal": "  research & evidence  ", "year": 2026, "q": "Heatmap paper 0",
+    })
+    assert "1 result" in narrowed.text
+    assert narrowed.text.count('class="paper-result"') == 1
+    assert 'name="year" value="2026"' in narrowed.text
+    empty = client.get("/web/pdfs", params={"journal": journal, "year": 2027})
+    assert "0 results" in empty.text
+    assert "No PDFs found" in empty.text
+    assert "Year: 2027" in empty.text
+    injection = client.get("/web/pdfs", params={
+        "journal": "Research & Evidence' OR 1=1 --", "year": 2026,
+    })
+    assert "0 results" in injection.text
+    assert 'class="paper-result"' not in injection.text
+
+
+@pytest.mark.parametrize("year", [0, -1, 10000, "2026 OR 1=1"])
+def test_heatmap_search_rejects_invalid_years(client: TestClient, year) -> None:
+    web_login(client)
+    result = client.get("/web/pdfs", params={"journal": "Web Journal", "year": year})
+    assert result.status_code == 422
 
 
 def test_web_exact_doi_search_falls_back_to_related_identifier(client: TestClient) -> None:

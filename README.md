@@ -33,6 +33,7 @@ With automatic CSV discovery, renamed PDFs can be matched by SHA-256 or a unique
 - Local filesystem PDF object storage under `storage/objects`.
 - Authenticated web pages for dashboard stats, PDF upload, PDF list, and DOI download.
 - Per-user editable UTD24, FT50, ABS, and Custom journal dashboard filters.
+- Click a populated heatmap cell to search its exact journal and year; keep those filters across pages and further keyword searches.
 - Local hash-based DOI identification, safe file renaming, duplicate collection, and CSV reports.
 
 The default Docker Compose setup binds the API to `127.0.0.1:8000`, so it is meant
