@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.47 — 2026-10-15
+
+- Compact the ranking panel header, controls and table, removing repeated labels, timestamps and footer copy.
+- Remove journal and year-cell hover/focus tooltips; journal actions open on click or explicit keyboard activation.
+
 ## 0.7.46 — 2026-10-15
 
 - Allow the dashboard to use available width as needed, with complete wrapping journal names and horizontally scrolling years that keep recent years visible.

@@ -3,7 +3,6 @@
 
   const mainSelector = "#app-main";
   const htmlType = "text/html";
-  let activeTooltipTarget = null;
   const pageCache = new Map();
   const prefetching = new Set();
   const journalRowsCache = new WeakMap();
@@ -238,45 +237,6 @@
     window.setTimeout(() => {
       label.textContent = original;
     }, 1000);
-  };
-
-  const showTooltip = (target, event) => {
-    const text = target.getAttribute("data-tip");
-    if (!text) return;
-    activeTooltipTarget = target;
-    let tooltip = qs(".heatmap-tooltip");
-    if (!tooltip) {
-      tooltip = document.createElement("div");
-      tooltip.className = "heatmap-tooltip";
-      tooltip.setAttribute("role", "tooltip");
-      document.body.appendChild(tooltip);
-    }
-    tooltip.textContent = text;
-    tooltip.classList.toggle("has-icon", target.classList.contains("heat-cell"));
-    tooltip.classList.add("is-visible");
-    positionTooltip(event);
-  };
-
-  const positionTooltip = (event) => {
-    if (!activeTooltipTarget) return;
-    const tooltip = qs(".heatmap-tooltip");
-    if (!tooltip) return;
-    const offset = 12;
-    const rect = tooltip.getBoundingClientRect();
-    const targetRect = activeTooltipTarget.getBoundingClientRect();
-    const clientX = Number.isFinite(event.clientX) ? event.clientX : targetRect.left + targetRect.width / 2;
-    const clientY = Number.isFinite(event.clientY) ? event.clientY : targetRect.bottom;
-    let left = clientX + offset;
-    let top = clientY + offset;
-    if (left + rect.width + 8 > window.innerWidth) left = clientX - rect.width - offset;
-    if (top + rect.height + 8 > window.innerHeight) top = clientY - rect.height - offset;
-    tooltip.style.transform = `translate(${Math.max(8, left)}px, ${Math.max(8, top)}px)`;
-  };
-
-  const hideTooltip = () => {
-    activeTooltipTarget = null;
-    const tooltip = qs(".heatmap-tooltip");
-    if (tooltip) tooltip.classList.remove("is-visible");
   };
 
   const journalListNames = (textarea) => {
@@ -572,7 +532,6 @@
         const params = new URLSearchParams({ journal: row.label, year });
         cell.href = searchUrl + "?" + params.toString();
         const count = data[0];
-        cell.dataset.tip = year + " · " + count.toLocaleString("en-US") + " PDF" + (count === 1 ? "" : "s");
         cell.setAttribute("aria-label", row.label + " " + year + " " + count.toLocaleString("en-US") + " PDFs");
       } else {
         cell.setAttribute("aria-hidden", "true");
@@ -709,7 +668,6 @@
   const goToJournalPage = (panel, requestedPage) => {
     if (!panel || !Number.isInteger(requestedPage)) return;
     panel.dataset.journalPage = String(Math.max(1, requestedPage));
-    hideTooltip();
     closeJournalMenu();
     applyJournalFilters(panel);
     const scroll = qs(".heatmap-scroll", panel);
@@ -743,7 +701,6 @@
     const name = (target.dataset.journalName || "").replace(/\s+/g, " ").trim();
     if (!menu || !link || !name) return;
     closeJournalMenu();
-    hideTooltip();
     const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
     link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
     journalMenuTarget = target;
@@ -788,7 +745,7 @@
     }
     qs("[data-rank-table]", panel).hidden = !rows.length;
     qs("[data-rank-status]", panel).textContent = rows.length
-      ? `${rows.length} rankings · ${new Date(rankResult.queried_at * 1000).toLocaleString("en-US")}${rankResult.cached ? " · Cached" : ""}`
+      ? `${rows.length} rankings · easyScholar`
       : "No rankings available for this journal in these datasets.";
     clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));
   };
@@ -1526,197 +1483,6 @@
     const nav = qs(".utility-nav");
     if (toggle) toggle.setAttribute("aria-expanded", "false");
     if (nav) nav.classList.remove("is-open");
-  });
-
-  document.addEventListener("pointerover", (event) => {
-    const journal = event.target.closest(".heat-journal[data-journal-name]");
-    if (journal) { event.preventDefault(); openJournalMenu(journal, event); return; }
-    if (event.target.closest("[data-journal-rank]")) { openRankPanel(); return; }
-    const link = event.target.closest("a[href]");
-    if (!link || link.target || link.hasAttribute("download") || link.hasAttribute("data-no-pjax")) return;
-    if (!link.closest(".topbar, .app-sidebar, .filter-tabs")) return;
-    prefetchPage(link.href);
-  });
-
-  document.addEventListener("submit", (event) => {
-    const form = event.target;
-    if (form.matches("[data-journal-list-form]")) {
-      event.preventDefault();
-      saveJournalListEditor(form);
-      return;
-    }
-    if (form.matches("[data-journal-limit-form]")) {
-      event.preventDefault();
-      const input = qs("[data-journal-limit]", form);
-      if (input) flushJournalLimit(input);
-      return;
-    }
-    const url = sameOriginUrl(form.action);
-    if (form.hasAttribute("data-native-submit")) return;
-    if (!url || !isWebPath(url)) return;
-    event.preventDefault();
-
-    if (form.matches("[data-upload-form]")) {
-      uploadWithProgress(form).catch(() => {
-        const progressText = qs(".upload-progress p", form);
-        if (progressText) progressText.textContent = "Upload check failed";
-        setFormBusy(form, false, "Upload");
-        const cancelButton = qs("[data-upload-cancel]", form);
-        if (cancelButton) cancelButton.hidden = true;
-      });
-      return;
-    }
-
-    const method = (form.method || "GET").toUpperCase();
-    const body = new FormData(form);
-    setFormBusy(form, true, method === "GET" ? "Searching..." : "Loading...");
-    if (method === "GET") {
-      const params = new URLSearchParams(body);
-      fetchPage(`${url.origin}${url.pathname}?${params.toString()}`);
-    } else {
-      fetchPage(url.href, { method, body }).finally(() => setFormBusy(form, false, "Submit"));
-    }
-  });
-
-  document.addEventListener("change", (event) => {
-    if (event.target.matches("#file-input")) updateFileSummary(event.target);
-    if (event.target.matches("[data-journal-list-picker-input]")) addJournalListSelection(event.target);
-    if (event.target.matches("[data-journal-sort]")) {
-      saveJournalSort(event.target.value);
-      event.target.closest(".heatmap-panel").dataset.journalPage = "1";
-      sortJournalRows(event.target);
-    }
-    if (event.target.matches("[data-journal-page-input]")) {
-      const input = event.target;
-      goToJournalPage(input.closest(".heatmap-panel"), Number(input.value));
-    }
-  });
-
-  document.addEventListener("input", (event) => {
-    if (event.target.matches("[data-journal-list-textarea]")) {
-      updateJournalListCount(event.target.closest("[data-journal-list-dialog]"));
-      return;
-    }
-    if (event.target.matches("[data-journal-limit]")) {
-      scheduleJournalLimit(event.target);
-      return;
-    }
-    if (event.target.matches("[data-journal-filter]")) scheduleJournalFilter(event.target);
-  });
-
-  document.addEventListener("search", (event) => {
-    if (event.target.matches("[data-journal-filter]")) flushJournalFilter(event.target);
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && event.target.matches("[data-journal-page-input]")) {
-      event.preventDefault();
-      goToJournalPage(event.target.closest(".heatmap-panel"), Number(event.target.value));
-      return;
-    }
-    if (event.key === "Escape") closeJournalMenu(true);
-    if ((["Enter", " ", "ContextMenu"].includes(event.key) || (event.shiftKey && event.key === "F10"))
-        && event.target.closest(".heat-journal[data-journal-name]")) {
-      event.preventDefault();
-      openJournalMenu(event.target.closest(".heat-journal[data-journal-name]"), event);
-      return;
-    }
-    if (event.key === "Escape") closeFilterMenus();
-    if (
-      (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
-      && event.target.closest("[data-journal-list-edit]")
-    ) {
-      event.preventDefault();
-      openJournalListEditor(event.target.closest("[data-journal-list-edit]"));
-      return;
-    }
-    if (event.key === "Enter" && event.target.matches("[data-journal-list-picker-input]")) {
-      event.preventDefault();
-      addJournalListSelection(event.target);
-      return;
-    }
-    if (event.key === "Tab" && event.target.matches("[data-journal-filter]") && event.target.value.trim()) {
-      const input = event.target;
-      const query = normalizedJournalText(input.value.trim());
-      const initials = query.replace(/[\s.-]/g, "");
-      const heatmap = qs(".journal-heatmap", input.closest(".heatmap-panel"));
-      const match = heatmap && journalRows(heatmap).rows.find((row) =>
-        row.name.includes(query) || row.initials.startsWith(initials));
-      if (match) {
-        event.preventDefault();
-        input.value = match.label;
-        flushJournalFilter(input);
-      }
-    }
-    if (event.key === "Enter" && event.target.matches("[data-journal-limit]")) {
-      event.preventDefault();
-      flushJournalLimit(event.target);
-      return;
-    }
-    if (event.key === "Enter" && event.target.matches("[data-journal-filter]")) {
-      event.preventDefault();
-      flushJournalFilter(event.target);
-    }
-  });
-
-  document.addEventListener("focusout", (event) => {
-    if (event.target.matches("[data-journal-filter]")) flushJournalFilter(event.target);
-    if (event.target.matches("[data-journal-limit]")) flushJournalLimit(event.target);
-  });
-
-  document.addEventListener("dragenter", (event) => {
-    const dropzone = event.target.closest("#dropzone");
-    if (dropzone) dropzone.classList.add("is-dragging");
-  });
-
-  document.addEventListener("dragover", (event) => {
-    const dropzone = event.target.closest("#dropzone");
-    if (dropzone) {
-      event.preventDefault();
-      dropzone.classList.add("is-dragging");
-    }
-  });
-
-  document.addEventListener("dragleave", (event) => {
-    const dropzone = event.target.closest("#dropzone");
-    if (dropzone) dropzone.classList.remove("is-dragging");
-  });
-
-  document.addEventListener("drop", (event) => {
-    const dropzone = event.target.closest("#dropzone");
-    if (dropzone) {
-      event.preventDefault();
-      dropzone.classList.remove("is-dragging");
-      const input = qs("input[type='file']", dropzone);
-      if (input && event.dataTransfer && event.dataTransfer.files.length) {
-        input.files = event.dataTransfer.files;
-        updateFileSummary(input);
-      }
-    }
-  });
-
-  document.addEventListener("pointerover", (event) => {
-    const target = event.target.closest(".journal-heatmap [data-tip]");
-    if (!target || target === activeTooltipTarget) return;
-    showTooltip(target, event);
-  });
-
-  document.addEventListener("pointermove", positionTooltip);
-
-  document.addEventListener("pointerout", (event) => {
-    if (!activeTooltipTarget) return;
-    const next = event.relatedTarget;
-    if (next && activeTooltipTarget.contains(next)) return;
-    hideTooltip();
-  });
-
-  document.addEventListener("focusin", (event) => {
-    const target = event.target.closest(".journal-heatmap [data-tip]");
-    if (target) showTooltip(target, event);
-  });
-
-  document.addEventListener("focusout", (event) => {
-    if (event.target.closest(".journal-heatmap [data-tip]")) hideTooltip();
   });
 
   window.addEventListener("popstate", () => {

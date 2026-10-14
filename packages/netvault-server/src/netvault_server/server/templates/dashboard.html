@@ -195,10 +195,9 @@
   <button type="button" role="menuitem" data-journal-rank>Look up journal rankings</button>
 </div>
 <section class="journal-rank-panel" data-rank-panel role="dialog" aria-labelledby="rank-title" hidden>
-  <header data-rank-drag><div><p class="eyebrow">Journal rankings · easyScholar</p><h2 id="rank-title" data-rank-title></h2></div><button type="button" class="ghost" data-rank-close aria-label="Close journal rankings">×</button></header>
+  <header data-rank-drag><h2 id="rank-title" data-rank-title></h2><button type="button" class="ghost" data-rank-close aria-label="Close journal rankings">×</button></header>
   <div class="rank-tools"><label><input type="checkbox" data-rank-selected> Selected datasets only</label><button type="button" class="ghost" data-rank-refresh>Refresh</button></div>
   <p data-rank-status role="status" aria-live="polite"></p>
   <div class="rank-table-scroll"><table data-rank-table hidden><thead><tr><th>Dataset</th><th>Rank</th></tr></thead><tbody data-rank-rows></tbody></table></div>
-  <footer>Source: easyScholar · Drag the header to move</footer>
 </section>
 {% endblock %}
