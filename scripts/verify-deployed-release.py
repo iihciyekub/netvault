@@ -25,7 +25,7 @@ def verify(base_url: str, version: str) -> None:
     if deployed != version:
         raise RuntimeError(f"API version is {deployed}, expected {version}")
     page = read("/web/login")
-    for marker in (f'NetVault v{version}"', f"styles.css?v={version}\"",
+    for marker in (f'class="brand-version">v{version}</small>', f"styles.css?v={version}\"",
                    f"app.js?v={version}\""):
         if marker not in page:
             raise RuntimeError(f"Rendered web version is inconsistent: missing {marker}")
