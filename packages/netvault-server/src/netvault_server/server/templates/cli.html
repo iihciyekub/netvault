@@ -98,7 +98,7 @@
       <h2>Download</h2>
     </header>
     <div class="command-card-body">
-      <p>Download a DOI or a list of DOIs. Downloads run in parallel and resume automatically.</p>
+      <p>Download a DOI or a list of DOIs. Server matches are checked first; progress counts only files still needed locally. Missing DOI values are summarized quietly.</p>
       <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">download</span> <span class="syntax-doi">10.1016/j.ijpe.2018.04.006</span> <span class="syntax-option">--to</span> <span class="syntax-path">./downloads</span></code>
@@ -110,6 +110,7 @@
         </div>
       </div>
       <p class="command-help-gap">After an interruption, run the same command with the same <code>--to</code> directory. Verified complete files are skipped and <code>.part</code> files resume with checksum verification.</p>
+      <p class="command-help-gap">Downloads use 8 parallel workers by default. Admin downloads have no hourly count limit; regular users keep the server limit. If the limit is reached, run the same command later. Failure and pending details are saved to <code>nv-download-report.json</code>.</p>
     </div>
   </article>
 

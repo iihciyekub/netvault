@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.45 — 2026-10-14
+
+- Match the complete input DOI list against server SQL in batches before downloads start. Exclude unavailable DOI values and verified local files from the download progress total; count missing DOI values quietly instead of treating them as failures.
+- Keep bounded parallel downloads, SHA-256 verification and HTTP Range resume. Stop queued downloads when the server returns a rate limit, preserve partial files and save real failures or pending DOI values to an atomic report instead of printing per-DOI errors.
+- Exempt admin API, web and ZIP downloads from the hourly download count limit. Keep the configured hourly limit for regular users (1200 by default) and existing concurrency, preview and ZIP-size controls.
+- Update the CLI, server, web version badge, asset cache keys and download guide together to 0.7.45.
+
 ## 0.7.44 — 2026-10-14
 
 - Open populated journal-year heatmap nodes in the existing PDF Search page with exact canonical journal and year filters. Use parameterized queries and the existing journal/year index, with no schema or CLI command changes.
