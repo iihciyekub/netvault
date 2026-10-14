@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.43 — 2026-10-14
+
+- Keep dashboard journal controls on one line. Let the search field shrink from its 680px maximum as space narrows; preserve controls in a horizontally scrollable row on very small screens.
+- Show journal sorting as one compact icon with the existing native options and keyboard support. Put the selected ordering in its hover tooltip instead of persistent text.
+
 ## 0.7.42 — 2026-10-14
 
 - Widen the dashboard journal search to 680px on desktop while fitting narrower screens. Reduce bottom padding to 4px plus device safe-area needs so the heatmap uses the space above the compact pager.

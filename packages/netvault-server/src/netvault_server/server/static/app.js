@@ -618,7 +618,11 @@
     const initialsQuery = query.replace(/[\s.-]/g, "");
     const isInitialsQuery = /^[\p{L}\p{N}]{2,}$/u.test(initialsQuery);
     const { rows, years } = journalRows(heatmap);
-    const sortValue = qs("[data-journal-sort]", panel)?.value || "total-desc";
+    const sortSelect = qs("[data-journal-sort]", panel);
+    const sortValue = sortSelect?.value || "total-desc";
+    if (sortSelect) {
+      sortSelect.closest(".heatmap-sort-field").title = `Sort journals: ${sortSelect.selectedOptions[0]?.textContent || sortValue}`;
+    }
     const [field, direction] = sortValue.split("-");
     const multiplier = direction === "desc" ? -1 : 1;
     const sorted = [...rows].sort((left, right) => {
