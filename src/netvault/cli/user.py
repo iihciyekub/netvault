@@ -55,6 +55,7 @@ from netvault.cli.identify_fast import fast_identify_pdfs
 from netvault.cli.upload_pipeline import UploadPipeline, UploadRateColumn, UploadStats
 from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
 from netvault.cli.upload_report import UploadReport, failed_paths
+from netvault.cli.upload_state import UploadState, RETRY_STATUSES, stable_context
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
     DoiEvidence,
@@ -338,7 +339,8 @@ def cached_upload_rejection(identity: dict | None, context: dict) -> dict | None
     if not isinstance(rejections, dict):
         return None
     rejection = rejections.get(context["server"])
-    if (isinstance(rejection, dict) and rejection.get("context") == context
+    if (isinstance(rejection, dict) and isinstance(rejection.get("context"), dict)
+            and stable_context(rejection["context"]) == stable_context(context)
             and isinstance(rejection.get("error"), str)):
         return rejection
     return None
@@ -1002,7 +1004,8 @@ Notes:
   It matches SHA-256 or filename and size; unmatched/ambiguous files fail without PDF fallback.
   Automatic CSV discovery still requires server title verification.
   Metadata lookup continues; ordinary CSV uploads do not require metadata availability.
-  Identity verification rejections are remembered by hash; unchanged files are skipped next time.
+  Upload state is committed beside PDFs in .netvault-upload.sqlite3.
+  Identity rejections survive cache/report removal and ordinary release upgrades.
   --refresh-doi retries identities; --retry-failed selects failed, pending and review files.
   Errors are saved in --report; --verbose shows individual errors and detailed timings.
   unidentifys/ means absent from the vault, not rejected; exclude it only intentionally.
@@ -1050,17 +1053,26 @@ def upload_command(
         help="Ignore download index files and use cached or PDF-derived DOI identities.",
     ),
     report: Path = typer.Option(Path("nv-upload-report.json"), "--report", help="Save incremental results and failures."),
-    retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed, pending or review files from --report."),
+    retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed, pending or review files from directory state; fall back to --report."),
     verbose: bool = typer.Option(False, "--verbose", help="Show individual errors, cache statistics and upload timings."),
 ) -> None:
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
     pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
     if retry_failed:
-        try:
-            retry_paths = failed_paths(report)
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            raise typer.BadParameter(f"Could not read upload report: {exc}") from exc
-        pdfs = [path for path in pdfs if path.resolve() in retry_paths]
+        retry_server = str(load_credentials().get("server_url") or DEFAULT_SERVER_URL).rstrip("/")
+        with UploadState() as state:
+            statuses = {path: state.path_status(path, retry_server, hash_file=file_sha256) for path in pdfs}
+        retry_paths = set()
+        if report.is_file() and any(value is None for value in statuses.values()):
+            try:
+                retry_paths = failed_paths(report)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise typer.BadParameter(f"Could not read upload report: {exc}") from exc
+        elif not any(value is not None for value in statuses.values()):
+            raise typer.BadParameter("No directory upload state or upload report to retry")
+        selected_statuses = RETRY_STATUSES
+        pdfs = [path for path in pdfs if statuses[path] in selected_statuses
+                or (statuses[path] is None and path.resolve() in retry_paths)]
     if not pdfs:
         console.print("No PDF files found.")
         return
@@ -1162,6 +1174,7 @@ def upload_command(
     local_duplicate_paths = 0
     stats = UploadStats()
     preparation_seconds = 0.0
+    pdf_paths_by_sha: dict[str, list[Path]] = {}
     started = monotonic()
 
     progress_columns = [
@@ -1175,12 +1188,16 @@ def upload_command(
     if verbose:
         progress_columns.append(UploadRateColumn(stats))
     identity_writer = CacheWriter(lambda: save_identity_cache(identity_cache))
-    with upload_report, identity_writer, Progress(
+    with UploadState() as upload_state, upload_report, identity_writer, Progress(
         *progress_columns,
         console=console,
         transient=True,
     ) as progress:
         task = progress.add_task("Hashing PDFs", total=len(pdfs), outcomes="")
+
+        def state_paths(path, sha):
+            return {sibling.resolve().parent: sibling
+                    for sibling in pdf_paths_by_sha.get(sha, [path])}.values()
 
         def record_failure(path, error):
             nonlocal needs_review
@@ -1190,6 +1207,12 @@ def upload_command(
             failed.append((path, str(error)))
             upload_report.record(path, "needs-review" if rejection else "failed",
                                  sha256=hashes_by_path.get(path), error=str(error))
+            sha = hashes_by_path.get(path)
+            if sha:
+                for sibling in state_paths(path, sha):
+                    upload_state.record(sibling, sha, upload_server,
+                                        "needs-review" if rejection else "failed",
+                                        context=upload_contexts.get(path), error=str(error), attempted=True)
             if verbose:
                 console.print(f"failed: {path.name}: {error}", highlight=False, markup=False)
 
@@ -1212,15 +1235,16 @@ def upload_command(
                 if not has_pdf_header(pdf_path):
                     record_failure(pdf_path, "invalid PDF file: expected %PDF- header")
                     continue
-                cached_before = file_cache_key(pdf_path) in hash_cache
-                sha256, from_cache = cached_file_sha256(pdf_path, hash_cache)
-                cache_changed = cache_changed or not from_cache or not cached_before
+                sha256, from_cache = upload_state.hash_file(
+                    pdf_path, lambda path: cached_file_sha256(path, hash_cache)[0])
+                cache_changed = cache_changed or not from_cache
                 if csv_file is not None:
                     match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
                     if match is None:
                         raise ValueError("No unique filename/size or SHA-256 match in the specified CSV; PDF fallback is disabled")
                     csv_matches_by_path[pdf_path] = match
                 hashes_by_path[pdf_path] = sha256
+                upload_state.pending(pdf_path, sha256, upload_server)
             except (OSError, ValueError, RuntimeError) as exc:
                 record_failure(pdf_path, exc)
             finally:
@@ -1281,6 +1305,8 @@ def upload_command(
                 latest_pdf = existing_pdf
                 skipped += 1
                 upload_report.record(pdf_path, "existing", sha256=sha256, pdf=existing_pdf)
+                for sibling in state_paths(pdf_path, sha256):
+                    upload_state.record(sibling, sha256, upload_server, "existing", pdf=existing_pdf)
             else:
                 new_pdfs.append(pdf_path)
 
@@ -1321,6 +1347,10 @@ def upload_command(
                         uploaded += 1
                     status = "replaced" if result.get("replaced") else "existing" if result["deduplicated"] else "uploaded"
                     upload_report.record(outcome.path, status, sha256=hashes_by_path[outcome.path], pdf=latest_pdf)
+                    for sibling in state_paths(outcome.path, hashes_by_path[outcome.path]):
+                        upload_state.record(sibling, hashes_by_path[outcome.path], upload_server,
+                                            status, context=upload_contexts.get(outcome.path),
+                                            pdf=latest_pdf, attempted=True)
                     entry = identity_cache.get(hashes_by_path[outcome.path], {})
                     rejections = entry.get("upload_rejections") if isinstance(entry, dict) else None
                     if isinstance(rejections, dict) and rejections.pop(upload_server, None) is not None:
@@ -1343,6 +1373,9 @@ def upload_command(
                     try:
                         sha256 = hashes_by_path[pdf_path]
                         identity = cached_identity(identity_cache, sha256)
+                        if not identity:
+                            local_identity = upload_state.identity(pdf_path, sha256)
+                            identity = cached_identity({sha256: local_identity}, sha256)
                         if (identity and identity.get("source") != "user" and (
                             refresh_doi or retry_failed
                             or (identity.get("status") == "conflict" and not no_crossref)
@@ -1430,7 +1463,15 @@ def upload_command(
                             filename_hint.doi if filename_hint else None,
                         )
                         upload_contexts[pdf_path] = context
-                        rejection = cached_upload_rejection(identity_cache.get(sha256), context)
+                        for sibling in state_paths(pdf_path, sha256):
+                            upload_state.save_identity(sibling, sha256, identity)
+                        previous = upload_state.get(pdf_path, sha256, upload_server)
+                        cached_rejection = cached_upload_rejection(identity_cache.get(sha256), context)
+                        if cached_rejection and previous and previous["status"] == "pending" and not previous["attempts"]:
+                            upload_state.record(pdf_path, sha256, upload_server, "needs-review",
+                                                context=cached_rejection["context"], error=cached_rejection["error"],
+                                                attempted=True)
+                        rejection = upload_state.rejection(pdf_path, sha256, upload_server, context)
                         if rejection and not (refresh_doi or retry_failed or force):
                             review_skipped += 1
                             upload_report.record(pdf_path, "review-skipped", sha256=sha256,
@@ -1464,6 +1505,7 @@ def upload_command(
             record_outcomes(pipeline.drain())
         if identity_cache_pending:
             identity_writer.checkpoint()
+        upload_report.state_files = sorted(upload_state.paths)
 
 
     upload_report.checkpoint(force=True, finished=True)
@@ -1565,6 +1607,8 @@ def doi_command(
             identity = manual_identity(set_doi)
             identities[sha256] = identity
             save_identity_cache(identities)
+            with UploadState() as state:
+                state.save_identity(path, sha256, identity)
             console.print(
                 f"saved: {path} -> {identity['doi']} "
                 f"(source=user, sha256={sha256})"
@@ -1572,14 +1616,17 @@ def doi_command(
             return
         if remove:
             removed = identities.pop(sha256, None)
-            if removed is not None:
+            with UploadState() as state:
+                removed_local = state.remove_identity(path, sha256)
+            if removed is not None or removed_local:
                 save_identity_cache(identities, removed=(sha256,))
                 console.print(f"removed: {path} (sha256={sha256})")
             else:
                 console.print(f"no cached identity: {path} (sha256={sha256})")
             return
 
-        identity = identities.get(sha256)
+        with UploadState() as state:
+            identity = identities.get(sha256) or state.identity(path, sha256)
         if not isinstance(identity, dict):
             console.print(f"no cached identity: {path} (sha256={sha256})")
             return

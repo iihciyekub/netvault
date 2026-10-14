@@ -332,11 +332,10 @@ contains result counts and elapsed time; `--verbose` adds individual errors and
 technical diagnostics.
 
 Recognized server DOI/title rejections are recorded as `needs-review` and remembered
-with SHA-256 and server address in the identity cache. Normal repeated uploads
+with SHA-256 and server address in a `.netvault-upload.sqlite3` ledger beside each PDF. The ledger commits each outcome and remains independent of the global identity cache and per-run report. Normal repeated uploads
 skip them as `review-skipped` without parsing or sending the same PDF. Moving or
 renaming without a new DOI hint preserves this behavior. Changed PDF bytes,
-DOI/index/CSV evidence, filename DOI hints, CLI/resolver version or the server
-version returned by the existing bulk hash query allow another attempt. Server
+DOI/index/CSV evidence, filename DOI hints or resolver rule changes allow another attempt. Ordinary CLI/server release upgrades preserve rejections. Server
 hash matches take precedence. Local missing DOI results still get a server attempt;
 network errors, provider outages and unrelated request validation are not remembered
 as identity rejections.
@@ -348,11 +347,10 @@ nv upload ./papers --verbose
 ```
 
 `--retry-failed` selects failed, pending, `needs-review` and `review-skipped` files
-from the chosen report. Both retry options bypass remembered rejections; explicit
+from directory state, with the chosen report as a fallback for legacy records. Both retry options bypass remembered rejections; explicit
 force uploads also bypass them. Success clears a remembered rejection. Fresh errors
 or rejections exit with status 1; skipping remembered review files alone exits with
-status 0. With older servers that do not report their version, use `--refresh-doi`
-after server verification rules change.
+status 0. Use `--refresh-doi` after server verification rules change. PaperDock uses a private versioned interface to read the same directory state and query server DOI/hash presence; the public CLI command set is unchanged.
 
 ### Download index files
 

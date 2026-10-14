@@ -12,3 +12,6 @@ storage/
 .env
 mynote.md
 nv-upload-report.json
+
+.netvault-upload.sqlite3*
+.netvault-status.json

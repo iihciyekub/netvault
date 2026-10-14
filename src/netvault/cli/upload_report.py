@@ -17,6 +17,7 @@ class UploadReport:
         self.rows = {str(p.resolve()): {"path": str(p.resolve()), "status": "pending"} for p in pdfs}
         self.counts = Counter(pending=len(self.rows))
         self.last_saved = 0.0
+        self.state_files = []
         self.checkpoint(force=True)
 
     def record(self, path: Path, status: str, *, sha256: str | None = None,
@@ -45,6 +46,8 @@ class UploadReport:
                    "summary": summary, "files": list(self.rows.values())}
         if self.warnings:
             payload["warnings"] = self.warnings
+        if self.state_files:
+            payload["state_files"] = self.state_files
         atomic_json(self.path, payload, compact=False)
         self.last_saved = monotonic()
 

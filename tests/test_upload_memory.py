@@ -108,7 +108,7 @@ def test_changed_identity_conditions_and_overrides_allow_retry(setup_upload, mon
     state["error"] = None
     result = run_upload(pdf, *options)
     assert result.exit_code == 0, result.output
-    assert len(state["uploads"]) == 2
+    assert len(state["uploads"]) == (1 if change in {"version", "server-version"} else 2)
 
 
 @pytest.mark.parametrize("error", [ApiError(503, "metadata unavailable"),

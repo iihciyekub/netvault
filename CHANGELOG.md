@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.40 — 2026-10-14
+
+- Persist hashes, identities and upload outcomes in a transactional `.netvault-upload.sqlite3` beside PDFs. Keep rejection state when global caches or per-run reports are removed, and commit each outcome before continuing.
+- Preserve rejected identities across ordinary CLI/server release upgrades. Changes to PDF bytes, DOI evidence or resolver rules and existing explicit retry options still permit another attempt. Select retries from directory state, with legacy report fallback.
+- Add a private, versioned PaperDock integration protocol for batch DOI/hash presence checks, including accepted aliases. Distinguish outages from confirmed absence and keep public nv commands unchanged.
+
 ## 0.7.39 — 2026-10-13
 
 - Look up download DOI file information in batches of 200, prefetch the next batch, and start parallel downloads before the entire DOI list has been queried. Bound the queue to two slots per download worker and retry transient bulk lookup failures.
