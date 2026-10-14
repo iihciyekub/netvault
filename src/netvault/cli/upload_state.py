@@ -191,6 +191,18 @@ class UploadState:
                 json.dumps(pdf, ensure_ascii=False) if pdf else None,
             ))
 
+    def set_papers(self, directory, server, papers):
+        """One transaction per server batch, rather than one fsync per DOI."""
+        connection = self.connection(directory)
+        checked_at = timestamp()
+        with connection:
+            connection.executemany("INSERT OR REPLACE INTO papers VALUES (?, ?, ?, ?, ?)", [
+                (server.rstrip("/"), doi, int(pdf is not None), checked_at,
+                 json.dumps(pdf, ensure_ascii=False) if pdf else None)
+                for doi, pdf in papers.items()
+            ])
+        return checked_at
+
     def papers(self, directory, server, dois):
         connection = self.connection(directory, create=False)
         if connection is None:

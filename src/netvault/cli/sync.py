@@ -82,10 +82,10 @@ def synchronize(paths, pdfs, dois, server, *, api_post, hash_file, offline=False
                         raise ValueError("Server does not support DOI/hash synchronization")
                     existing = response["existing"]
                     existing_doi = response["existing_doi"]
+                    checked_at = state.set_papers(root, server, {doi: existing_doi.get(doi) for doi in batch_dois})
                     for doi in batch_dois:
                         pdf = existing_doi.get(doi)
-                        state.set_paper(root, server, doi, pdf is not None, pdf=pdf)
-                        doi_results[doi] = dict(present=pdf is not None, checked_at=timestamp(), source="server")
+                        doi_results[doi] = dict(present=pdf is not None, checked_at=checked_at, source="server")
                     for sha in batch_hashes:
                         pdf = existing.get(sha)
                         for path, row in hashes[sha]:
@@ -95,7 +95,10 @@ def synchronize(paths, pdfs, dois, server, *, api_post, hash_file, offline=False
                                 row["doi"] = pdf["doi"]
                                 row["status"] = "identity-conflict" if row["identity_conflict"] else "existing"
                                 row["error"] = "Local DOI conflicts with server identity" if row["identity_conflict"] else None
-                                state.record(path, sha, server, "existing", pdf=pdf)
+                                previous = state.get(path, sha, server)
+                                if not (previous and previous['status'] in {'uploaded', 'existing', 'replaced'}
+                                        and previous['pdf'] == pdf and not previous['error']):
+                                    state.record(path, sha, server, "existing", pdf=pdf)
                                 state.set_paper(root, server, pdf["doi"], True, pdf=pdf)
                                 doi_results[pdf["doi"]] = dict(present=True, checked_at=timestamp(), source="server")
                             elif row["status"] in {"uploaded", "existing", "replaced"}:
