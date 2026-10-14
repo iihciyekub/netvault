@@ -1279,3 +1279,53 @@ def test_web_hourly_download_limit_respects_role(client, monkeypatch, role, down
     if role == 'admin' and download_kind == 'zip':
         with zipfile.ZipFile(io.BytesIO(second.content)) as archive:
             assert archive.read('10.1234_web.test.pdf') == PDF_BYTES
+
+
+def test_journal_rank_requires_login_and_returns_normalized_data(client, monkeypatch):
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 401
+    web_login(client)
+    ranks = importlib.import_module('netvault_server.server.easyscholar')
+    calls = []
+    def fake_lookup(name, refresh=False):
+        calls.append((name, refresh))
+        return {'journal_name': name, 'rows': [{'key': 'sci', 'name': 'SCI JCR quartile',
+                'rank': 'Q1', 'source': 'Official datasets', 'selected': True}],
+                'queried_at': 1792000000, 'cached': False}
+    monkeypatch.setattr(ranks, 'lookup', fake_lookup)
+    response = client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'})
+    assert response.status_code == 200
+    assert response.json()['rows'][0]['rank'] == 'Q1'
+    assert calls == [('Nature', True)]
+    assert client.get('/web/journal-rank', params={'name': 'x' * 301}).status_code == 422
+    def fail(*args, **kwargs):
+        raise ValueError('Unable to reach easyScholar. Please try again later.')
+    monkeypatch.setattr(ranks, 'lookup', fail)
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 502
+
+
+def test_easyscholar_official_custom_cache_and_redacted_failure(monkeypatch):
+    ranks = importlib.import_module('netvault_server.server.easyscholar')
+    ranks._cache.clear()
+    payload = {'code': 200, 'data': {'officialRank': {'all': {'sci': 'Q1', 'sciif': '9.5',
+               'unused': None}, 'select': {'sci': 'Q1'}}, 'customRank': {
+               'rankInfo': [{'uuid': 'custom', 'name': 'Example dataset', 'oneRankText': 'A'}],
+               'rank': ['custom&&&1', 'missing&&&2']}}}
+    import contextlib
+    calls = []
+    def open_response(request, timeout):
+        calls.append(request.full_url)
+        return contextlib.closing(io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(ranks, 'urlopen', open_response)
+    result = ranks.lookup(' Nature ')
+    assert result['journal_name'] == 'Nature'
+    assert len(result['rows']) == 3
+    assert result['rows'][-1]['rank'] == 'A'
+    assert ranks.lookup('nature')['cached'] is True
+    assert len(calls) == 1
+    ranks.lookup('Nature', refresh=True)
+    assert len(calls) == 2
+    payload['code'] = 400
+    payload['message'] = ranks.BUNDLED_API_KEY
+    with pytest.raises(ValueError) as error:
+        ranks.lookup('Nature', refresh=True)
+    assert ranks.BUNDLED_API_KEY not in str(error.value)

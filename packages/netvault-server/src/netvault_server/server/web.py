@@ -296,6 +296,19 @@ def logout_submit(
     return response
 
 
+@router.get("/web/journal-rank")
+def journal_rank(request: Request, name: str = Query(min_length=1, max_length=300),
+                 refresh: bool = False, db: Session = Depends(get_db)) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    from netvault_server.server.easyscholar import lookup
+    try:
+        return lookup(name, refresh=refresh)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
 @router.get("/web/dashboard-revision", include_in_schema=False)
 def dashboard_revision(request: Request, db: Session = Depends(get_db)) -> Any:
     user = require_web_user(request, db)

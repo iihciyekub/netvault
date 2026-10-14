@@ -557,7 +557,7 @@
     label.dataset.journalRow = String(row.id);
     label.dataset.journalName = row.label;
     label.dataset.journalTotal = String(row.total);
-    label.dataset.tip = row.label;
+    label.setAttribute("role", "button");
     const name = document.createElement("span");
     name.className = "heat-journal-name";
     name.textContent = row.label;
@@ -683,7 +683,27 @@
     const noMatches = qs("[data-journal-no-matches]", panel);
     if (noMatches) noMatches.hidden = shown.length !== 0;
     const scroll = heatmap.closest(".heatmap-scroll");
-    if (scroll) scroll.hidden = shown.length === 0;
+    if (scroll) {
+      scroll.hidden = shown.length === 0;
+      if (!scroll.dataset.yearScrollReady) {
+        scroll.dataset.yearScrollReady = "true";
+        const alignLatest = () => { scroll.scrollLeft = 0; };
+        requestAnimationFrame(alignLatest);
+        const observer = new ResizeObserver(() => {
+          const style = getComputedStyle(heatmap);
+          const nameWidth = qs(".heat-corner", heatmap)?.getBoundingClientRect().width || 0;
+          const yearWidth = parseFloat(style.getPropertyValue("--cell-column"));
+          const gap = parseFloat(style.columnGap);
+          const preferredWidth = Math.max(1120, nameWidth + years.length * (yearWidth + gap) + 74);
+          heatmap.closest(".page").style.setProperty("--dashboard-content-width", `${preferredWidth}px`);
+          if (scroll.dataset.latestVisible !== "false") alignLatest();
+        });
+        observer.observe(scroll);
+        scroll.addEventListener("scroll", () => {
+          scroll.dataset.latestVisible = String(scroll.scrollLeft < 4);
+        }, {passive: true});
+      }
+    }
   };
 
   const goToJournalPage = (panel, requestedPage) => {
@@ -727,6 +747,8 @@
     const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
     link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
     journalMenuTarget = target;
+    menu.dataset.journalName = name;
+    qs("[data-journal-copy]", menu).setAttribute("data-copy", name);
     menu.hidden = false;
     const rect = target.getBoundingClientRect();
     const keyboard = event.type === "keydown" || (!event.clientX && !event.clientY);
@@ -734,8 +756,118 @@
     const y = keyboard ? rect.bottom : event.clientY;
     menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8))}px`;
-    link.focus({ preventScroll: true });
+    menu.dataset.anchorX = String(x);
+    menu.dataset.anchorY = String(y);
+    qs("[data-journal-copy]", menu).focus({ preventScroll: true });
   };
+
+  let rankSequence = 0;
+  let rankResult = null;
+  let rankDrag = null;
+  const clampRankPanel = (panel, x, y) => {
+    panel.style.left = `${Math.max(8, Math.min(x, innerWidth - panel.offsetWidth - 8))}px`;
+    panel.style.top = `${Math.max(8, Math.min(y, innerHeight - panel.offsetHeight - 8))}px`;
+  };
+  const renderRanks = () => {
+    const panel = qs("[data-rank-panel]");
+    if (!panel || !rankResult) return;
+    const rows = rankResult.rows.filter(row => !qs("[data-rank-selected]", panel).checked || row.selected);
+    const body = qs("[data-rank-rows]", panel);
+    body.replaceChildren();
+    let group = "";
+    for (const row of rows) {
+      if (group !== row.source) {
+        group = row.source;
+        const tr = document.createElement("tr"), th = document.createElement("th");
+        tr.className = "rank-group"; th.colSpan = 2; th.textContent = group;
+        tr.append(th); body.append(tr);
+      }
+      const tr = document.createElement("tr"), th = document.createElement("th"), td = document.createElement("td");
+      th.scope = "row"; th.textContent = row.name; td.textContent = row.rank;
+      tr.append(th, td); body.append(tr);
+    }
+    qs("[data-rank-table]", panel).hidden = !rows.length;
+    qs("[data-rank-status]", panel).textContent = rows.length
+      ? `${rows.length} rankings · ${new Date(rankResult.queried_at * 1000).toLocaleString("en-US")}${rankResult.cached ? " · Cached" : ""}`
+      : "No rankings available for this journal in these datasets.";
+    clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));
+  };
+  const loadRanks = async (refresh = false) => {
+    const panel = qs("[data-rank-panel]");
+    if (!panel?.dataset.journalName) return;
+    const sequence = ++rankSequence;
+    rankResult = null;
+    qs("[data-rank-table]", panel).hidden = true;
+    qs("[data-rank-status]", panel).textContent = "Looking up easyScholar…";
+    panel.setAttribute("aria-busy", "true");
+    qs("[data-rank-refresh]", panel).disabled = true;
+    try {
+      const url = new URL(panel.dataset.rankUrl, location.origin);
+      url.search = new URLSearchParams({name: panel.dataset.journalName, refresh: String(refresh)});
+      const response = await fetch(url, {credentials: "same-origin", cache: "no-store"});
+      if (!response.headers.get("content-type")?.includes("application/json")) throw Error("Please sign in again.");
+      const data = await response.json();
+      if (!response.ok) throw Error(typeof data.detail === "string" ? data.detail : "Unable to look up this journal.");
+      if (sequence !== rankSequence || !panel.isConnected) return;
+      rankResult = data; renderRanks();
+    } catch (error) {
+      if (sequence === rankSequence && panel.isConnected) qs("[data-rank-status]", panel).textContent = error.message;
+    } finally {
+      if (sequence === rankSequence) {
+        panel.removeAttribute("aria-busy"); qs("[data-rank-refresh]", panel).disabled = false;
+      }
+    }
+  };
+  const openRankPanel = () => {
+    const menu = qs("[data-journal-context-menu]"), panel = qs("[data-rank-panel]");
+    if (!menu || !panel) return;
+    panel.dataset.journalName = menu.dataset.journalName;
+    panel.dataset.rankUrl = menu.dataset.rankUrl;
+    qs("[data-rank-title]", panel).textContent = menu.dataset.journalName;
+    qs("[data-rank-table]", panel).hidden = true;
+    panel.hidden = false;
+    const top = Math.max(8, Math.min(Number(menu.dataset.anchorY) + 12, innerHeight - 248));
+    panel.style.maxHeight = `${Math.min(560, innerHeight - top - 8)}px`;
+    clampRankPanel(panel, Number(menu.dataset.anchorX) + 12, top);
+    closeJournalMenu();
+    qs("[data-rank-close]", panel).focus({preventScroll: true});
+    loadRanks();
+  };
+  document.addEventListener("click", event => {
+    if (event.target.closest("[data-rank-close]")) { qs("[data-rank-panel]").hidden = true; rankSequence++; }
+    if (event.target.closest("[data-rank-refresh]")) loadRanks(true);
+  });
+  document.addEventListener("change", event => {
+    if (event.target.matches("[data-rank-selected]")) renderRanks();
+  });
+  document.addEventListener("pointerdown", event => {
+    const header = event.target.closest("[data-rank-drag]");
+    if (!header || event.target.closest("button") || event.button !== 0) return;
+    const panel = header.closest("[data-rank-panel]"), rect = panel.getBoundingClientRect();
+    rankDrag = {panel, x: event.clientX - rect.left, y: event.clientY - rect.top};
+    header.setPointerCapture(event.pointerId); event.preventDefault();
+  });
+  document.addEventListener("pointermove", event => {
+    if (rankDrag) clampRankPanel(rankDrag.panel, event.clientX - rankDrag.x, event.clientY - rankDrag.y);
+  });
+  document.addEventListener("pointerup", () => { rankDrag = null; });
+  document.addEventListener("pointercancel", () => { rankDrag = null; });
+  window.addEventListener("resize", () => {
+    const panel = qs("[data-rank-panel]");
+    if (panel && !panel.hidden) clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      const panel = qs("[data-rank-panel]");
+      if (panel) { panel.hidden = true; rankSequence++; }
+    }
+    const menu = event.target.closest("[data-journal-context-menu]");
+    if (menu && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      const items = qsa("[role=menuitem]", menu), index = items.indexOf(document.activeElement);
+      items[(index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
+    }
+  });
 
   const journalLimitValue = (input) => {
     const value = Number(input.value);
@@ -1333,6 +1465,9 @@
       return;
     }
 
+    const journal = event.target.closest(".heat-journal[data-journal-name]");
+    if (journal) { event.preventDefault(); openJournalMenu(journal, event); return; }
+    if (event.target.closest("[data-journal-rank]")) { openRankPanel(); return; }
     const link = event.target.closest("a[href]");
     if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (link.target || link.hasAttribute("download") || link.hasAttribute("data-no-pjax")) return;
@@ -1394,6 +1529,9 @@
   });
 
   document.addEventListener("pointerover", (event) => {
+    const journal = event.target.closest(".heat-journal[data-journal-name]");
+    if (journal) { event.preventDefault(); openJournalMenu(journal, event); return; }
+    if (event.target.closest("[data-journal-rank]")) { openRankPanel(); return; }
     const link = event.target.closest("a[href]");
     if (!link || link.target || link.hasAttribute("download") || link.hasAttribute("data-no-pjax")) return;
     if (!link.closest(".topbar, .app-sidebar, .filter-tabs")) return;
@@ -1477,7 +1615,7 @@
       return;
     }
     if (event.key === "Escape") closeJournalMenu(true);
-    if ((event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+    if ((["Enter", " ", "ContextMenu"].includes(event.key) || (event.shiftKey && event.key === "F10"))
         && event.target.closest(".heat-journal[data-journal-name]")) {
       event.preventDefault();
       openJournalMenu(event.target.closest(".heat-journal[data-journal-name]"), event);

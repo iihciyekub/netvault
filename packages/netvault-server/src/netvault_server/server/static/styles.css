@@ -2466,3 +2466,40 @@ body.with-sidebar {
 @media (max-width: 760px) {
   .heatmap-pagination { justify-content: center; }
 }
+
+/* Compact content can grow to the available viewport width. */
+.dashboard-body { --page-width: 100%; }
+.dashboard-body .page { width: min(var(--dashboard-content-width, 1120px), calc(100vw - var(--sidebar-width, 0px) - var(--page-gutter))); max-width: calc(100vw - var(--sidebar-width, 0px) - var(--page-gutter)); }
+.dashboard-body.with-sidebar .page { width: min(var(--dashboard-content-width, 1120px), calc(100vw - var(--sidebar-width) - var(--page-gutter))); }
+.dashboard-toolbar, .heatmap-filter-bar { flex-wrap: wrap; }
+.heatmap-scroll { width: 100%; }
+.journal-heatmap {
+  --journal-width: clamp(150px, 32vw, 540px);
+  grid-template-columns: var(--journal-width) repeat(var(--year-count), var(--cell-column)) 54px;
+  grid-auto-rows: minmax(var(--heat-row-height), auto);
+}
+.heat-journal { height: auto; min-height: var(--heat-row-height); align-self: stretch; white-space: normal; overflow: visible; cursor: pointer; }
+.heat-journal-name { white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
+.journal-context-menu button { display: flex; width: 100%; border: 0; background: transparent; padding: 9px 12px; border-radius: 6px; text-align: left; font-size: 13px; font-weight: 400; }
+.journal-context-menu button:hover, .journal-context-menu button:focus-visible { background: var(--soft); }
+.journal-context-menu a { font-weight: 400; }
+.journal-rank-panel { position: fixed; z-index: 110; display: flex; flex-direction: column; width: min(460px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgb(0 0 0 / 14%); overflow: hidden; }
+.journal-rank-panel[hidden] { display: none; }
+.journal-rank-panel header { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--line); cursor: move; touch-action: none; }
+.journal-rank-panel h2 { margin: 0; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.journal-rank-panel .eyebrow { font-size: 10px; margin-bottom: 5px; }
+.journal-rank-panel button { flex-shrink: 0; }
+.rank-tools { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px 0; font-size: 12px; }
+.rank-tools label { display: flex; align-items: center; gap: 6px; }
+.rank-tools input { width: auto; }
+.journal-rank-panel [data-rank-status] { margin: 10px 16px; font-size: 12px; color: var(--muted); }
+.rank-table-scroll { min-height: 0; overflow: auto; padding: 0 8px; }
+.journal-rank-panel th { text-transform: none; }
+.journal-rank-panel td { overflow-wrap: anywhere; }
+.rank-group th { background: var(--soft); }
+.journal-rank-panel footer { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+@media (max-width: 760px) {
+  .dashboard-body.with-sidebar .page { height: 100dvh; min-height: 0; }
+  .heatmap-filter-bar { overflow: visible; }
+  .journal-heatmap { --journal-width: clamp(130px, 42vw, 260px); }
+}

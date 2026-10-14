@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.46 — 2026-10-15
+
+- Allow the dashboard to use available width as needed, with complete wrapping journal names and horizontally scrolling years that keep recent years visible.
+- Add copy, Web of Science, and easyScholar ranking actions to journal names, with a draggable fixed ranking panel.
+- Bundle the easyScholar server-side key and normalize official and custom rankings using the PaperDock approach, with a 24-hour cache.
+
 ## 0.7.45 — 2026-10-14
 
 - Match the complete input DOI list against server SQL in batches before downloads start. Exclude unavailable DOI values and verified local files from the download progress total; count missing DOI values quietly instead of treating them as failures.
