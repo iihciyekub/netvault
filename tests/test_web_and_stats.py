@@ -1243,3 +1243,39 @@ def test_root_package_is_cli_only() -> None:
     assert "sqlalchemy" not in dependencies
     assert "psycopg" not in dependencies
     assert "netvault-admin" not in scripts
+
+
+@pytest.mark.parametrize('role', ['admin', 'user'])
+@pytest.mark.parametrize('download_kind', ['single', 'zip'])
+def test_web_hourly_download_limit_respects_role(client, monkeypatch, role, download_kind):
+    admin_headers = login_headers(client)
+    uploaded = client.post('/pdfs/upload', headers=admin_headers,
+                           files={'file': ('web.pdf', PDF_BYTES, 'application/pdf')})
+    assert uploaded.status_code == 200
+    pdf_id = uploaded.json()['pdf']['id']
+    username, password = 'admin', 'admin-pass'
+    if role == 'user':
+        username, password = 'web-reader', 'reader-pass'
+        assert client.post('/admin/users', headers=admin_headers, json={
+            'username': username, 'password': password, 'role': 'user',
+        }).status_code == 200
+    login_page = client.get('/web/login')
+    logged_in = client.post('/web/login', data={
+        'username': username, 'password': password,
+        'csrf_token': login_page.cookies['netvault_csrf'],
+    })
+    assert logged_in.status_code == 200
+    web = importlib.import_module('netvault_server.server.web')
+    monkeypatch.setattr(web.get_settings(), 'download_rate_per_hour', 1)
+    def download():
+        if download_kind == 'single':
+            return client.get('/web/pdfs/download', params={'pdf_id': pdf_id})
+        return client.post('/web/pdfs/download-all', data={
+            'pdf_ids': [str(pdf_id)], 'csrf_token': client.cookies['netvault_csrf'],
+        })
+    assert download().status_code == 200
+    second = download()
+    assert second.status_code == (200 if role == 'admin' else 429)
+    if role == 'admin' and download_kind == 'zip':
+        with zipfile.ZipFile(io.BytesIO(second.content)) as archive:
+            assert archive.read('10.1234_web.test.pdf') == PDF_BYTES

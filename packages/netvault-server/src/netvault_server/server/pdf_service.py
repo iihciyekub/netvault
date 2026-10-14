@@ -16,7 +16,7 @@ from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.main_helpers import pdf_to_read
 from netvault_server.server.journal_filters import normalize_journal_name
 from netvault_server.server.journal_identity import journal_display_name
-from netvault_server.server.models import Pdf, PdfDoiCorrection, PdfFileAlias, User
+from netvault_server.server.models import Pdf, PdfDoiCorrection, PdfFileAlias, User, UserRole
 from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.schemas import PdfDoiCorrectionRead, Sha256ExistsResponse
 from netvault_server.server.security import activity_is_allowed
@@ -150,7 +150,9 @@ def resolve_pdf_file(db: Session, *, doi: str | None = None, pdf_id: int | None 
 
 def send_pdf_file(pdf: Pdf, user: User, db: Session, *, preview: bool = False) -> FileResponse:
     action = "preview" if preview else "download"
-    if not activity_is_allowed(f"{action}:{user.id}", get_settings().download_rate_per_hour):
+    if (preview or user.role != UserRole.admin) and not activity_is_allowed(
+        f"{action}:{user.id}", get_settings().download_rate_per_hour
+    ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"{action.capitalize()} rate limit exceeded",

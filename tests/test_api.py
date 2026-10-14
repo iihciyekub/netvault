@@ -1443,3 +1443,33 @@ def test_layout_recovery_cannot_match_title_in_article_body(client, monkeypatch)
     monkeypatch.setattr(helpers, 'search_crossref_metadata', lambda title: [])
     response = upload(client, login(client, 'admin', 'admin-pass'), content=article_identity_pdf(marker=title))
     assert response.status_code == 422, response.text
+
+
+@pytest.mark.parametrize('role', ['admin', 'user'])
+def test_download_hourly_limit_applies_only_to_regular_users(client, monkeypatch, role):
+    admin_headers = login(client, 'admin', 'admin-pass')
+    uploaded = upload(client, admin_headers)
+    assert uploaded.status_code == 200
+    pdf = uploaded.json()['pdf']
+    if role == 'admin':
+        headers = admin_headers
+    else:
+        assert client.post('/admin/users', headers=admin_headers, json={
+            'username': 'limited-reader', 'password': 'reader-pass', 'role': 'user',
+        }).status_code == 200
+        headers = login(client, 'limited-reader', 'reader-pass')
+    service = importlib.import_module('netvault_server.server.pdf_service')
+    security = importlib.import_module('netvault_server.server.security')
+    monkeypatch.setattr(service.get_settings(), 'download_rate_per_hour', 1)
+    # ID, DOI and Range deliveries share the same authenticated role policy.
+    responses = [
+        client.get('/pdfs/by-doi/download', params={'doi': DOI}, headers=headers),
+        client.get(f'/pdfs/{pdf["id"]}/download', headers=headers),
+        client.get('/pdfs/by-doi/download', params={'doi': DOI},
+                   headers={**headers, 'Range': 'bytes=0-9'}),
+    ]
+    assert [r.status_code for r in responses] == ([200, 200, 206] if role == 'admin' else [200, 429, 429])
+    if role == 'admin':
+        assert not any(key.startswith('download:') for key in security._activity_events)
+    else:
+        assert responses[1].json()['detail'] == 'Download rate limit exceeded'

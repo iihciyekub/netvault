@@ -486,17 +486,19 @@ nv status
 nv logout
 ```
 
-`nv download --file` extracts DOI values from any text file using the same DOI
-regex as upload metadata parsing. Downloads look up DOI file information in batches
-of 200, prefetch the next batch, and start downloading before the full list is
-looked up. Downloads use 8 parallel workers by default with a bounded queue and
-automatically resume incomplete `.part` files. SHA-256 is computed while writing
-and checked against the server digest before the file is finalized; existing
-matching files are skipped. The single-line progress bar shows processed PDFs
-and the number of DOIs looked up. If interrupted or disconnected, run the same
-command with the same `--to` directory: completed matching files are skipped
-and partial files resume from their saved byte offset. Ctrl+C cancels queued
-downloads and preserves partial files.
+`nv download --file` extracts and deduplicates DOI values from any text file.
+It first matches the input against server SQL in batches of 200, then excludes
+unavailable DOI values and local files that already match the expected size and
+SHA-256. The download progress total contains only files that still need to be
+saved. Unavailable DOI values are counted in the summary without per-DOI errors.
+Downloads use 8 parallel workers by default with a bounded queue and automatically
+resume incomplete `.part` files. SHA-256 is verified while writing before the file
+is finalized. Ctrl+C keeps partial files; run the same command with the same
+`--to` directory to continue. Admin downloads have no hourly count limit; regular
+users retain the configured hourly limit (1200 by default). When a limit is reached,
+queued downloads stop and partial files are kept for a later run. Real failures
+and pending DOI values are saved to `nv-download-report.json` in the destination;
+the terminal shows only a brief summary.
 
 Web uploads send each PDF in its own request with at most two concurrent files,
 so one failure can be retried without repeating the whole batch. Files larger

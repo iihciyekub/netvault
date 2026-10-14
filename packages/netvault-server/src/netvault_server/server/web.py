@@ -902,7 +902,7 @@ def web_pdf_download_all(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Select at most {settings.max_zip_files} PDFs",
         )
-    if not activity_is_allowed(
+    if user.role != UserRole.admin and not activity_is_allowed(
         f"download:{user.id}", settings.download_rate_per_hour, amount=len(ids)
     ):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Download rate limit exceeded")

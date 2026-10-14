@@ -29,7 +29,8 @@ def http_session() -> requests.Session:
             connect=3,
             read=2,
             backoff_factor=0.4,
-            status_forcelist=(429, 502, 503, 504),
+            status_forcelist=(502, 503, 504),
+            raise_on_status=False,
             allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
             respect_retry_after_header=True,
         )
