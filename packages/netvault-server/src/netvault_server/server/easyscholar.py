@@ -8,9 +8,84 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 BUNDLED_API_KEY = "efb681cf46f2432da30431e8eaaf4beb"
-DATASET_NAMES = {'sciUp': 'CAS upgraded division', 'sciUpSmall': 'CAS subject division', 'sciUpTop': 'CAS Top', 'sciBase': 'CAS basic division', 'sciwarn': 'CAS warning list', 'sciif': 'JCR impact factor', 'sciif5': 'JCR five-year impact factor', 'sci': 'SCI JCR quartile', 'ssci': 'SSCI JCR quartile', 'jci': 'JCR JCI', 'ajg': 'Academic Journal Guide (ABS)', 'utd24': 'UTD24', 'ft50': 'FT50', 'fms': 'FMS', 'ccf': 'China Computer Federation', 'eii': 'EI', 'pku': 'Peking University Core', 'cssci': 'CSSCI', 'cscd': 'CSCD', 'ahci': 'A&HCI', 'esi': 'ESI', 'swufe': 'Southwestern University of Finance and Economics', 'cqu': 'Chongqing University', 'cufe': 'Central University of Finance and Economics', 'nju': 'Nanjing University', 'uibe': 'University of International Business and Economics', 'xju': 'Xinjiang University', 'sdufe': 'Shandong University of Finance and Economics', 'cug': 'China University of Geosciences', 'xdu': 'Xidian University', 'swjtu': 'Southwest Jiaotong University', 'cju': 'Yangtze University', 'ruc': 'Renmin University of China', 'zju': 'Zhejiang University', 'xmu': 'Xiamen University', 'zhongguokejihexin': 'Chinese Science and Technology Core Journals', 'sjtu': 'Shanghai Jiao Tong University', 'fdu': 'Fudan University', 'hhu': 'Hohai University', 'scu': 'Sichuan University', 'cpu': 'China Pharmaceutical University', 'xr': 'Xinrui Academic', 'xrWarn': 'Xinrui warning list', 'xrTop': 'Xinrui Top', 'xrSmall': 'Xinrui subject division'}
-PRIORITY = ('sciUp', 'sciUpSmall', 'sciUpTop', 'sciBase', 'sciwarn', 'sciif',
-            'sciif5', 'sci', 'ssci', 'jci', 'ajg', 'utd24', 'ft50', 'fms')
+# easyScholar dataset abbreviations from its published appendix.  These labels
+# identify the source/dataset only; rank values are preserved without inference.
+DATASET_NAMES = {
+    "swufe": "西南财经大学",
+    "cufe": "中央财经大学",
+    "uibe": "对外经济贸易大学",
+    "sdufe": "山东财经大学",
+    "xdu": "西安电子科技大学",
+    "swjtu": "西南交通大学",
+    "ruc": "中国人民大学",
+    "xmu": "厦门大学",
+    "sjtu": "上海交通大学",
+    "fdu": "复旦大学",
+    "hhu": "河海大学",
+    "pku": "北大核心",
+    "scu": "四川大学",
+    "sciUpTop": "中科院升级版Top分区",
+    "xrWarn": "新锐学术预警",
+    "cqu": "重庆大学",
+    "nju": "南京大学",
+    "xju": "新疆大学",
+    "cug": "中国地质大学",
+    "ccf": "中国计算机学会",
+    "cju": "长江大学（不是计量大学）",
+    "zju": "浙江大学",
+    "zhongguokejihexin": "中国科技核心期刊",
+    "fms": "FMS",
+    "utd24": "UTD24",
+    "eii": "EI检索",
+    "cssci": "南大核心",
+    "sciUpSmall": "中科院升级版小类分区",
+    "cpu": "中国药科大学",
+    "xrTop": "新锐学术Top分区",
+    "sciif": "SCI影响因子-JCR",
+    "sci": "SCI分区-JCR",
+    "ssci": "SSCI分区-JCR",
+    "jci": "JCI指数-JCR",
+    "sciif5": "SCI五年影响因子-JCR",
+    "sciwarn": "中科院预警",
+    "sciBase": "SCI基础版分区-中科院",
+    "sciUp": "SCI升级版分区-中科院",
+    "ajg": "ABS学术期刊指南",
+    "ft50": "FT50",
+    "cscd": "中国科学引文数据库",
+    "ahci": "A&HCI",
+    "esi": "ESI学科分类",
+    "xr": "新锐学术",
+    "xrSmall": "新锐学术小类分区",
+}
+# Ranked categories across both official and custom results.  Their order is
+# intentional: international/core indexes, CAS, JCR, Xinrui, other institutions.
+DATASET_GROUPS = (
+    ("期刊榜单与核心目录", (
+        "utd24", "ft50", "ajg", "cssci", "pku", "fms",
+        "zhongguokejihexin", "cscd", "ccf", "eii", "ahci", "esi")),
+    ("中科院分区", ("sciUp", "sciUpTop", "sciUpSmall", "sciBase", "sciwarn")),
+    ("JCR指标与分区", ("sci", "ssci", "sciif", "sciif5", "jci")),
+    ("新锐学术", ("xr", "xrTop", "xrSmall", "xrWarn")),
+    ("其他高校与机构", ()),
+)
+DATASET_LABELS_BY_KEY = {key.casefold(): value for key, value in DATASET_NAMES.items()}
+DATASET_ORDER = {
+    code.casefold(): (group_index, dataset_index)
+    for group_index, (_, group) in enumerate(DATASET_GROUPS)
+    for dataset_index, code in enumerate(group)
+}
+
+
+def dataset_label(code: str, fallback: str = "") -> str:
+    return DATASET_LABELS_BY_KEY.get(str(code).casefold(), fallback or str(code))
+
+
+def rank_order(row: dict) -> tuple:
+    code = str(row.get("abbreviation") or row["key"]).casefold()
+    group, index = DATASET_ORDER.get(code, (len(DATASET_GROUPS) - 1, 1000))
+    return group, index, row["name"].casefold()
+
+
 RANK_FIELDS = ('oneRankText', 'twoRankText', 'threeRankText', 'fourRankText', 'fiveRankText')
 
 
@@ -30,9 +105,8 @@ def rank_rows(data):
     for key, value in all_ranks.items():
         if value is None or value == '' or value == [] or value == {}:
             continue
-        rows.append(dict(key=key, name=DATASET_NAMES.get(key, key), rank=rank_text(value),
+        rows.append(dict(key=key, name=dataset_label(key), rank=rank_text(value),
                          source='Official datasets', selected=key in selected))
-    rows.sort(key=lambda row: (PRIORITY.index(row['key']) if row['key'] in PRIORITY else len(PRIORITY), row['name']))
     custom = data.get('customRank') or {}
     infos = custom.get('rankInfo') or []
     if isinstance(infos, dict):
@@ -48,14 +122,15 @@ def rank_rows(data):
         info = datasets[identifier]
         abbreviation = str(info.get('abbName') or '').strip()
         name = info.get('name') or info.get('fullName') or info.get('rankName')
-        if not name:
-            name = DATASET_NAMES.get(abbreviation, DATASET_NAMES.get(abbreviation.lower(), abbreviation))
-            if abbreviation.upper() == 'DUFE':
-                name = 'Dongbei University of Finance and Economics'
+        # Prefer the appendix's official Chinese expansion when abbName is known,
+        # even if the optional custom dataset metadata supplies an English name.
+        if not name and abbreviation.upper() == 'DUFE':
+            name = 'Dongbei University of Finance and Economics'
+        name = dataset_label(abbreviation, str(name or abbreviation or 'Custom datasets'))
         label = info.get(RANK_FIELDS[int(rank) - 1]) or rank
-        rows.append(dict(key=identifier, name=str(name or 'Custom datasets'), rank=rank_text(label),
+        rows.append(dict(key=identifier, name=name, rank=rank_text(label),
                          source='Custom datasets', selected=True, abbreviation=abbreviation))
-    return rows
+    return sorted(rows, key=rank_order)
 
 
 _cache = {}

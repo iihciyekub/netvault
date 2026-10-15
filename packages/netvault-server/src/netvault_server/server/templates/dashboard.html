@@ -59,14 +59,20 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="filter_key" value="">
     <div class="journal-list-dialog-head">
-      <div>
-        <p class="eyebrow">Editable journal filter</p>
-        <h2 id="journal-list-dialog-title" data-journal-list-title>Journal list</h2>
+      <h2 id="journal-list-dialog-title" data-journal-list-title>Journal list</h2>
+      <div class="journal-list-head-actions">
+        <div class="journal-list-help-wrap">
+          <button type="button" class="journal-list-help-trigger" aria-label="Journal list help" aria-describedby="journal-list-help-tooltip"><i class="fa-solid fa-circle-question" aria-hidden="true"></i></button>
+          <div id="journal-list-help-tooltip" class="journal-list-help-tooltip" role="tooltip">
+            <strong>Journal list help</strong>
+            <p>Enter one journal per line. Names become uppercase and sort A–Z after editing.</p>
+            <p>Matching ignores case, punctuation, “The”, and “&amp;” versus “and”.</p>
+            <p>Changes are private to your account and sync across devices. Saving a default list creates an editable copy; an empty list matches no journals.</p>
+          </div>
+        </div>
+        <button type="button" class="dialog-close" data-journal-list-close aria-label="Close journal list editor"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
       </div>
-      <button type="button" class="dialog-close" data-journal-list-close aria-label="Close journal list editor"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </div>
-    <p class="journal-list-account-note"><i class="fa-solid fa-cloud" aria-hidden="true"></i><span>Saved to your account and available on every device where you sign in.</span></p>
-    <p class="journal-list-help">Enter one journal per line. Matching ignores capitalization, punctuation, “The”, and “&amp;” versus “and”.</p>
     <label class="journal-list-field" data-custom-list-name-field hidden>
       <span>List name</span>
       <input name="list_name" type="text" maxlength="60" autocomplete="off" data-custom-list-name>
@@ -78,18 +84,21 @@
         <input
           id="journal-list-picker-input"
           type="text"
-          list="journal-list-options"
           placeholder="Choose a journal name..."
           autocomplete="off"
           spellcheck="false"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="journal-list-suggestions"
+          aria-expanded="false"
           data-journal-list-picker-input
         >
         <button type="button" data-journal-list-add>Add</button>
+        <div id="journal-list-suggestions" class="journal-list-suggestions" data-journal-list-suggestions role="listbox" aria-label="Suggested journals" hidden></div>
       </div>
       <datalist id="journal-list-options">
         {% for journal in journal_options %}<option value="{{ journal }}"></option>{% endfor %}
       </datalist>
-      <p>Select a journal to append it below. Save the list when you are finished.</p>
     </div>
     <label class="journal-list-field">
       <span>Journal names</span>
@@ -133,6 +142,34 @@
         <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite">{{ journal_year.rows|length }} journal{% if journal_year.rows|length != 1 %}s{% endif %}</output>
         <span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs|number }}</span>
       </div>
+      <select id="journal-heatmap-sort" data-journal-sort aria-label="Sort journals" hidden>
+        <option value="name-asc">Journal A–Z</option>
+        <option value="name-desc">Journal Z–A</option>
+        <option value="total-desc" selected>Total: High to Low</option>
+        <option value="total-asc">Total: Low to High</option>
+      </select>
+    </div>
+    <script type="application/json" data-journal-heatmap-data>{{ heatmap_rows|tojson }}</script>
+    <div class="heatmap-scroll">
+      <div class="heatmap-years-viewport" data-heatmap-years-viewport tabindex="0" role="region" aria-label="Year grid, horizontally and vertically scrollable">
+        <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
+          {% for year in journal_year.years|reverse %}
+            <div class="heat-year"><span>{{ year }}</span></div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="heatmap-fixed-viewport" data-heatmap-fixed-viewport>
+        <div class="heatmap-fixed-heading">
+          <button type="button" class="heat-total-head" data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>
+          <button type="button" class="heat-corner" data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name">Journal</button>
+        </div>
+        <div class="heatmap-fixed-body-viewport">
+          <div class="heatmap-fixed-body" data-heatmap-fixed-body></div>
+        </div>
+      </div>
+    </div>
+    <nav class="heatmap-pagination" data-journal-pagination aria-label="Journal pages">
+      <div class="heatmap-pager-settings">
       <div class="heatmap-legend" aria-label="Heatmap legend">
         <span>Less</span>
         <span class="heat-cell level-0"></span>
@@ -152,29 +189,8 @@
         </label>
         <output id="journal-limit-status" class="heatmap-limit-status" data-journal-limit-status aria-live="polite"></output>
       </form>
-      <label class="heatmap-sort-field" for="journal-heatmap-sort" title="Sort journals">
-        <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
-        <span class="sr-only">Sort journals</span>
-        <select id="journal-heatmap-sort" data-journal-sort aria-controls="journal-year-heatmap">
-          <option value="name-asc">Journal A–Z</option>
-          <option value="name-desc">Journal Z–A</option>
-          <option value="total-desc" selected>Total: High to Low</option>
-          <option value="total-asc">Total: Low to High</option>
-        </select>
-      </label>
-    </div>
-    <script type="application/json" data-journal-heatmap-data>{{ heatmap_rows|tojson }}</script>
-    <div class="heatmap-scroll">
-      <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
-        <div class="heat-corner"></div>
-        {% for year in journal_year.years %}
-          <div class="heat-year"><span>{{ year }}</span></div>
-        {% endfor %}
-        <div class="heat-total-head">Total</div>
-
       </div>
-    </div>
-    <nav class="heatmap-pagination" data-journal-pagination aria-label="Journal pages">
+      <div class="heatmap-pager-navigation">
       <span class="heatmap-page-range" data-journal-page-range aria-live="polite"></span>
       <div class="heatmap-page-controls">
         <button type="button" class="ghost" data-journal-page-prev aria-label="Previous journal page" title="Previous page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
@@ -183,6 +199,7 @@
         <span data-journal-page-total>of 1</span>
         <button type="button" class="ghost" data-journal-page-next aria-label="Next journal page" title="Next page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
       </div>
+      </div>
     </nav>
     <div class="empty-state heatmap-no-matches" data-journal-no-matches hidden>No journals match the current filters.</div>
     {% else %}
@@ -190,14 +207,20 @@
     {% endif %}
 </section>
 <div class="journal-context-menu" data-journal-context-menu data-rank-url="{{ path_for('/web/journal-rank') }}" role="menu" aria-label="Journal actions" hidden>
-  <button type="button" role="menuitem" data-journal-copy>Copy journal name</button>
+  <button type="button" role="menuitem" data-journal-copy><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy journal name</span></button>
   <a href="https://www.webofscience.com/" data-journal-wos-link role="menuitem" target="_blank" rel="noopener noreferrer" data-no-pjax><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>Open in Web of Science</span></a>
-  <button type="button" role="menuitem" data-journal-rank>Look up journal rankings</button>
+  <button type="button" role="menuitem" data-journal-rank><i class="fa-solid fa-ranking-star" aria-hidden="true"></i><span>Journal rankings</span></button>
 </div>
-<section class="journal-rank-panel" data-rank-panel role="dialog" aria-labelledby="rank-title" hidden>
-  <header data-rank-drag><h2 id="rank-title" data-rank-title></h2><button type="button" class="ghost" data-rank-close aria-label="Close journal rankings">×</button></header>
-  <div class="rank-tools"><label><input type="checkbox" data-rank-selected> Selected datasets only</label><button type="button" class="ghost" data-rank-refresh>Refresh</button></div>
+<section class="journal-rank-panel" data-rank-panel role="dialog" aria-labelledby="rank-title" aria-label="Journal rankings" hidden>
+  <header data-rank-drag>
+    <h2 id="rank-title" data-rank-title></h2>
+    <div class="rank-header-actions">
+      <button type="button" data-rank-selected aria-pressed="false" aria-label="Selected datasets only" title="Selected datasets only"><i class="fa-solid fa-square-check" aria-hidden="true"></i></button>
+      <button type="button" data-rank-refresh aria-label="Re-fetch rankings" title="Re-fetch rankings"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i></button>
+      <button type="button" data-rank-close aria-label="Close journal rankings" title="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+  </header>
   <p data-rank-status role="status" aria-live="polite"></p>
-  <div class="rank-table-scroll" tabindex="0" role="region" aria-label="Journal ranking results"><table data-rank-table hidden><thead><tr><th>Dataset</th><th>Rank</th></tr></thead><tbody data-rank-rows></tbody></table></div>
+  <div class="rank-table-scroll" tabindex="0" role="region" aria-label="期刊等级结果"><table data-rank-table hidden><thead><tr><th title="仅展示缩写对应的单位，具体数据集与等级划分请以官网为准。">数据集</th><th>等级</th></tr></thead><tbody data-rank-rows></tbody></table></div>
 </section>
 {% endblock %}

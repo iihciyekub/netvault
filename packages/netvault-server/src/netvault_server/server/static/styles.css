@@ -527,7 +527,7 @@ h2 {
   font-weight: 400;
 }
 
-.journal-list-picker-control button {
+.journal-list-picker-control > button {
   position: absolute;
   right: 4px;
   min-height: 30px;
@@ -2517,3 +2517,894 @@ body.with-sidebar {
 :root[data-theme="dark"] .command-row::before { color: #8ce2ad; }
 :root[data-theme="dark"] .crossref-badge.is-verified { background: #163227; color: #8ce2ad; border-color: #285c42; }
 :root[data-theme="dark"] .verified-seal { color: #8ce2ad; }
+
+/* The chronology is the leading column group, then PDF totals and journal names. */
+.dashboard-body .journal-heatmap {
+  --cell-size: 11px;
+  --cell-column: 13px;
+  --cell-gap: 2px;
+  grid-template-columns: repeat(var(--year-count), var(--cell-column)) 60px minmax(160px, 340px);
+  width: max-content;
+  min-width: 0;
+  margin-inline: auto;
+}
+.dashboard-body .heat-journal {
+  /* A sticky right column shifts left over the counts on narrow viewports. */
+  position: relative;
+  left: auto;
+  right: auto;
+  background: transparent;
+  justify-content: flex-start;
+  padding: 1px 0 1px 8px;
+  text-align: left;
+}
+.dashboard-body .heat-corner {
+  left: auto;
+  right: auto;
+  padding-left: 8px;
+  text-align: left;
+}
+.dashboard-body .heat-total,
+.dashboard-body .heat-total-head {
+  padding-inline: 0 8px;
+  text-align: right;
+  justify-content: flex-end;
+}
+@media (max-width: 900px) {
+  .dashboard-body .journal-heatmap {
+    --cell-size: 9px;
+    --cell-column: 11px;
+    --cell-gap: 1px;
+    grid-template-columns: repeat(var(--year-count), var(--cell-column)) 52px minmax(140px, 240px);
+  }
+}
+@media (max-width: 560px) {
+  .dashboard-body .journal-heatmap {
+    --cell-size: 8px;
+    --cell-column: 10px;
+    grid-template-columns: repeat(var(--year-count), var(--cell-column)) 46px minmax(128px, 190px);
+  }
+}
+
+/* Aligned, unpainted heatmap headers: years | total | journal. */
+.dashboard-body .heat-year,
+.dashboard-body .heat-total-head,
+.dashboard-body .heat-corner {
+  background: transparent;
+  box-shadow: none;
+}
+.dashboard-body .heat-corner {
+  display: flex;
+  align-items: flex-end;
+  line-height: 1;
+  padding-bottom: 0;
+}
+
+/* Selection and focus colors stay legible in light and dark modes. */
+:root {
+  --choice-bg: #e8eef7;
+  --choice-hover: #dae5f4;
+  --choice-fg: #172b47;
+  --choice-line: #b5c5dc;
+  --text-selection: #cadcf5;
+  --text-selection-fg: #172b47;
+}
+:root[data-theme="dark"] {
+  --choice-bg: #2b394d;
+  --choice-hover: #354b67;
+  --choice-fg: #edf4ff;
+  --choice-line: #557091;
+  --text-selection: #38547a;
+  --text-selection-fg: #f5f9ff;
+}
+.filter-tabs a.active,
+.filter-tabs a.active:hover,
+.filter-menu.active summary,
+.filter-menu.active summary:hover,
+.filter-menu-popover a.active {
+  border-color: var(--choice-line);
+  background: var(--choice-bg);
+  color: var(--choice-fg);
+}
+.filter-tabs a:not(.active):hover,
+.filter-menu:not(.active) summary:hover,
+.filter-menu-popover a:not(.active):hover {
+  border-color: var(--choice-line);
+  background: var(--soft);
+  color: var(--fg);
+}
+.filter-tabs a.active .filter-edit-mark,
+.filter-menu-popover a.active .filter-edit-mark {
+  color: var(--choice-fg);
+}
+.filter-tabs a.active .filter-edit-mark:hover,
+.filter-menu-popover a.active .filter-edit-mark:hover {
+  color: var(--choice-fg);
+  background: var(--choice-hover);
+}
+.journal-list-field textarea::selection,
+.journal-list-field input::selection,
+.journal-list-picker-control input::selection {
+  background: var(--text-selection);
+  color: var(--text-selection-fg);
+}
+
+/* Menu sizing is content-aware but never wider than the available viewport. */
+.filter-tabs {
+  min-width: 0;
+  max-width: 100%;
+}
+.filter-menu {
+  min-width: 0;
+  max-width: 100%;
+}
+.filter-menu summary {
+  min-width: 0;
+  max-width: min(200px, calc(100vw - 32px));
+}
+.filter-menu summary > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-menu-popover {
+  width: max-content;
+  min-width: min(180px, calc(100vw - 24px));
+  max-width: min(320px, calc(100vw - 24px));
+  box-sizing: border-box;
+}
+.custom-list-menu {
+  left: auto;
+  right: 0;
+}
+.filter-menu-popover a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 9px;
+  white-space: normal;
+  text-align: left;
+}
+.filter-menu-popover a > span:first-child {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.filter-menu-popover .filter-edit-mark {
+  flex: 0 0 22px;
+}
+.filter-menu-popover .filter-menu-create {
+  justify-content: flex-start;
+  min-width: 0;
+  white-space: normal;
+}
+@media (max-width: 650px) {
+  .dashboard-toolbar { gap: 8px; }
+  .filter-tabs { flex: 1 1 100%; }
+  .filter-menu-popover { max-width: min(280px, calc(100vw - 24px)); }
+}
+
+/* Compact list editor: guidance is in the help tooltip, not permanent banners. */
+.journal-list-form { gap: 11px; }
+.journal-list-dialog-head {
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+}
+.journal-list-dialog-head h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.journal-list-head-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+.journal-list-help-wrap { position: relative; }
+.journal-list-help-trigger {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 7px;
+}
+.journal-list-help-trigger:hover,
+.journal-list-help-trigger:focus-visible {
+  border-color: var(--line);
+  background: var(--soft);
+  color: var(--fg);
+}
+.journal-list-help-tooltip {
+  position: absolute;
+  top: calc(100% - 1px);
+  right: 0;
+  z-index: 60;
+  width: min(350px, calc(100vw - 56px));
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 19%);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.journal-list-help-tooltip strong { font-weight: 650; }
+.journal-list-help-tooltip p { margin: 7px 0 0; color: var(--muted); }
+.journal-list-help-wrap:hover .journal-list-help-tooltip,
+.journal-list-help-trigger:focus-visible + .journal-list-help-tooltip {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.journal-list-picker,
+.journal-list-picker-control {
+  min-width: 0;
+  width: 100%;
+}
+.journal-list-picker-control input {
+  width: 100%;
+  min-width: 0;
+}
+.journal-list-picker-control [data-journal-list-add] { z-index: 2; }
+.journal-list-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  width: 100%;
+  min-width: 0;
+  max-height: min(250px, 32dvh);
+  padding: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+.journal-list-suggestion {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 33px;
+  height: auto;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.journal-list-suggestion:hover,
+.journal-list-suggestion.is-active,
+.journal-list-suggestion:focus-visible {
+  background: var(--choice-bg);
+  color: var(--choice-fg);
+}
+.journal-list-field textarea {
+  min-height: min(320px, 39dvh);
+  max-width: 100%;
+}
+.journal-list-feedback:empty { display: none; }
+@media (max-width: 560px) {
+  .journal-list-dialog {
+    width: calc(100vw - 16px);
+  }
+  .journal-list-form { padding: 14px; gap: 10px; }
+  .journal-list-dialog-head h2 { font-size: 17px; }
+  .journal-list-picker-control input { font-size: 16px; }
+  .journal-list-field textarea { min-height: min(270px, 38dvh); }
+  .journal-list-suggestions { max-height: min(220px, 31dvh); }
+}
+
+/* Dashboard heatmap rows stay on one line; the year matrix remains scrollable. */
+.dashboard-body .journal-heatmap {
+  grid-template-columns: repeat(var(--year-count), var(--cell-column)) 60px max-content;
+  grid-auto-rows: var(--heat-row-height);
+  width: max-content;
+  min-width: max-content;
+  margin-inline: auto;
+}
+.dashboard-body .heat-journal {
+  height: var(--heat-row-height);
+  min-height: var(--heat-row-height);
+  white-space: nowrap;
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+}
+.dashboard-body .heat-journal-name {
+  max-width: none;
+  white-space: nowrap;
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+}
+.dashboard-body .heatmap-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+/* Low-chrome footer: density settings on the left, pagination on the right. */
+.dashboard-body .heatmap-pagination {
+  border: 0;
+  padding: 8px 0 2px;
+  margin-top: 6px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 7px 18px;
+  font-size: 11px;
+}
+.dashboard-body .heatmap-pager-settings,
+.dashboard-body .heatmap-pager-navigation {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+.dashboard-body .heatmap-pager-settings {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+}
+.dashboard-body .heatmap-pager-navigation {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-pager-settings .heatmap-legend {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-pager-settings .heatmap-legend .heat-cell {
+  width: 10px;
+  height: 10px;
+  flex-basis: 10px;
+}
+.dashboard-body .heatmap-pager-settings .heatmap-limit-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.dashboard-body .heatmap-pager-settings .heatmap-limit-form label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dashboard-body .heatmap-pagination .heatmap-page-controls {
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+.dashboard-body .heatmap-pagination button,
+.dashboard-body .heatmap-pagination input,
+.dashboard-body .heatmap-pager-settings .heatmap-limit-form input {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+.dashboard-body .heatmap-pagination button {
+  width: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  height: 26px;
+  border-radius: 5px;
+}
+.dashboard-body .heatmap-pagination button:hover:not(:disabled),
+.dashboard-body .heatmap-pagination button:focus-visible {
+  background: var(--soft);
+  color: var(--fg);
+}
+.dashboard-body .heatmap-pagination button:focus-visible,
+.dashboard-body .heatmap-pagination input:focus-visible {
+  outline: 2px solid var(--choice-line);
+  outline-offset: 1px;
+}
+.dashboard-body .heatmap-pagination input,
+.dashboard-body .heatmap-pager-settings .heatmap-limit-form input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  width: 38px;
+  min-width: 0;
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 3px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.dashboard-body .heatmap-pagination input::-webkit-outer-spin-button,
+.dashboard-body .heatmap-pagination input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.dashboard-body .heatmap-pagination .heatmap-page-range {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-pagination .heatmap-page-label,
+.dashboard-body .heatmap-pagination [data-journal-page-total] {
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  .dashboard-body .heatmap-pagination {
+    justify-content: flex-start;
+  }
+  .dashboard-body .heatmap-pager-settings {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+  .dashboard-body .heatmap-pager-navigation {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+}
+
+/* Year-only horizontal scroller with permanently visible count and journal columns. */
+.dashboard-body .heatmap-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0;
+  padding-bottom: 0;
+  scrollbar-gutter: auto;
+  --heat-total-width: 60px;
+  --heat-journal-width: clamp(190px, 32vw, 540px);
+  --heat-grid-row-gap: 4px;
+}
+.dashboard-body .heatmap-years-viewport {
+  flex: 1 1 0;
+  min-width: 64px;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.dashboard-body .heatmap-years-viewport:focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: -1px;
+}
+.dashboard-body .journal-heatmap {
+  display: grid;
+  grid-template-columns: repeat(var(--year-count), var(--cell-column));
+  grid-template-rows: 48px;
+  grid-auto-rows: var(--heat-row-height);
+  gap: var(--heat-grid-row-gap) var(--cell-gap);
+  min-width: max-content;
+  width: max-content;
+  margin: 0;
+}
+.dashboard-body .heatmap-fixed-viewport {
+  display: flex;
+  flex: 0 0 calc(var(--heat-total-width) + var(--heat-journal-width));
+  flex-direction: column;
+  width: calc(var(--heat-total-width) + var(--heat-journal-width));
+  max-width: calc(100% - 64px);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+.dashboard-body .heatmap-fixed-heading,
+.dashboard-body .heatmap-fixed-body {
+  display: grid;
+  grid-template-columns: var(--heat-total-width) minmax(0, 1fr);
+  column-gap: var(--cell-gap);
+  align-items: center;
+  min-width: 0;
+}
+.dashboard-body .heatmap-fixed-heading {
+  flex: 0 0 48px;
+  height: 48px;
+  align-items: stretch;
+}
+.dashboard-body .heatmap-fixed-heading > button {
+  display: flex;
+  position: static;
+  align-items: flex-end;
+  justify-content: flex-start;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dashboard-body .heatmap-fixed-heading > .heat-total-head {
+  justify-content: flex-end;
+  padding-inline: 0 8px;
+  text-align: right;
+}
+.dashboard-body .heatmap-fixed-heading > button[aria-pressed="true"] {
+  color: var(--fg);
+  font-weight: 700;
+}
+.dashboard-body .heatmap-fixed-heading > button:hover,
+.dashboard-body .heatmap-fixed-heading > button:focus-visible {
+  color: var(--link);
+}
+.dashboard-body .heatmap-fixed-heading > button:focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: -1px;
+}
+.dashboard-body .heatmap-fixed-body-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.dashboard-body .heatmap-fixed-body {
+  grid-auto-rows: var(--heat-row-height);
+  row-gap: var(--heat-grid-row-gap);
+  padding-top: var(--heat-grid-row-gap);
+  will-change: transform;
+}
+.dashboard-body .heatmap-fixed-body .heat-total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: var(--heat-row-height);
+  min-height: 0;
+  min-width: 0;
+  padding-inline: 0 8px;
+  text-align: right;
+}
+.dashboard-body .heatmap-fixed-body .heat-journal {
+  display: flex;
+  position: static;
+  align-items: center;
+  justify-content: flex-start;
+  height: var(--heat-row-height);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding-inline: 8px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-fixed-body .heat-journal-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .dashboard-body .heatmap-scroll {
+    --heat-total-width: 52px;
+  }
+  .dashboard-body .journal-heatmap {
+    grid-template-columns: repeat(var(--year-count), var(--cell-column));
+  }
+}
+@media (max-width: 560px) {
+  .dashboard-body .heatmap-scroll {
+    --heat-total-width: 46px;
+    --heat-journal-width: 180px;
+  }
+  .dashboard-body .journal-heatmap {
+    grid-template-columns: repeat(var(--year-count), var(--cell-column));
+  }
+}
+@media (max-width: 760px) {
+  .dashboard-body .heatmap-scroll {
+    flex: 0 0 auto;
+    height: min(65dvh, 660px);
+    min-height: 300px;
+  }
+}
+
+/* A thin single-line focus cue instead of the previously stacked thick borders. */
+.dashboard-body .heatmap-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  width: 100%;
+  overflow: visible;
+}
+.dashboard-body .heatmap-filter-field {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  flex: initial;
+}
+.dashboard-body .heatmap-filter-summary {
+  justify-self: end;
+  min-width: 0;
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-filter-field input:focus,
+.dashboard-body .heatmap-filter-field input:focus-visible {
+  outline: none;
+  border-color: var(--choice-line);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+.dashboard-body .journal-heatmap a.heat-cell:focus-visible,
+.dashboard-body .journal-heatmap .heat-cell:hover {
+  outline-width: 1px;
+  outline-offset: 1px;
+}
+@media (max-width: 560px) {
+  .dashboard-body .heatmap-filter-bar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+  .dashboard-body .heatmap-filter-summary { justify-self: end; }
+}
+
+/* Center the whole dashboard on very wide displays; on smaller screens use
+   the available width. Year cells still scroll independently inside the panel. */
+.dashboard-body .page {
+  --dashboard-content-width: 1320px;
+  margin-inline: auto;
+}
+
+/* The sticky year header must mask rows scrolling behind it.
+   Keep the fill identical to the page; it is not a separate header panel. */
+.dashboard-body .heatmap-years-viewport .heat-year {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 0 7px;
+  overflow: hidden;
+  background: var(--bg);
+  box-shadow: calc(var(--cell-gap) + 1px) 0 0 var(--bg);
+}
+.dashboard-body .heatmap-years-viewport .heat-year > span {
+  position: static;
+  display: block;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  line-height: 1;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  transform-origin: center;
+  white-space: nowrap;
+}
+
+/* Compact English journal actions: icon, short label, one consistent hit area. */
+.journal-context-menu {
+  width: max-content;
+  min-width: 198px;
+  max-width: min(320px, calc(100vw - 16px));
+}
+.journal-context-menu > button,
+.journal-context-menu > a {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+}
+.journal-context-menu > button:hover,
+.journal-context-menu > a:hover,
+.journal-context-menu > button:focus-visible,
+.journal-context-menu > a:focus-visible {
+  background: var(--soft);
+  color: var(--fg);
+}
+.journal-context-menu > :is(button, a) > i {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 17px;
+  width: 17px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.journal-context-menu > :is(button, a) > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Ranking tools are icons in the title bar; no permanent help/metric strip. */
+.journal-rank-panel header {
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+}
+.journal-rank-panel h2 {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+.journal-rank-panel .rank-header-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+.journal-rank-panel .rank-header-actions button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  box-shadow: none;
+}
+.journal-rank-panel .rank-header-actions button:hover,
+.journal-rank-panel .rank-header-actions button:focus-visible {
+  background: var(--soft);
+  color: var(--fg);
+}
+.journal-rank-panel .rank-header-actions [data-rank-selected][aria-pressed="true"] {
+  background: var(--choice-bg);
+  color: var(--choice-fg);
+}
+.journal-rank-panel .rank-header-actions button:focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: -1px;
+}
+.journal-rank-panel .rank-header-actions button:disabled {
+  opacity: .45;
+  cursor: wait;
+}
+.journal-rank-panel [data-rank-status]:empty {
+  display: none;
+}
+.journal-rank-panel [data-rank-status]:not(:empty) {
+  margin: 3px 12px 7px;
+  line-height: 1.35;
+}
+
+@keyframes rank-icon-refresh {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .journal-rank-panel[aria-busy="true"] [data-rank-refresh] i {
+    display: block;
+    animation: rank-icon-refresh .9s linear infinite;
+  }
+}
+
+
+/* The editor appears only after its data is available: avoid expensive backdrop
+   blur and avoid any reflow/animation on opening. */
+.journal-list-dialog::backdrop {
+  backdrop-filter: none;
+}
+.journal-list-dialog {
+  transition: none;
+}
+
+
+/* Grid squares use buttons rather than URLs; this removes the browser's
+   unthemeable bottom-left URL preview while preserving click navigation. */
+.dashboard-body .journal-heatmap button.heat-cell {
+  display: inline-block;
+  justify-self: center;
+  box-sizing: border-box;
+  appearance: none;
+  width: var(--cell-size);
+  height: var(--cell-size);
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 3px;
+  font: inherit;
+  cursor: pointer;
+}
+.dashboard-body .journal-heatmap button.heat-cell:focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: 1px;
+}
+
+/* A single tooltip lives in document.body, outside the clipped year scroller.
+   All colors use theme tokens and never imitate browser chrome. */
+.heat-cell-tooltip {
+  position: fixed;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(250px, calc(100vw - 20px));
+  padding: 8px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 7px 24px rgb(0 0 0 / 22%);
+  font-size: 12px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.heat-cell-tooltip[hidden] {
+  display: none;
+}
+.heat-cell-tooltip-year {
+  font-weight: 700;
+  color: var(--fg);
+}
+.heat-cell-tooltip-count {
+  color: var(--muted);
+}

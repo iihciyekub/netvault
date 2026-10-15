@@ -2,6 +2,79 @@
 
 ## Unreleased
 
+## 0.7.61 — 2026-10-15
+
+- Show a single theme-aware tooltip immediately beside the pointer when hovering any journal-year grid square, with the year and exact PDF count including zeros.
+- Replace generated PDF links with accessible buttons that keep normal and modifier/middle-click navigation but avoid the browser's unstyleable white URL preview bar.
+- Keep the tooltip outside the scrolling viewport and constrain its position to the visible screen.
+
+## 0.7.60 — 2026-10-15
+
+- Show the exact year and PDF count on hover for every year-grid cell, including years with zero PDFs; reuse native tooltips without additional floating UI.
+- Open journal-list editors only after their list data is ready to prevent empty-modal loading flashes, Help auto-focus popovers, and content jumps.
+- Warm list data only on edit intent and reuse a short-lived in-memory snapshot on quick reopens; invalidate after save/reset.
+- Keep the Help tooltip intentional (hover or keyboard focus), remove the backdrop blur, and prevent saving an empty list if loading fails.
+
+## 0.7.59 — 2026-10-15
+
+- Make the centered dashboard width respond to actual year-grid and visible journal-title content instead of always filling its 1320px maximum; preserve narrower viewport scrolling.
+- Simplify journal rank UI by moving selected-only and re-fetch actions to icon buttons beside Close in the title bar.
+- Hide the redundant successful ranking-count/status line; keep loading, errors, and no-result feedback.
+- Add icons to every journal context menu action and use concise English labels.
+
+## 0.7.58 — 2026-10-15
+
+- Use the Chinese source names from the 45-entry easyScholar abbreviation appendix when showing journal rankings.
+- Display international/core journal lists before CAS divisions, JCR metrics, Xinrui Academic datasets, and other institutions, across both official and custom entries.
+- Apply identical translations and grouping to browser-cached results without requiring refresh; preserve the original rank values.
+- Translate the ranking panel headers and controls, retaining the filter, cache, refresh, and scroll behaviors.
+
+## 0.7.57 — 2026-10-15
+
+- Prevent sticky year labels from overlapping and bleeding through the scrolling heatmap rows by clipping the rotated text within the header and masking scrolled cells with the page-matched background.
+- Keep the independent horizontal year scroller and frozen TOTAL/JOURNAL columns unchanged.
+
+## 0.7.56 — 2026-10-15
+
+- Cap the dashboard page width at 1320px and center it on ultrawide screens.
+- Keep the toolbar and heatmap within that width while preserving the year-only horizontal scroll on narrower screens.
+
+## 0.7.55 — 2026-10-15
+
+- Scroll years independently from fixed TOTAL and JOURNAL columns, with latest years visible initially.
+- Toggle descending and ascending sorting by clicking TOTAL or JOURNAL, without a separate sort icon.
+- Restore input-triggered journal search, including initialisms formed after omitting function words.
+- Reduce focus outlines and stretch the dashboard search bar and counts to fit the available width.
+
+## 0.7.54 — 2026-10-15
+
+- Display heatmap years from oldest on the left to newest on the right, keeping the statistics API unchanged.
+- Start narrow heatmap views near the newest years while preserving horizontal scrolling after manual interaction.
+- Keep journal names on a single line and move density controls to the left side of a simplified, borderless footer pager.
+
+## 0.7.53 — 2026-10-15
+
+- Scope the picker Add-button layout to its direct child so the new dropdown journal suggestions keep their individual rows instead of overlapping.
+- Re-key deployed assets to guarantee fresh CSS at the public URL.
+
+## 0.7.52 — 2026-10-15
+
+- Remove heatmap header fills; bottom-align JOURNAL with TOTAL.
+- Harmonize light and dark selected/focused states in journal filter tabs, list menus, and journal editors.
+- Uppercase, deduplicate, and alphabetize journal titles on edit or save; move permanent editor guidance into a keyboard-accessible hover Help control.
+- Replace unthemed native datalist suggestions with a scrollable, keyboard-accessible, width-constrained suggestion menu. Bound filter popovers to the viewport.
+- Refresh the web CSS and JS cache keys with the package version.
+
+## 0.7.51 — 2026-10-15
+
+- Keep the right-hand journal names in normal grid flow, preventing sticky positioning from pulling them left across the counts in narrow containers.
+- Preserve transparent labels in both color themes and invalidate the previous cached frontend release.
+
+## 0.7.50 — 2026-10-15
+
+- Arrange journal heatmap columns as year dots, right-aligned counts and left-aligned journal names; center the grid and allow horizontal scrolling on narrow screens.
+- Remove journal-name row backgrounds in both themes. Bump web asset URLs with the matching package release so cached JavaScript and CSS cannot show the previous layout.
+
 ## 0.7.48 — 2026-10-15
 
 - Default the dashboard to UTD24 and add a persistent light/dark theme toggle at the bottom of the sidebar.

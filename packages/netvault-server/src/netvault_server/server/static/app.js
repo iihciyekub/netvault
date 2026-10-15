@@ -257,17 +257,19 @@
     }, 1000);
   };
 
+  const journalNameCollator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
   const journalListNames = (textarea) => {
     const seen = new Set();
     return String(textarea ? textarea.value : "")
       .split(/\r?\n/)
-      .map((name) => name.trim())
+      .map((name) => name.trim().toLocaleUpperCase("en-US"))
       .filter((name) => {
         const key = normalizedJournalText(name);
         if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
-      });
+      })
+      .sort(journalNameCollator.compare);
   };
 
   const updateJournalListCount = (dialog) => {
@@ -275,6 +277,70 @@
     const count = journalListNames(textarea).length;
     const output = qs("[data-journal-list-count]", dialog);
     if (output) output.textContent = `${count} journal${count === 1 ? "" : "s"}`;
+  };
+
+  const normalizeJournalListTextarea = (textarea) => {
+    if (!textarea) return;
+    const sorted = journalListNames(textarea).join("\n");
+    if (textarea.value !== sorted) textarea.value = sorted;
+    updateJournalListCount(textarea.closest("[data-journal-list-dialog]"));
+  };
+
+  // Native datalist popovers ignore theme colors and can overflow dialogs.
+  const journalPickerCache = new WeakMap();
+  const journalPickerOptions = (dialog) => {
+    if (!journalPickerCache.has(dialog)) {
+      journalPickerCache.set(dialog, qsa("#journal-list-options option", dialog)
+        .map((option) => ({ label: option.value, search: normalizedJournalText(option.value) }))
+        .sort((a, b) => journalNameCollator.compare(a.label, b.label)));
+    }
+    return journalPickerCache.get(dialog);
+  };
+
+  const closeJournalSuggestions = (input) => {
+    if (!input) return;
+    const list = qs("[data-journal-list-suggestions]", input.closest("[data-journal-list-dialog]"));
+    if (list) {
+      list.hidden = true;
+      list.replaceChildren();
+    }
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+  };
+
+  const renderJournalSuggestions = (input) => {
+    const dialog = input.closest("[data-journal-list-dialog]");
+    const list = dialog ? qs("[data-journal-list-suggestions]", dialog) : null;
+    const picker = dialog ? qs("[data-custom-journal-picker]", dialog) : null;
+    if (!list || !picker || picker.hidden) return;
+    const query = normalizedJournalText(input.value.trim());
+    const matching = journalPickerOptions(dialog)
+      .filter((option) => option.search.includes(query)).slice(0, 10);
+    if (!matching.length) {
+      closeJournalSuggestions(input);
+      return;
+    }
+    const items = matching.map((option, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "journal-list-suggestion";
+      item.id = "journal-list-suggestion-" + index;
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", "false");
+      item.dataset.journalSuggestion = option.label;
+      item.textContent = option.label;
+      return item;
+    });
+    list.replaceChildren(...items);
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    input.removeAttribute("aria-activedescendant");
+  };
+
+  const chooseJournalSuggestion = (input, item) => {
+    input.value = item.dataset.journalSuggestion || "";
+    input.focus();
+    closeJournalSuggestions(input);
   };
 
   const addJournalListSelection = (input) => {
@@ -301,15 +367,49 @@
       if (feedback) feedback.textContent = `${match.label} is already in this list.`;
     } else {
       textarea.value = [...names, match.label].join("\n");
+      normalizeJournalListTextarea(textarea);
       if (feedback) feedback.textContent = `Added ${match.label}. Save the list to apply changes.`;
       updateJournalListCount(dialog);
     }
     input.value = "";
     input.focus();
+    closeJournalSuggestions(input);
+  };
+
+  let journalListOpenSequence = 0;
+  const journalListPayloadCache = new Map();
+  const journalListPayloadPending = new Map();
+  const journalListCacheTtlMs = 30000;
+
+  const loadJournalListPayload = (endpoint) => {
+    const entry = journalListPayloadCache.get(endpoint);
+    if (entry && Date.now() - entry.storedAt < journalListCacheTtlMs)
+      return Promise.resolve(entry.payload);
+    if (journalListPayloadPending.has(endpoint))
+      return journalListPayloadPending.get(endpoint);
+    const pending = (async () => {
+      const response = await fetch(endpoint, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "X-Requested-With": "fetch" },
+      });
+      if (!response.ok) throw new Error(await journalListError(response));
+      const payload = await response.json();
+      journalListPayloadCache.delete(endpoint);
+      journalListPayloadCache.set(endpoint, { payload, storedAt: Date.now() });
+      while (journalListPayloadCache.size > 20)
+        journalListPayloadCache.delete(journalListPayloadCache.keys().next().value);
+      return payload;
+    })();
+    journalListPayloadPending.set(endpoint, pending);
+    pending.finally(() => journalListPayloadPending.delete(endpoint)).catch(() => {});
+    return pending;
   };
 
   const closeJournalListEditor = (dialog) => {
     if (!dialog) return;
+    journalListOpenSequence++;
+    closeJournalSuggestions(qs("[data-journal-list-picker-input]", dialog));
     if (typeof dialog.close === "function" && dialog.open) dialog.close();
     else dialog.removeAttribute("open");
   };
@@ -340,7 +440,11 @@
         ? `Edit ${payload.label || "custom list"}`
         : `${payload.label || "Journal"} list`;
     }
-    if (textarea) textarea.value = Array.isArray(payload.journals) ? payload.journals.join("\n") : "";
+    if (textarea) {
+      textarea.value = Array.isArray(payload.journals) ? payload.journals.join("\n") : "";
+      textarea.disabled = false;
+      normalizeJournalListTextarea(textarea);
+    }
     if (keyInput) keyInput.value = payload.key || "";
     if (source) {
       source.hidden = !payload.source_url;
@@ -350,53 +454,75 @@
     if (nameField) nameField.hidden = !payload.custom;
     if (nameInput) nameInput.value = payload.custom ? (payload.label || "Custom list") : "";
     if (picker) picker.hidden = !payload.custom;
-    if (pickerInput) pickerInput.value = "";
+    if (pickerInput) {
+      pickerInput.value = "";
+      closeJournalSuggestions(pickerInput);
+    }
     if (reset) reset.hidden = !(payload.can_reset || payload.can_delete);
     if (resetLabel) resetLabel.textContent = payload.can_delete ? "Delete list" : "Reset default";
-    if (feedback) {
-      feedback.textContent = payload.custom
-        ? "This account list is private to you and syncs across your signed-in devices. An empty list matches no journals."
-        : payload.is_default
-          ? "Using the default list. Saving creates an account-synced editable copy."
-          : "Using the edited list saved to your account.";
-    }
+    if (feedback) feedback.textContent = "";
     updateJournalListCount(dialog);
   };
 
   const openJournalListEditor = async (tab) => {
     const dialog = qs("[data-journal-list-dialog]");
-    const endpoint = tab ? tab.getAttribute("data-journal-list-url") : "";
+    const endpoint = tab?.getAttribute("data-journal-list-url") || "";
     if (!dialog || !endpoint) return;
-    dialog.dataset.endpoint = endpoint;
-    const title = qs("[data-journal-list-title]", dialog);
-    const textarea = qs("[data-journal-list-textarea]", dialog);
-    const feedback = qs("[data-journal-list-feedback]", dialog);
-    if (title) title.textContent = "Loading journal list...";
-    if (textarea) {
-      textarea.value = "";
-      textarea.disabled = true;
-    }
-    if (feedback) feedback.textContent = "Loading...";
-    if (typeof dialog.showModal === "function") dialog.showModal();
-    else dialog.setAttribute("open", "");
+    const sequence = ++journalListOpenSequence;
+    const trigger = qs("[data-journal-list-edit-trigger]", tab);
+    if (trigger) trigger.setAttribute("aria-busy", "true");
     try {
-      const response = await fetch(endpoint, {
-        credentials: "same-origin",
-        headers: { "X-Requested-With": "fetch" },
-      });
-      if (!response.ok) throw new Error(await journalListError(response));
-      populateJournalListEditor(dialog, await response.json());
+      // Avoid opening an empty modal, loading text, and then resizing it.
+      // Nearby hover/focus prefetch and the short-lived snapshot speed up repeats.
+      const payload = await loadJournalListPayload(endpoint);
+      if (sequence !== journalListOpenSequence || !dialog.isConnected || !tab.isConnected)
+        return;
+      dialog.dataset.endpoint = endpoint;
+      populateJournalListEditor(dialog, payload);
+      const saveButton = qs("[data-journal-list-form] button[type='submit']", dialog);
+      if (saveButton) saveButton.disabled = false;
+      if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+      else if (!dialog.open) dialog.setAttribute("open", "");
+      const textarea = qs("[data-journal-list-textarea]", dialog);
       if (textarea) {
-        textarea.disabled = false;
-        textarea.focus();
+        textarea.focus({ preventScroll: true });
         textarea.setSelectionRange(0, 0);
         textarea.scrollTop = 0;
       }
     } catch (error) {
+      if (sequence !== journalListOpenSequence || !dialog.isConnected) return;
+      // Errors still need a clear recovery path, but never show an empty editor first.
+      dialog.dataset.endpoint = endpoint;
+      const title = qs("[data-journal-list-title]", dialog);
+      const textarea = qs("[data-journal-list-textarea]", dialog);
+      const feedback = qs("[data-journal-list-feedback]", dialog);
+      if (title) title.textContent = "Unable to load journal list";
+      if (textarea) { textarea.value = ""; textarea.disabled = true; }
+      const picker = qs("[data-custom-journal-picker]", dialog);
+      if (picker) picker.hidden = true;
       if (feedback) feedback.textContent = error.message || "Could not load the journal list.";
-      if (textarea) textarea.disabled = false;
+      const saveButton = qs("[data-journal-list-form] button[type='submit']", dialog);
+      if (saveButton) saveButton.disabled = true;
+      if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+      else if (!dialog.open) dialog.setAttribute("open", "");
+      qs("[data-journal-list-close]", dialog)?.focus({ preventScroll: true });
+    } finally {
+      if (trigger?.isConnected) trigger.removeAttribute("aria-busy");
     }
   };
+
+  // Warm the editor only on deliberate intent; do not fetch all lists on page load.
+  document.addEventListener("pointerover", (event) => {
+    const trigger = event.target.closest?.("[data-journal-list-edit-trigger]");
+    if (!trigger || trigger.contains(event.relatedTarget)) return;
+    const endpoint = trigger.closest("[data-journal-list-edit]")?.getAttribute("data-journal-list-url");
+    if (endpoint) loadJournalListPayload(endpoint).catch(() => {});
+  });
+  document.addEventListener("focusin", (event) => {
+    const trigger = event.target.closest?.("[data-journal-list-edit-trigger]");
+    const endpoint = trigger?.closest("[data-journal-list-edit]")?.getAttribute("data-journal-list-url");
+    if (endpoint) loadJournalListPayload(endpoint).catch(() => {});
+  });
 
   const saveJournalListEditor = async (form) => {
     const dialog = form.closest("[data-journal-list-dialog]");
@@ -406,6 +532,7 @@
     const csrfToken = qs("input[name='csrf_token']", form)?.value || "";
     const nameInput = qs("[data-custom-list-name]", form);
     if (!dialog || !endpoint || !textarea) return;
+    normalizeJournalListTextarea(textarea);
     setFormBusy(form, true, "Saving...");
     try {
       const response = await fetch(endpoint, {
@@ -423,6 +550,7 @@
       });
       if (!response.ok) throw new Error(await journalListError(response));
       const payload = await response.json();
+      journalListPayloadCache.delete(endpoint);
       pageCache.clear();
       closeJournalListEditor(dialog);
       const current = sameOriginUrl(window.location.href);
@@ -481,6 +609,7 @@
       });
       if (!response.ok) throw new Error(await journalListError(response));
       const payload = await response.json();
+      journalListPayloadCache.delete(endpoint);
       pageCache.clear();
       closeJournalListEditor(dialog);
       const current = sameOriginUrl(window.location.href);
@@ -517,7 +646,7 @@
       name: normalizedJournalText(label),
       initials: journalInitials(label),
       total: Number(total),
-      counts: new Map(cells.map(([yearIndex, count, level]) => [yearIndex, [count, level]])),
+      counts: new Map(cells.map(([yearIndex, count, level]) => [years.length - 1 - yearIndex, [count, level]])),
       elements: null,
     }));
     const result = { rows, years };
@@ -540,16 +669,20 @@
     name.className = "heat-journal-name";
     name.textContent = row.label;
     label.append(name);
-    elements.push(label);
     years.forEach((year, index) => {
       const data = row.counts.get(index);
-      const cell = document.createElement(data ? "a" : "span");
+      // A button keeps the original click navigation without triggering the
+      // browser's unstyleable white link-preview bar on hover.
+      const cell = document.createElement(data ? "button" : "span");
       cell.className = "heat-cell level-" + (data ? data[1] : 0);
       cell.dataset.journalRow = String(row.id);
+      const count = data ? data[0] : 0;
+      cell.dataset.heatYear = String(year);
+      cell.dataset.heatCount = String(count);
       if (data) {
         const params = new URLSearchParams({ journal: row.label, year });
-        cell.href = searchUrl + "?" + params.toString();
-        const count = data[0];
+        cell.type = "button";
+        cell.dataset.pdfUrl = searchUrl + "?" + params.toString();
         cell.setAttribute("aria-label", row.label + " " + year + " " + count.toLocaleString("en-US") + " PDFs");
       } else {
         cell.setAttribute("aria-hidden", "true");
@@ -561,9 +694,136 @@
     total.dataset.journalRow = String(row.id);
     total.textContent = row.total.toLocaleString("en-US");
     elements.push(total);
+    elements.push(label);
     row.elements = elements;
     return elements;
   };
+
+  // One floating, theme-aware tooltip for the entire heatmap. It lives outside
+  // the scrolling year viewport so it never gets clipped or shifts the grid.
+  let heatTooltip = null;
+  let heatTooltipCell = null;
+  let heatTooltipFrame = 0;
+  let heatPointerX = 0;
+  let heatPointerY = 0;
+  const ensureHeatTooltip = () => {
+    if (heatTooltip?.isConnected) return heatTooltip;
+    heatTooltip = document.createElement("div");
+    heatTooltip.className = "heat-cell-tooltip";
+    heatTooltip.setAttribute("role", "tooltip");
+    heatTooltip.id = "heat-cell-tooltip";
+    heatTooltip.hidden = true;
+    const yearNode = document.createElement("span");
+    yearNode.className = "heat-cell-tooltip-year";
+    const countNode = document.createElement("span");
+    countNode.className = "heat-cell-tooltip-count";
+    heatTooltip.append(yearNode, countNode);
+    document.body.append(heatTooltip);
+    return heatTooltip;
+  };
+  const placeHeatTooltip = (x, y) => {
+    if (!heatTooltip || heatTooltip.hidden) return;
+    const width = heatTooltip.offsetWidth;
+    const height = heatTooltip.offsetHeight;
+    const margin = 10;
+    const xOffset = 14, yOffset = 18;
+    // Prefer the lower right of the pointer; flip within the viewport at edges.
+    const left = x + xOffset + width <= innerWidth - margin
+      ? x + xOffset : Math.max(margin, x - width - xOffset);
+    const top = y + yOffset + height <= innerHeight - margin
+      ? y + yOffset : Math.max(margin, y - height - yOffset);
+    heatTooltip.style.left = Math.min(left, innerWidth - width - margin) + "px";
+    heatTooltip.style.top = Math.min(top, innerHeight - height - margin) + "px";
+  };
+  const moveHeatTooltip = (x, y) => {
+    heatPointerX = x;
+    heatPointerY = y;
+    if (heatTooltipFrame) return;
+    heatTooltipFrame = requestAnimationFrame(() => {
+      heatTooltipFrame = 0;
+      placeHeatTooltip(heatPointerX, heatPointerY);
+    });
+  };
+  const showHeatTooltip = (cell, x, y) => {
+    if (!cell?.isConnected) return;
+    const tooltip = ensureHeatTooltip();
+    const year = cell.dataset.heatYear || "";
+    const count = Number(cell.dataset.heatCount || 0).toLocaleString("en-US");
+    tooltip.firstElementChild.textContent = year;
+    tooltip.lastElementChild.textContent = count + " PDFs";
+    if (heatTooltipCell !== cell) {
+      heatTooltipCell?.removeAttribute("aria-describedby");
+      heatTooltipCell = cell;
+      if (cell.tagName === "BUTTON") cell.setAttribute("aria-describedby", tooltip.id);
+    }
+    tooltip.hidden = false;
+    moveHeatTooltip(x, y);
+  };
+  const hideHeatTooltip = () => {
+    if (heatTooltipFrame) cancelAnimationFrame(heatTooltipFrame);
+    heatTooltipFrame = 0;
+    heatTooltipCell?.removeAttribute("aria-describedby");
+    heatTooltipCell = null;
+    if (heatTooltip) heatTooltip.hidden = true;
+  };
+  const heatCellAt = (target) => target?.closest?.(".journal-heatmap .heat-cell[data-heat-year]");
+  document.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "touch") return;
+    const cell = heatCellAt(event.target);
+    if (cell && cell !== heatCellAt(event.relatedTarget))
+      showHeatTooltip(cell, event.clientX, event.clientY);
+  });
+  document.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
+    const cell = heatCellAt(event.target);
+    if (cell && cell !== heatTooltipCell) showHeatTooltip(cell, event.clientX, event.clientY);
+    else if (cell) moveHeatTooltip(event.clientX, event.clientY);
+    else if (heatTooltipCell) hideHeatTooltip();
+  }, { passive: true });
+  document.addEventListener("pointerout", (event) => {
+    if (heatCellAt(event.target) && !heatCellAt(event.relatedTarget)) hideHeatTooltip();
+  });
+  document.addEventListener("focusin", (event) => {
+    const cell = heatCellAt(event.target);
+    if (!cell || cell.tagName !== "BUTTON") return;
+    const rect = cell.getBoundingClientRect();
+    showHeatTooltip(cell, rect.right, rect.bottom);
+  });
+  document.addEventListener("focusout", (event) => {
+    if (heatCellAt(event.target)) hideHeatTooltip();
+  });
+  document.addEventListener("scroll", () => {
+    if (heatTooltipCell) hideHeatTooltip();
+  }, { capture: true, passive: true });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && heatTooltipCell) hideHeatTooltip();
+  });
+
+  // Buttons preserve same-origin PJAX navigation without exposing a native
+  // URL preview on hover; modifier-click still supports opening a new tab.
+  document.addEventListener("click", (event) => {
+    const cell = event.target.closest?.(".journal-heatmap button.heat-cell[data-pdf-url]");
+    if (!cell) return;
+    const url = sameOriginUrl(cell.dataset.pdfUrl);
+    if (!url || !isWebPath(url)) return;
+    hideHeatTooltip();
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      window.open(url.href, "_blank", "noopener,noreferrer");
+    } else {
+      fetchPage(url.href);
+    }
+  });
+
+  document.addEventListener("auxclick", (event) => {
+    if (event.button !== 1) return;
+    const cell = event.target.closest?.(".journal-heatmap button.heat-cell[data-pdf-url]");
+    if (!cell) return;
+    const url = sameOriginUrl(cell.dataset.pdfUrl);
+    if (!url || !isWebPath(url)) return;
+    event.preventDefault();
+    hideHeatTooltip();
+    window.open(url.href, "_blank", "noopener,noreferrer");
+  });
 
   const sortJournalRows = (select) => {
     applyJournalFilters(select.closest(".heatmap-panel"));
@@ -587,20 +847,50 @@
     }
   };
 
+  // Use the visible heatmap's natural content width rather than stretching
+  // its year scroller to the full dashboard maximum on shorter journal lists.
+  const fitDashboardWidth = (panel) => {
+    const page = panel?.closest(".page");
+    const frame = qs(".heatmap-scroll", panel);
+    const yearGrid = qs(".journal-heatmap", panel);
+    const fixed = qs("[data-heatmap-fixed-body]", panel);
+    if (!page || !frame || !yearGrid || !fixed) return;
+    const mobile = window.matchMedia("(max-width: 760px)").matches;
+    const intrinsicLabelWidth = Math.max(0, ...qsa(".heat-journal-name", fixed)
+      .map((name) => name.scrollWidth));
+    // On small screens retain the established compact fixed-column sizing.
+    const nameWidth = mobile ? null : Math.min(540,
+      Math.max(190, Math.ceil(intrinsicLabelWidth + 20)));
+    if (nameWidth === null) frame.style.removeProperty("--heat-journal-width");
+    else frame.style.setProperty("--heat-journal-width", nameWidth + "px");
+    const computed = getComputedStyle(frame);
+    const totalWidth = parseFloat(computed.getPropertyValue("--heat-total-width")) || 60;
+    const fixedNameWidth = nameWidth ?? (parseFloat(computed.getPropertyValue("--heat-journal-width")) || 180);
+    const naturalWidth = yearGrid.scrollWidth + totalWidth + fixedNameWidth + 12;
+    const preferredWidth = Math.min(1320, Math.max(640, Math.ceil(naturalWidth)));
+    page.style.setProperty("--dashboard-content-width", preferredWidth + "px");
+  };
+
   const applyJournalFilters = (panel) => {
     if (!panel || !panel.isConnected) return;
     const heatmap = qs(".journal-heatmap", panel);
     if (!heatmap) return;
     const input = qs("[data-journal-filter]", panel);
     const query = normalizedJournalText(input ? input.value.trim() : "");
-    const initialsQuery = query.replace(/[\s.-]/g, "");
+    // Journal initialisms omit function words (for example IJIR).
+    // Accept spaced/dotted initialism input as well as compact uppercase initials.
+    const initialsQuery = (query.match(/[\p{L}\p{N}]+/gu) || []).join("");
     const isInitialsQuery = /^[\p{L}\p{N}]{2,}$/u.test(initialsQuery);
     const { rows, years } = journalRows(heatmap);
     const sortSelect = qs("[data-journal-sort]", panel);
     const sortValue = sortSelect?.value || "total-desc";
-    if (sortSelect) {
-      sortSelect.closest(".heatmap-sort-field").title = `Sort journals: ${sortSelect.selectedOptions[0]?.textContent || sortValue}`;
-    }
+    qsa("[data-journal-sort-toggle]", panel).forEach((button) => {
+      const selected = sortValue.startsWith(button.dataset.journalSortToggle + "-");
+      button.setAttribute("aria-pressed", String(selected));
+      button.title = selected
+        ? ("Sorted " + (sortValue.endsWith("desc") ? "descending" : "ascending") + "; click to reverse")
+        : ("Sort by " + (button.dataset.journalSortToggle === "total" ? "total" : "journal name"));
+    });
     const [field, direction] = sortValue.split("-");
     const multiplier = direction === "desc" ? -1 : 1;
     const sorted = [...rows].sort((left, right) => {
@@ -640,11 +930,16 @@
       if (next) next.disabled = page >= pageCount;
       pager.hidden = matches.length === 0;
     }
-    const fragment = document.createDocumentFragment();
-    qsa(".heat-corner, .heat-year, .heat-total-head", heatmap).forEach((node) => fragment.append(node));
+    const fixedBody = qs("[data-heatmap-fixed-body]", panel);
+    if (!fixedBody) return;
+    const yearNodes = document.createDocumentFragment();
+    const fixedNodes = document.createDocumentFragment();
+    qsa(".heat-year", heatmap).forEach((node) => yearNodes.append(node));
     shown.forEach((row) => renderJournalRow(row, years, panel.dataset.pdfSearchUrl)
-      .forEach((node) => fragment.append(node)));
-    heatmap.replaceChildren(fragment);
+      .forEach((node, index) => (index < years.length ? yearNodes : fixedNodes).append(node)));
+    heatmap.replaceChildren(yearNodes);
+    fixedBody.replaceChildren(fixedNodes);
+    fitDashboardWidth(panel);
 
     const status = qs("[data-journal-filter-status], .heatmap-filter-status", panel);
     if (status) {
@@ -659,26 +954,50 @@
     }
     const noMatches = qs("[data-journal-no-matches]", panel);
     if (noMatches) noMatches.hidden = shown.length !== 0;
-    const scroll = heatmap.closest(".heatmap-scroll");
-    if (scroll) {
-      scroll.hidden = shown.length === 0;
+    const frame = qs(".heatmap-scroll", panel);
+    const scroll = qs("[data-heatmap-years-viewport]", panel);
+    if (frame) frame.hidden = shown.length === 0;
+    if (scroll && frame) {
+      const syncFixedRows = () => {
+        const fixed = qs("[data-heatmap-fixed-body]", panel);
+        if (fixed) fixed.style.transform = "translate3d(0, " + (-scroll.scrollTop) + "px, 0)";
+      };
+      syncFixedRows();
       if (!scroll.dataset.yearScrollReady) {
         scroll.dataset.yearScrollReady = "true";
-        const alignLatest = () => { scroll.scrollLeft = 0; };
+        // Oldest years at left, newest at right. Only year cells scroll horizontally.
+        const alignLatest = () => {
+          if (!scroll.isConnected || !scroll.clientWidth) return;
+          scroll.scrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+        };
         requestAnimationFrame(alignLatest);
         const observer = new ResizeObserver(() => {
-          const style = getComputedStyle(heatmap);
-          const nameWidth = qs(".heat-corner", heatmap)?.getBoundingClientRect().width || 0;
-          const yearWidth = parseFloat(style.getPropertyValue("--cell-column"));
-          const gap = parseFloat(style.columnGap);
-          const preferredWidth = Math.max(1120, nameWidth + years.length * (yearWidth + gap) + 74);
-          heatmap.closest(".page").style.setProperty("--dashboard-content-width", `${preferredWidth}px`);
-          if (scroll.dataset.latestVisible !== "false") alignLatest();
+          if (scroll.dataset.userYearScroll !== "true") alignLatest();
+          syncFixedRows();
         });
         observer.observe(scroll);
-        scroll.addEventListener("scroll", () => {
-          scroll.dataset.latestVisible = String(scroll.scrollLeft < 4);
-        }, {passive: true});
+        scroll.addEventListener("scroll", syncFixedRows, { passive: true });
+        const fixedViewport = qs("[data-heatmap-fixed-viewport]", panel);
+        if (fixedViewport) {
+          fixedViewport.addEventListener("wheel", (event) => {
+            if (event.deltaY === 0 && event.deltaX === 0) return;
+            scroll.scrollTop += event.deltaY;
+            if (event.deltaX !== 0) {
+              scroll.scrollLeft += event.deltaX;
+              scroll.dataset.userYearScroll = "true";
+            }
+            event.preventDefault();
+          }, { passive: false });
+        }
+        const userScrolled = () => { scroll.dataset.userYearScroll = "true"; };
+        scroll.addEventListener("pointerdown", userScrolled, { passive: true });
+        scroll.addEventListener("touchstart", userScrolled, { passive: true });
+        scroll.addEventListener("wheel", (event) => {
+          if (Math.abs(event.deltaX) > 0 || event.shiftKey) userScrolled();
+        }, { passive: true });
+        scroll.addEventListener("keydown", (event) => {
+          if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) userScrolled();
+        });
       }
     }
   };
@@ -688,7 +1007,7 @@
     panel.dataset.journalPage = String(Math.max(1, requestedPage));
     closeJournalMenu();
     applyJournalFilters(panel);
-    const scroll = qs(".heatmap-scroll", panel);
+    const scroll = qs("[data-heatmap-years-viewport]", panel);
     if (scroll) scroll.scrollTop = 0;
   };
 
@@ -781,28 +1100,55 @@
     try { localStorage.setItem(rankPositionStorageKey, JSON.stringify(rankPosition)); } catch { /* Keep the position for this page. */ }
     rankDrag = null;
   };
+  // The appendix's Chinese labels also apply to previously cached results.
+  const rankDatasetLabels = new Map(Object.entries({"swufe":"西南财经大学","cufe":"中央财经大学","uibe":"对外经济贸易大学","sdufe":"山东财经大学","xdu":"西安电子科技大学","swjtu":"西南交通大学","ruc":"中国人民大学","xmu":"厦门大学","sjtu":"上海交通大学","fdu":"复旦大学","hhu":"河海大学","pku":"北大核心","scu":"四川大学","sciUpTop":"中科院升级版Top分区","xrWarn":"新锐学术预警","cqu":"重庆大学","nju":"南京大学","xju":"新疆大学","cug":"中国地质大学","ccf":"中国计算机学会","cju":"长江大学（不是计量大学）","zju":"浙江大学","zhongguokejihexin":"中国科技核心期刊","fms":"FMS","utd24":"UTD24","eii":"EI检索","cssci":"南大核心","sciUpSmall":"中科院升级版小类分区","cpu":"中国药科大学","xrTop":"新锐学术Top分区","sciif":"SCI影响因子-JCR","sci":"SCI分区-JCR","ssci":"SSCI分区-JCR","jci":"JCI指数-JCR","sciif5":"SCI五年影响因子-JCR","sciwarn":"中科院预警","sciBase":"SCI基础版分区-中科院","sciUp":"SCI升级版分区-中科院","ajg":"ABS学术期刊指南","ft50":"FT50","cscd":"中国科学引文数据库","ahci":"A&HCI","esi":"ESI学科分类","xr":"新锐学术","xrSmall":"新锐学术小类分区"}).map(
+    ([code, label]) => [code.toLowerCase(), label]));
+  const rankDisplayGroups = [{"title":"期刊榜单与核心目录","codes":["utd24","ft50","ajg","cssci","pku","fms","zhongguokejihexin","cscd","ccf","eii","ahci","esi"]},{"title":"中科院分区","codes":["sciUp","sciUpTop","sciUpSmall","sciBase","sciwarn"]},{"title":"JCR指标与分区","codes":["sci","ssci","sciif","sciif5","jci"]},{"title":"新锐学术","codes":["xr","xrTop","xrSmall","xrWarn"]},{"title":"其他高校与机构","codes":[]}];
+  const rankDatasetOrder = new Map();
+  rankDisplayGroups.forEach((group, category) => group.codes.forEach((code, order) =>
+    rankDatasetOrder.set(code.toLowerCase(), [category, order])));
+  const rankFallbackCategory = rankDisplayGroups.length - 1;
+  const rankRowPresentation = (row) => {
+    const abbreviation = String(row.abbreviation || row.key || "").trim().toLowerCase();
+    const known = rankDatasetLabels.has(abbreviation);
+    const [category, order] = rankDatasetOrder.get(abbreviation) || [rankFallbackCategory, 1000];
+    return { row, category, order, label: known ? rankDatasetLabels.get(abbreviation) : row.name };
+  };
+
   const renderRanks = () => {
     const panel = qs("[data-rank-panel]");
     if (!panel || !rankResult) return;
-    const rows = rankResult.rows.filter(row => !qs("[data-rank-selected]", panel).checked || row.selected);
+    const selectedOnly = qs("[data-rank-selected]", panel)?.getAttribute?.("aria-pressed") === "true";
+    const rows = rankResult.rows
+      .filter(row => !selectedOnly || row.selected)
+      .map(rankRowPresentation)
+      .sort((left, right) => left.category - right.category
+        || left.order - right.order
+        || left.label.localeCompare(right.label, "zh-CN", { numeric: true }));
     const body = qs("[data-rank-rows]", panel);
     body.replaceChildren();
-    let group = "";
-    for (const row of rows) {
-      if (group !== row.source) {
-        group = row.source;
+    let category = -1;
+    for (const entry of rows) {
+      if (category !== entry.category) {
+        category = entry.category;
         const tr = document.createElement("tr"), th = document.createElement("th");
-        tr.className = "rank-group"; th.colSpan = 2; th.textContent = group;
-        tr.append(th); body.append(tr);
+        tr.className = "rank-group";
+        th.colSpan = 2;
+        th.textContent = rankDisplayGroups[category].title;
+        tr.append(th);
+        body.append(tr);
       }
       const tr = document.createElement("tr"), th = document.createElement("th"), td = document.createElement("td");
-      th.scope = "row"; th.textContent = row.name; td.textContent = row.rank;
-      tr.append(th, td); body.append(tr);
+      th.scope = "row";
+      th.textContent = entry.label;
+      td.textContent = entry.row.rank;
+      tr.append(th, td);
+      body.append(tr);
     }
     qs("[data-rank-table]", panel).hidden = !rows.length;
-    qs("[data-rank-status]", panel).textContent = rows.length
-      ? `${rows.length} rankings · easyScholar`
-      : "No rankings available for this journal in these datasets.";
+    // Show status text only when action or missing data requires attention.
+    qs("[data-rank-status]", panel).textContent = rows.length ? ""
+      : (selectedOnly ? "No selected datasets available." : "No rankings available.");
     clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));
   };
   const loadRanks = async (refresh = false) => {
@@ -821,7 +1167,7 @@
       if (!refresh && Date.now() - cached.queried_at * 1000 < rankCacheTtlMs) return;
     } else {
       qs("[data-rank-table]", panel).hidden = true;
-      qs("[data-rank-status]", panel).textContent = "Looking up easyScholar…";
+      qs("[data-rank-status]", panel).textContent = "Fetching rankings…";
     }
     panel.setAttribute("aria-busy", "true");
     qs("[data-rank-refresh]", panel).disabled = true;
@@ -872,9 +1218,12 @@
   document.addEventListener("click", event => {
     if (event.target.closest("[data-rank-close]")) { qs("[data-rank-panel]").hidden = true; rankSequence++; }
     if (event.target.closest("[data-rank-refresh]")) loadRanks(true);
-  });
-  document.addEventListener("change", event => {
-    if (event.target.matches("[data-rank-selected]")) renderRanks();
+    const selected = event.target.closest("[data-rank-selected]");
+    if (selected) {
+      const pressed = selected.getAttribute("aria-pressed") !== "true";
+      selected.setAttribute("aria-pressed", String(pressed));
+      renderRanks();
+    }
   });
   document.addEventListener("pointerdown", event => {
     const header = event.target.closest("[data-rank-drag]");
@@ -985,6 +1334,13 @@
       applyJournalFilters(panel);
     });
   };
+
+  window.addEventListener("resize", () => {
+    qsa(".heatmap-panel").forEach(fitDashboardWidth);
+  });
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(() => qsa(".heatmap-panel").forEach(fitDashboardWidth));
+  }
 
   const updateFileSummary = (input) => {
     const summary = qs("#file-summary");
@@ -1431,7 +1787,100 @@
     if (apply) apply.disabled = !override.checked;
   });
 
+  document.addEventListener("input", (event) => {
+    const target = event.target;
+    if (target.matches?.("[data-journal-filter]")) {
+      scheduleJournalFilter(target);
+    } else if (target.matches?.("[data-journal-list-picker-input]")) {
+      renderJournalSuggestions(target);
+    } else if (target.matches?.("[data-journal-list-textarea]") && !event.isComposing) {
+      const start = target.selectionStart, end = target.selectionEnd;
+      const original = target.value;
+      const uppercase = original.toLocaleUpperCase("en-US");
+      if (original !== uppercase) {
+        const newStart = original.slice(0, start).toLocaleUpperCase("en-US").length;
+        const newEnd = original.slice(0, end).toLocaleUpperCase("en-US").length;
+        target.value = uppercase;
+        target.setSelectionRange(newStart, newEnd);
+      }
+      updateJournalListCount(target.closest("[data-journal-list-dialog]"));
+    }
+  });
+
+  document.addEventListener("search", (event) => {
+    if (event.target.matches?.("[data-journal-filter]")) scheduleJournalFilter(event.target);
+  }, true);
+
+  document.addEventListener("compositionend", (event) => {
+    if (!event.target.matches?.("[data-journal-list-textarea]")) return;
+    const input = event.target;
+    input.value = input.value.toLocaleUpperCase("en-US");
+    updateJournalListCount(input.closest("[data-journal-list-dialog]"));
+  });
+
+  document.addEventListener("focusin", (event) => {
+    if (event.target.matches?.("[data-journal-list-picker-input]")) {
+      renderJournalSuggestions(event.target);
+    }
+  });
+  document.addEventListener("focusout", (event) => {
+    const target = event.target;
+    if (target.matches?.("[data-journal-list-textarea]")) {
+      normalizeJournalListTextarea(target);
+    } else if (target.matches?.("[data-journal-list-picker-input]")) {
+      window.setTimeout(() => {
+        if (!target.isConnected) return;
+        const control = target.closest(".journal-list-picker-control");
+        if (!control?.contains(document.activeElement)) closeJournalSuggestions(target);
+      }, 0);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const input = event.target.closest?.("[data-journal-list-picker-input]");
+    if (!input) return;
+    const list = qs("[data-journal-list-suggestions]", input.closest("[data-journal-list-dialog]"));
+    if (!list) return;
+    if (event.key === "Escape" && !list.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeJournalSuggestions(input);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (list.hidden) renderJournalSuggestions(input);
+      const options = qsa("[data-journal-suggestion]", list);
+      if (!options.length) return;
+      const active = options.findIndex((option) => option.classList.contains("is-active"));
+      const next = active === -1
+        ? (event.key === "ArrowDown" ? 0 : options.length - 1)
+        : (active + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+      options.forEach((option, index) => {
+        const isActive = index === next;
+        option.classList.toggle("is-active", isActive);
+        option.setAttribute("aria-selected", String(isActive));
+      });
+      input.setAttribute("aria-activedescendant", options[next].id);
+      options[next].scrollIntoView({ block: "nearest" });
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const active = qs(".journal-list-suggestion.is-active", list);
+      if (!list.hidden && active) chooseJournalSuggestion(input, active);
+      else addJournalListSelection(input);
+    }
+  });
+
   document.addEventListener("click", (event) => {
+    const suggestion = event.target.closest("[data-journal-suggestion]");
+    if (suggestion) {
+      const input = qs("[data-journal-list-picker-input]", suggestion.closest("[data-journal-list-dialog]"));
+      if (input) chooseJournalSuggestion(input, suggestion);
+      return;
+    }
+    if (!event.target.closest(".journal-list-picker-control")) {
+      closeJournalSuggestions(qs("[data-journal-list-picker-input]"));
+    }
     const filterMenu = event.target.closest("details.filter-menu");
     const filterSummary = event.target.closest("details.filter-menu > summary");
     if (filterSummary) closeFilterMenus(filterMenu);
@@ -1468,6 +1917,18 @@
     if (journalListAdd) {
       const input = qs("[data-journal-list-picker-input]", journalListAdd.closest("[data-journal-list-dialog]"));
       if (input) addJournalListSelection(input);
+      return;
+    }
+
+    const sortHeading = event.target.closest("[data-journal-sort-toggle]");
+    if (sortHeading) {
+      const panel = sortHeading.closest(".heatmap-panel");
+      const select = qs("[data-journal-sort]", panel);
+      if (!select) return;
+      const field = sortHeading.dataset.journalSortToggle;
+      select.value = field + "-" + (select.value === field + "-desc" ? "asc" : "desc");
+      saveJournalSort(select.value);
+      sortJournalRows(select);
       return;
     }
 
@@ -1554,10 +2015,29 @@
     }
   });
 
+  // Keep filter popovers inside the viewport even when tabs wrap on small screens.
+  const alignFilterPopover = (menu) => {
+    const popup = qs(".filter-menu-popover", menu);
+    if (!popup) return;
+    popup.style.transform = "none";
+    const rect = popup.getBoundingClientRect();
+    const margin = 12;
+    let shift = Math.min(0, window.innerWidth - margin - rect.right);
+    if (rect.left + shift < margin) shift += margin - (rect.left + shift);
+    popup.style.transform = "translateX(" + shift + "px)";
+  };
   document.addEventListener("toggle", (event) => {
     const menu = event.target;
-    if (menu.matches?.("details.filter-menu") && menu.open) closeFilterMenus(menu);
+    if (menu.matches?.("details.filter-menu") && menu.open) {
+      closeFilterMenus(menu);
+      window.requestAnimationFrame(() => {
+        if (menu.open) alignFilterPopover(menu);
+      });
+    }
   }, true);
+  window.addEventListener("resize", () => {
+    qsa("details.filter-menu[open]").forEach(alignFilterPopover);
+  });
 
   document.addEventListener("click", (event) => {
     if (event.target.closest(".topbar-right")) return;
@@ -1609,7 +2089,7 @@
       const updatedData = qs("[data-journal-heatmap-data]", updatedPanel);
       const currentData = qs("[data-journal-heatmap-data]", panel);
       if (!updatedMap || !updatedData || !currentData) return;
-      const scroll = currentMap.closest(".heatmap-scroll");
+      const scroll = currentMap.closest("[data-heatmap-years-viewport]");
       const left = scroll.scrollLeft;
       const top = scroll.scrollTop;
       currentData.replaceWith(updatedData);
