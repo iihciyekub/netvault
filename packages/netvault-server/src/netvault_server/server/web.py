@@ -32,10 +32,11 @@ from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf
 from netvault_server.server.main_helpers import process_upload
 from netvault_server.server.models import Pdf, User, UserRole
 from netvault_server.server.pdf_service import (existing_pdfs, search_pdfs_query,
-    resolve_pdf_file, send_pdf_file, doi_correction_history)
+    search_pdfs_by_dois_query, resolve_pdf_file, send_pdf_file, doi_correction_history)
+from netvault_server.server.bulk_doi_search import create_doi_batch, get_doi_batch
 from netvault_server.server import accounts
 from netvault_server.server.schemas import PasswordResetRequest, UserCreateRequest, Sha256ExistsRequest
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from netvault_server.server.security import (
     create_access_token,
     decode_access_token_claims,
@@ -497,11 +498,34 @@ def info_page(request: Request, db: Session = Depends(get_db)) -> Any:
     return render(request, "info.html", {"user": user, "version": __version__})
 
 
+class BulkDoiSearchRequest(BaseModel):
+    dois: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.post("/web/pdfs/batch", include_in_schema=False)
+def create_web_doi_batch(
+    request: Request,
+    payload: BulkDoiSearchRequest,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Issue an opaque URL for a user-scoped, paginated, exact-DOI PDF search."""
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    validate_csrf(request, request.headers.get("x-csrf-token", ""))
+    try:
+        token, count = create_doi_batch(user.id, payload.dois)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"url": external_path("/web/pdfs") + "?batch=" + token, "count": count}
+
+
 @router.get("/web/pdfs", response_class=HTMLResponse, include_in_schema=False)
 def pdfs_page(
     request: Request,
     q: str = "",
     page: int = Query(default=1, ge=1),
+    batch: str = Query(default="", max_length=64),
     journal: str = Query(default="", max_length=255),
     year: int | None = Query(default=None, ge=1, le=9999),
     db: Session = Depends(get_db),
@@ -511,26 +535,34 @@ def pdfs_page(
         return user
     q = q.strip()
     journal = journal.strip()
-    searched = bool(q or journal or year is not None)
+    searched = bool(q or journal or year is not None or batch)
+    batch_dois = get_doi_batch(user.id, batch) if batch else None
     pdfs = []
     total = 0
     settings = get_settings()
     page_size = settings.web_page_size
     error = None
-    if len(q) > settings.search_query_max_chars:
+    if batch and batch_dois is None:
+        error = "DOI batch expired or unavailable. Run the batch search again from Dashboard."
+    elif not batch and len(q) > settings.search_query_max_chars:
         error = f"Search queries are limited to {settings.search_query_max_chars} characters."
     if searched and error is None:
-        query = (search_pdfs_query(db, q, journal=journal, year=year)
+        base_query = (
+            search_pdfs_by_dois_query(db, batch_dois)
+            if batch_dois is not None
+            else search_pdfs_query(db, q, journal=journal, year=year)
+        )
+        query = (base_query
                  .add_columns(func.count(Pdf.id).over().label("total_count"))
                  .offset((page - 1) * page_size).limit(page_size))
         rows = db.execute(query).unique().all()
         pdfs = [row[0] for row in rows]
         total = int(rows[0].total_count) if rows else 0
     total_pages = max(1, (total + page_size - 1) // page_size)
-    search_params = {"q": q}
-    if journal:
+    search_params = {"batch": batch} if batch else {"q": q}
+    if not batch and journal:
         search_params["journal"] = journal
-    if year is not None:
+    if not batch and year is not None:
         search_params["year"] = str(year)
     return render(
         request,
@@ -542,6 +574,7 @@ def pdfs_page(
             "journal": journal,
             "year": year,
             "search_params": urlencode(search_params),
+            "batch_doi_count": len(batch_dois) if batch_dois else 0,
             "searched": searched,
             "page": page,
             "total": total,

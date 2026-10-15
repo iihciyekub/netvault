@@ -3408,3 +3408,176 @@ body.with-sidebar {
 .heat-cell-tooltip-count {
   color: var(--muted);
 }
+
+
+/* Lightweight batch DOI tools next to the heatmap's Less/More legend. */
+.dashboard-body .doi-batch-shortcuts {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 3px;
+  margin-right: 4px;
+}
+.dashboard-body .doi-batch-shortcuts button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  min-height: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.dashboard-body .doi-batch-shortcuts button:hover,
+.dashboard-body .doi-batch-shortcuts button:focus-visible {
+  background: var(--soft);
+  color: var(--fg);
+  border-color: var(--line);
+}
+.dashboard-body .doi-batch-shortcuts button:focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: 1px;
+}
+.dashboard-body .doi-batch-shortcuts button[aria-busy="true"] {
+  color: var(--link);
+  opacity: .7;
+  cursor: wait;
+}
+
+/* DOI editor: theme-aware modal with no backdrop blur or layout animation. */
+.doi-batch-dialog {
+  box-sizing: border-box;
+  width: min(600px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: min(85dvh, 720px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 15px 45px rgb(0 0 0 / 21%);
+}
+.doi-batch-dialog::backdrop {
+  background: rgb(0 0 0 / 30%);
+}
+.doi-batch-shell {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: clamp(14px, 3vw, 20px);
+}
+.doi-batch-shell header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.doi-batch-shell h2 {
+  min-width: 0;
+  margin: 0;
+  color: var(--fg);
+  font-size: 18px;
+  line-height: 1.3;
+}
+.doi-batch-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  min-height: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  background: var(--soft);
+  color: var(--muted);
+}
+.doi-batch-close:hover {
+  color: var(--fg);
+}
+.doi-batch-shell textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 190px;
+  max-height: min(55dvh, 450px);
+  padding: 12px;
+  resize: vertical;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.doi-batch-shell textarea:focus {
+  border-color: var(--choice-line);
+  outline: 1px solid var(--choice-line);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+.doi-batch-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+}
+.doi-batch-regex-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.doi-batch-regex-label input {
+  margin: 0;
+  accent-color: var(--link);
+}
+.doi-batch-options output {
+  color: var(--fg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.doi-batch-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.doi-batch-status:empty {
+  display: none;
+}
+.doi-batch-shell footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.doi-batch-shell footer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 33px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.doi-batch-shell footer button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+@media (max-width: 520px) {
+  .doi-batch-shell { padding: 14px; }
+  .doi-batch-shell textarea { min-height: 160px; }
+}

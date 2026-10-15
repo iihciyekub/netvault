@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.62 — 2026-10-15
+
+- Add two compact DOI batch shortcuts before the heatmap legend: edit a multiline DOI list or immediately search the prepared batch.
+- Optionally extract DOI patterns from pasted text with a disabled-by-default regex checkbox; deduplicate and normalize to one DOI per line with a live count.
+- Provide authenticated, CSRF-validated exact DOI batch searches in the existing Search PDF results/cards, preserving standard pagination with a short, account-scoped batch URL.
+- Limit each search to 500 unique DOIs and retain saved drafts in browser session storage.
+
 ## 0.7.61 — 2026-10-15
 
 - Show a single theme-aware tooltip immediately beside the pointer when hovering any journal-year grid square, with the year and exact PDF count including zeros.

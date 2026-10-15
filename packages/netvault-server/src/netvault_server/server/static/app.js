@@ -257,6 +257,194 @@
     }, 1000);
   };
 
+  const doiBatchDraftKey = "netvault:doi-batch-draft:v1";
+  const doiBatchMax = 500;
+  // Align with the backend's DOI patterns. Extraction is explicitly opt-in.
+  const doiBatchPattern = /\b10\.\d{4,9}\/[-._;()/:a-z0-9+%=&]+/gi;
+  let doiBatchSubmitting = false;
+
+  const normalizeBatchDoi = (value) => {
+    let doi = String(value || "").trim().normalize("NFKC");
+    doi = doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
+    doi = doi.replace(/^doi:\s*/i, "");
+    try { doi = decodeURIComponent(doi); } catch { /* Keep original suffix. */ }
+    doi = doi.trim().replace(/[\s.,;:\]}>}'"]+$/g, "").toLowerCase();
+    while (doi.endsWith(")") && (doi.match(/\)/g) || []).length > (doi.match(/\(/g) || []).length)
+      doi = doi.slice(0, -1);
+    return /^10\.\d{4,9}\/\S+$/i.test(doi) && doi.length <= 255 ? doi : "";
+  };
+
+  const readDoiBatch = (dialog) => {
+    const textarea = qs("[data-doi-batch-input]", dialog);
+    const extract = qs("[data-doi-batch-regex]", dialog)?.checked;
+    const raw = textarea?.value || "";
+    const candidates = extract
+      ? (raw.match(doiBatchPattern) || [])
+      : raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const dois = [], seen = new Set();
+    let invalid = 0;
+    for (const candidate of candidates) {
+      const doi = normalizeBatchDoi(candidate);
+      if (!doi) { invalid++; continue; }
+      if (!seen.has(doi)) { seen.add(doi); dois.push(doi); }
+    }
+    return { dois, invalid, extract, raw };
+  };
+
+  const doiBatchDialog = () => qs("[data-doi-batch-dialog]");
+  const persistDoiBatch = (dialog) => {
+    const textarea = qs("[data-doi-batch-input]", dialog);
+    const extract = qs("[data-doi-batch-regex]", dialog);
+    if (!textarea || !extract) return;
+    try {
+      sessionStorage.setItem(doiBatchDraftKey, JSON.stringify({
+        text: textarea.value.slice(0, 120000),
+        extract: extract.checked,
+      }));
+    } catch { /* The DOI search works without storage. */ }
+  };
+  const restoreDoiBatch = (dialog) => {
+    if (dialog.dataset.doiBatchRestored === "true") return;
+    dialog.dataset.doiBatchRestored = "true";
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(doiBatchDraftKey) || "{}");
+      const input = qs("[data-doi-batch-input]", dialog);
+      const regex = qs("[data-doi-batch-regex]", dialog);
+      if (typeof saved.text === "string" && input) input.value = saved.text;
+      if (typeof saved.extract === "boolean" && regex) regex.checked = saved.extract;
+    } catch { /* Preserve an empty draft. */ }
+  };
+  const updateDoiBatchCount = (dialog) => {
+    if (!dialog) return { dois: [], invalid: 0 };
+    const parsed = readDoiBatch(dialog);
+    const count = qs("[data-doi-batch-count]", dialog);
+    const button = qs("[data-doi-batch-search]", dialog);
+    if (count) count.textContent = parsed.dois.length.toLocaleString("en-US") + " DOIs";
+    if (button) button.disabled = doiBatchSubmitting || parsed.dois.length === 0 || parsed.dois.length > doiBatchMax;
+    return parsed;
+  };
+  const doiBatchStatus = (dialog, text = "") => {
+    const status = qs("[data-doi-batch-status]", dialog);
+    if (status) status.textContent = text;
+  };
+  const formatDoiBatch = (dialog) => {
+    const input = qs("[data-doi-batch-input]", dialog);
+    if (!input) return;
+    const parsed = readDoiBatch(dialog);
+    if (!parsed.extract && parsed.invalid) {
+      doiBatchStatus(dialog, parsed.invalid + " invalid line(s). Enable regex for pasted text.");
+      updateDoiBatchCount(dialog);
+      return;
+    }
+    input.value = parsed.dois.join("\n");
+    doiBatchStatus(dialog, parsed.dois.length ? "" : "No DOIs found.");
+    updateDoiBatchCount(dialog);
+    persistDoiBatch(dialog);
+  };
+  const openDoiBatch = (status = "") => {
+    const dialog = doiBatchDialog();
+    if (!dialog) return;
+    restoreDoiBatch(dialog);
+    updateDoiBatchCount(dialog);
+    doiBatchStatus(dialog, status);
+    if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+    else if (!dialog.open) dialog.setAttribute("open", "");
+    qs("[data-doi-batch-input]", dialog)?.focus({ preventScroll: true });
+  };
+
+  const submitDoiBatch = async () => {
+    const dialog = doiBatchDialog();
+    if (!dialog || doiBatchSubmitting) return;
+    restoreDoiBatch(dialog);
+    const parsed = readDoiBatch(dialog);
+    if (!parsed.extract && parsed.invalid) {
+      openDoiBatch(parsed.invalid + " invalid DOI line(s). Check the entries or enable regex.");
+      return;
+    }
+    if (!parsed.dois.length) {
+      openDoiBatch("Enter at least one DOI.");
+      return;
+    }
+    if (parsed.dois.length > doiBatchMax) {
+      openDoiBatch("Maximum " + doiBatchMax + " DOIs per search.");
+      return;
+    }
+    const input = qs("[data-doi-batch-input]", dialog);
+    if (input) input.value = parsed.dois.join("\n");
+    persistDoiBatch(dialog);
+    updateDoiBatchCount(dialog);
+    doiBatchSubmitting = true;
+    updateDoiBatchCount(dialog);
+    const toolbarButton = qs("[data-doi-batch-run]");
+    if (toolbarButton) toolbarButton.setAttribute("aria-busy", "true");
+    doiBatchStatus(dialog, "Searching…");
+    try {
+      const response = await fetch(dialog.dataset.batchUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": qs("[data-doi-batch-csrf]", dialog)?.value || "",
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({ dois: parsed.dois }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        const detail = result.detail;
+        throw new Error(typeof detail === "string" ? detail : "Search failed (HTTP " + response.status + ").");
+      }
+      const target = sameOriginUrl(result.url);
+      if (!target || !isWebPath(target)) throw new Error("Invalid batch search destination.");
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+      await fetchPage(target.href);
+    } catch (error) {
+      openDoiBatch(error.message || "Could not search the DOI list.");
+    } finally {
+      doiBatchSubmitting = false;
+      if (toolbarButton?.isConnected) toolbarButton.removeAttribute("aria-busy");
+      if (dialog.isConnected) updateDoiBatchCount(dialog);
+    }
+  };
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-doi-batch-open]")) { openDoiBatch(); return; }
+    if (event.target.closest("[data-doi-batch-run], [data-doi-batch-search]")) {
+      submitDoiBatch();
+      return;
+    }
+    if (event.target.closest("[data-doi-batch-close]")) {
+      const dialog = doiBatchDialog();
+      if (dialog?.open && typeof dialog.close === "function") dialog.close();
+      return;
+    }
+    if (event.target.closest("[data-doi-batch-format]")) {
+      const dialog = doiBatchDialog();
+      if (dialog) formatDoiBatch(dialog);
+    }
+  });
+  document.addEventListener("change", (event) => {
+    if (!event.target.matches?.("[data-doi-batch-regex]")) return;
+    const dialog = event.target.closest("[data-doi-batch-dialog]");
+    // Checking the box extracts DOI patterns and immediately rewrites the input.
+    if (dialog) formatDoiBatch(dialog);
+  });
+  document.addEventListener("input", (event) => {
+    if (!event.target.matches?.("[data-doi-batch-input]")) return;
+    const dialog = event.target.closest("[data-doi-batch-dialog]");
+    doiBatchStatus(dialog);
+    updateDoiBatchCount(dialog);
+    persistDoiBatch(dialog);
+    if (event.inputType === "insertFromPaste" && qs("[data-doi-batch-regex]", dialog)?.checked) {
+      window.setTimeout(() => { if (dialog?.isConnected) formatDoiBatch(dialog); }, 0);
+    }
+  });
+  document.addEventListener("focusout", (event) => {
+    if (!event.target.matches?.("[data-doi-batch-input]")) return;
+    const dialog = event.target.closest("[data-doi-batch-dialog]");
+    if (qs("[data-doi-batch-regex]", dialog)?.checked) formatDoiBatch(dialog);
+  });
+
   const journalNameCollator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
   const journalListNames = (textarea) => {
     const seen = new Set();

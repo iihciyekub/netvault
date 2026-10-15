@@ -135,6 +135,16 @@ def search_pdfs_query(db: Session, value: str, *, journal: str = "", year: int |
     return query.where(condition)
 
 
+def search_pdfs_by_dois_query(db: Session, dois: tuple[str, ...]):
+    """Find only exact DOI matches, using the same PDF loading as standard search."""
+    return (
+        select(Pdf)
+        .options(*pdf_read_options())
+        .where(Pdf.is_deleted.is_(False), Pdf.doi.in_(dois))
+        .order_by(Pdf.uploaded_at.desc(), Pdf.id.desc())
+    )
+
+
 def resolve_pdf_file(db: Session, *, doi: str | None = None, pdf_id: int | None = None):
     if pdf_id is not None:
         pdf = find_pdf(str(pdf_id), db)

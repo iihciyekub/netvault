@@ -11,6 +11,11 @@
   <button class="primary" type="submit"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span data-button-label>Search</span></button>
   {% if searched %}<a class="button ghost" href="{{ path_for('/web/pdfs') }}"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Clear</span></a>{% endif %}
 </form>
+{% if batch_doi_count %}
+<div class="search-filters" aria-label="Active DOI batch">
+  <span><i class="fa-solid fa-list-check" aria-hidden="true"></i> DOI batch · {{ batch_doi_count }} DOIs</span>
+</div>
+{% endif %}
 {% if journal or year is not none %}
 <div class="search-filters" aria-label="Active search filters">
   {% if journal %}<span title="{{ journal }}">Journal: {{ journal }}</span>{% endif %}

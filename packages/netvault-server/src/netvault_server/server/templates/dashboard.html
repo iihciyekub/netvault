@@ -170,6 +170,14 @@
     </div>
     <nav class="heatmap-pagination" data-journal-pagination aria-label="Journal pages">
       <div class="heatmap-pager-settings">
+      <div class="doi-batch-shortcuts" aria-label="Batch DOI search tools">
+        <button type="button" data-doi-batch-open aria-label="Edit DOI list" title="Edit DOI list">
+          <i class="fa-solid fa-list-ul" aria-hidden="true"></i>
+        </button>
+        <button type="button" data-doi-batch-run aria-label="Search DOI list" title="Search DOI list">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        </button>
+      </div>
       <div class="heatmap-legend" aria-label="Heatmap legend">
         <span>Less</span>
         <span class="heat-cell level-0"></span>
@@ -206,6 +214,39 @@
     <div class="empty-state">No journal-year data.</div>
     {% endif %}
 </section>
+<dialog class="doi-batch-dialog" data-doi-batch-dialog
+        data-batch-url="{{ path_for('/web/pdfs/batch') }}"
+        aria-labelledby="doi-batch-title">
+  <form method="dialog" class="doi-batch-shell" data-doi-batch-form>
+    <input type="hidden" data-doi-batch-csrf value="{{ csrf_token }}">
+    <header>
+      <h2 id="doi-batch-title">Batch DOI search</h2>
+      <button type="button" class="doi-batch-close" data-doi-batch-close aria-label="Close DOI editor" title="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </header>
+    <label class="sr-only" for="doi-batch-input">DOIs, one per line</label>
+    <textarea id="doi-batch-input" data-doi-batch-input rows="10" spellcheck="false"
+      placeholder="10.1000/182&#10;10.1038/example" aria-describedby="doi-batch-status"></textarea>
+    <div class="doi-batch-options">
+      <label class="doi-batch-regex-label" title="Extract DOI patterns from pasted text">
+        <input type="checkbox" data-doi-batch-regex>
+        Extract DOIs (regex)
+      </label>
+      <output data-doi-batch-count aria-live="polite">0 DOIs</output>
+    </div>
+    <p class="doi-batch-status" id="doi-batch-status" data-doi-batch-status role="status" aria-live="polite"></p>
+    <footer>
+      <button type="button" class="ghost" data-doi-batch-format title="Normalize and remove duplicate DOIs">
+        <i class="fa-solid fa-align-left" aria-hidden="true"></i><span>Format</span>
+      </button>
+      <button type="button" class="primary" data-doi-batch-search>
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Search PDFs</span>
+      </button>
+    </footer>
+  </form>
+</dialog>
+
 <div class="journal-context-menu" data-journal-context-menu data-rank-url="{{ path_for('/web/journal-rank') }}" role="menu" aria-label="Journal actions" hidden>
   <button type="button" role="menuitem" data-journal-copy><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy journal name</span></button>
   <a href="https://www.webofscience.com/" data-journal-wos-link role="menuitem" target="_blank" rel="noopener noreferrer" data-no-pjax><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>Open in Web of Science</span></a>
