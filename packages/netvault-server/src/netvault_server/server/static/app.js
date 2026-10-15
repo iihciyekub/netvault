@@ -373,6 +373,24 @@
     if (input) input.value = parsed.dois.join("\n");
     persistDoiBatch(dialog);
     updateDoiBatchCount(dialog);
+    // Open the tab during the direct click, before awaiting the POST. Opening
+    // after an asynchronous response would be blocked by many browsers.
+    const resultTab = window.open("about:blank", "_blank");
+    if (!resultTab) {
+      openDoiBatch("Please allow pop-ups for NetVault to open DOI results in a new tab.");
+      return;
+    }
+    try {
+      resultTab.opener = null;
+      const theme = getComputedStyle(document.documentElement);
+      const bg = theme.getPropertyValue("--bg").trim() || "#15191f";
+      const fg = theme.getPropertyValue("--fg").trim() || "#e9edf3";
+      resultTab.document.title = "Searching DOIs - NetVault";
+      resultTab.document.documentElement.style.backgroundColor = bg;
+      resultTab.document.body.style.cssText = "padding:24px;font:14px system-ui,sans-serif;";
+      resultTab.document.body.style.color = fg;
+      resultTab.document.body.textContent = "Preparing DOI search results…";
+    } catch { /* The new tab will still navigate to the results. */ }
     doiBatchSubmitting = true;
     updateDoiBatchCount(dialog);
     doiBatchStatus(dialog, "Searching…");
@@ -394,9 +412,12 @@
       }
       const target = sameOriginUrl(result.url);
       if (!target || !isWebPath(target)) throw new Error("Invalid batch search destination.");
+      if (resultTab.closed) throw new Error("The DOI results tab was closed before the search finished.");
+      resultTab.location.replace(target.href);
       if (dialog.open && typeof dialog.close === "function") dialog.close();
-      await fetchPage(target.href);
+      doiBatchStatus(dialog);
     } catch (error) {
+      if (!resultTab.closed) resultTab.close();
       openDoiBatch(error.message || "Could not search the DOI list.");
     } finally {
       doiBatchSubmitting = false;

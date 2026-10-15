@@ -122,6 +122,11 @@
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">
+      <button type="button" class="doi-batch-inline-button" data-doi-batch-open
+        aria-label="Batch DOI search" title="Open batch DOI search">
+        <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+        <span>Batch DOI</span>
+      </button>
       <label class="sr-only" for="journal-name-filter">Filter journals by name or initials</label>
       <div class="heatmap-filter-field">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -170,11 +175,6 @@
     </div>
     <nav class="heatmap-pagination" data-journal-pagination aria-label="Journal pages">
       <div class="heatmap-pager-settings">
-      <div class="doi-batch-shortcuts" aria-label="Batch DOI search tools">
-        <button type="button" data-doi-batch-open aria-label="Edit DOI list" title="Edit DOI list">
-          <i class="fa-solid fa-list-ul" aria-hidden="true"></i>
-        </button>
-      </div>
       <div class="heatmap-legend" aria-label="Heatmap legend">
         <span>Less</span>
         <span class="heat-cell level-0"></span>

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.64 — 2026-10-15
+
+- Place PDF Preview, Download, and Correct DOI controls on the first row at the upper right of search-result cards, beside DOI and Crossref metadata.
+- Move the labeled Batch DOI entry button from the heatmap legend/footer to the left of the dashboard journal search field.
+- Open DOI batch search results in a new browser tab while keeping the dashboard and DOI editor in the original tab; create the destination tab synchronously to avoid popup blocking.
+
 ## 0.7.63 — 2026-10-15
 
 - Keep one batch DOI toolbar shortcut; search from the modal Search PDFs action.

@@ -799,15 +799,36 @@ tr:last-child td { border-bottom: 0; }
 }
 
 .paper-result {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 18px 20px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.paper-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
+.paper-result-head .paper-result-kicker {
+  flex: 1 1 300px;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.paper-result-head .paper-result-actions {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-left: auto;
 }
 
 .paper-result:hover {
@@ -2010,8 +2031,7 @@ ul {
   .command-card-body { padding: 14px; }
   .searchbar input { flex-basis: 100%; }
   .paper-result {
-    grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 12px;
     padding: 16px;
   }
   .paper-result-actions {
@@ -3152,7 +3172,7 @@ body.with-sidebar {
 /* A thin single-line focus cue instead of the previously stacked thick borders. */
 .dashboard-body .heatmap-filter-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   flex-wrap: nowrap;
@@ -3183,10 +3203,17 @@ body.with-sidebar {
 }
 @media (max-width: 560px) {
   .dashboard-body .heatmap-filter-bar {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 5px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px;
   }
-  .dashboard-body .heatmap-filter-summary { justify-self: end; }
+  .dashboard-body .heatmap-filter-summary {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+  .dashboard-body .doi-batch-inline-button {
+    padding-inline: 9px;
+    font-size: 11px;
+  }
 }
 
 /* Center the whole dashboard on very wide displays; on smaller screens use
@@ -3410,43 +3437,39 @@ body.with-sidebar {
 }
 
 
-/* Lightweight batch DOI tools next to the heatmap's Less/More legend. */
-.dashboard-body .doi-batch-shortcuts {
+/* A labeled, theme-aware Batch DOI entry beside the dashboard journal search. */
+.dashboard-body .doi-batch-inline-button {
   display: inline-flex;
   align-items: center;
-  flex: 0 0 auto;
-  gap: 3px;
-  margin-right: 4px;
-}
-.dashboard-body .doi-batch-shortcuts button {
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 28px;
-  width: 28px;
-  min-height: 28px;
-  height: 28px;
-  margin: 0;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
+  justify-content: center;
+  gap: 7px;
+  justify-self: start;
+  width: auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--fg);
   font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
 }
-.dashboard-body .doi-batch-shortcuts button:hover,
-.dashboard-body .doi-batch-shortcuts button:focus-visible {
+.dashboard-body .doi-batch-inline-button > i {
+  color: var(--muted);
+  font-size: 13px;
+}
+.dashboard-body .doi-batch-inline-button:hover,
+.dashboard-body .doi-batch-inline-button:focus-visible {
+  border-color: var(--choice-line);
   background: var(--soft);
   color: var(--fg);
-  border-color: var(--line);
 }
-.dashboard-body .doi-batch-shortcuts button:focus-visible {
+.dashboard-body .doi-batch-inline-button:focus-visible {
   outline: 1px solid var(--choice-line);
   outline-offset: 1px;
-}
-.dashboard-body .doi-batch-shortcuts button[aria-busy="true"] {
-  color: var(--link);
-  opacity: .7;
-  cursor: wait;
 }
 
 /* DOI editor: theme-aware modal with no backdrop blur or layout animation. */

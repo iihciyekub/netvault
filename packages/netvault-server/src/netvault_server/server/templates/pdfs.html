@@ -30,7 +30,7 @@
 <section class="paper-results" aria-label="Search results">
     {% for pdf in pdfs %}
     <article class="paper-result">
-      <div class="paper-result-main">
+      <div class="paper-result-head">
         <div class="paper-result-kicker">
           <a class="doi-link" href="{{ pdf.crossref_url or ('https://doi.org/' ~ (pdf.doi|urlencode)) }}" target="_blank" rel="noreferrer" data-no-pjax>
             <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>{{ pdf.doi }}</span><i class="fa-solid fa-arrow-up-right-from-square external-mark" aria-hidden="true"></i>
@@ -45,6 +45,26 @@
           <span class="crossref-badge is-unverified"><i class="fa-solid fa-circle-question" aria-hidden="true"></i><span>Crossref {{ pdf.crossref_status|replace('_', ' ') }}</span></span>
           {% endif %}
         </div>
+        <div class="pdf-actions paper-result-actions">
+          <a class="button pdf-action" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
+          <a class="button primary pdf-action" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
+          {% if user.role == "admin" %}
+          <button
+            class="button pdf-action doi-correct-trigger"
+            type="button"
+            data-doi-correct
+            data-pdf-id="{{ pdf.id }}"
+            data-current-doi="{{ pdf.doi }}"
+            data-pdf-title="{{ pdf.title or pdf.original_name }}"
+            data-sha256="{{ pdf.sha256 }}"
+            data-preview-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi/preview') }}"
+            data-apply-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi') }}"
+            data-history-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/doi-corrections') }}"
+          ><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>Correct DOI</span></button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="paper-result-main">
         <h2 class="paper-title">{% if pdf.title %}{{ pdf.title|metadata }}{% else %}{{ pdf.original_name }}{% endif %}</h2>
         {% if pdf.authors and pdf.authors != "[]" %}
         <p class="paper-authors"><i class="fa-solid fa-user-group" aria-hidden="true"></i><span>{{ pdf.authors|metadata }}</span></p>
@@ -59,24 +79,6 @@
           <span class="paper-id"><i class="fa-solid fa-hashtag" aria-hidden="true"></i>PDF ID {{ pdf.id }}</span>
           <span>{{ pdf.size|bytes }}</span>
         </div>
-      </div>
-      <div class="pdf-actions paper-result-actions">
-        <a class="button pdf-action" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
-        <a class="button primary pdf-action" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
-        {% if user.role == "admin" %}
-        <button
-          class="button pdf-action doi-correct-trigger"
-          type="button"
-          data-doi-correct
-          data-pdf-id="{{ pdf.id }}"
-          data-current-doi="{{ pdf.doi }}"
-          data-pdf-title="{{ pdf.title or pdf.original_name }}"
-          data-sha256="{{ pdf.sha256 }}"
-          data-preview-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi/preview') }}"
-          data-apply-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi') }}"
-          data-history-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/doi-corrections') }}"
-        ><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>Correct DOI</span></button>
-        {% endif %}
       </div>
     </article>
     {% else %}
