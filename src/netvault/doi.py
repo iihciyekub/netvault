@@ -144,7 +144,25 @@ def document_info_candidates(reader: PdfReader) -> list[DoiCandidate]:
     for key, value in metadata.items():
         if not isinstance(value, str) or re.search(r"(?:journal|issue|volume).*doi", str(key), re.I):
             continue
-        for doi in find_dois_in_text(value):
+        if str(key).casefold() == "/doi":
+            try:
+                # A dedicated DOI field holds one complete identifier; the
+                # text scanner intentionally supports a narrower alphabet.
+                dois = [normalize_doi(value)]
+            except ValueError:
+                # Inspect whole whitespace-delimited tokens only. Never turn
+                # an unsupported DOI character into a different, shorter DOI.
+                dois = []
+                for token in value.split():
+                    try:
+                        parsed = normalize_doi(token)
+                    except ValueError:
+                        continue
+                    if parsed not in dois:
+                        dois.append(parsed)
+        else:
+            dois = find_dois_in_text(value)
+        for doi in dois:
             candidates.append(
                 DoiCandidate(
                     doi,
@@ -184,7 +202,34 @@ def extract_doi_from_pdf(path: Path) -> str | None:
     return evidence.doi if evidence.status == "ok" else None
 
 
+def extract_document_info_evidence(path: Path) -> DoiEvidence | None:
+    """Read authoritative Info DOI evidence without scanning XMP or page content.
+
+    None preserves the legacy resolver when Info has no usable article DOI.
+    A conflict must be reported and must never enter candidate guessing.
+    """
+    try:
+        embedded_reader = PdfReader(str(path))
+        embedded = document_info_candidates(embedded_reader)
+        embedded = [item for item in embedded if "/(issn)" not in item.doi.casefold()]
+    except Exception:
+        embedded = []
+    embedded_dois = unique_dois(embedded, {"pdf-metadata"})
+    if len(embedded_dois) > 1:
+        return DoiEvidence(
+            "conflict", None, None, embedded, "Multiple Document Info DOI values"
+        )
+    if embedded_dois:
+        return DoiEvidence("ok", embedded_dois[0], "pdf-metadata", embedded)
+
+    return None
+
+
 def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: str | None = None) -> DoiEvidence:
+    embedded = extract_document_info_evidence(path)
+    if embedded is not None:
+        return embedded
+
     if explicit_doi:
         try:
             doi = normalize_doi(explicit_doi)
@@ -215,16 +260,12 @@ def extract_doi_evidence(path: Path, explicit_doi: str | None = None, filename: 
             raw_head = handle.read(512_000).decode("latin-1", errors="ignore")
     except OSError:
         raw_head = ""
-    for candidate in metadata_candidates(raw_head):
-        add(candidate)
     for candidate in raw_explicit_candidates(raw_head):
         add(candidate)
 
     try:
         reader = PdfReader(str(path))
         for candidate in document_info_candidates(reader):
-            add(candidate)
-        for candidate in decoded_xmp_candidates(reader):
             add(candidate)
         for candidate in annotation_uri_candidates(reader):
             add(candidate)

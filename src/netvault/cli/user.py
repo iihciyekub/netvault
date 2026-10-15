@@ -12,7 +12,7 @@ from time import monotonic, sleep, time_ns
 from typing import Iterable
 
 from pypdf import PdfReader
-from pypdf.errors import FileNotDecryptedError
+from pypdf.errors import FileNotDecryptedError, PyPdfError
 import requests
 import typer
 from rich import box
@@ -46,6 +46,7 @@ from netvault.cli.http import (
     server_url,
     upload_pdf,
 )
+from netvault.cli.pdf_meta import read_pdf_metadata, write_pdf_metadata
 from netvault.cli.cache import CacheWriter, load_cache, save_cache
 from netvault.cli.update import update_from_github
 from netvault.cli.export import default_export_destination, normalize_export_issn, save_issn_export
@@ -59,6 +60,7 @@ from netvault.cli.upload_state import UploadState, RETRY_STATUSES, stable_contex
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
     DoiEvidence,
+    extract_document_info_evidence,
     extract_doi_evidence,
     find_dois_in_text,
     find_filename_doi_from_name,
@@ -104,6 +106,8 @@ Examples:
   nv upload ./paper.pdf ./papers
   nv check-pdfs ./papers
   nv doi ./paper.pdf --verbose
+  nv pdf-meta read ./paper.pdf
+  nv pdf-meta write ./paper.pdf --doi 10.1234/example
   nv identify ./papers --rename
   nv identify ./papers --issn 0025-1909 --rename
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
@@ -115,6 +119,60 @@ Examples:
     context_settings={"token_normalize_func": str.lower},
 )
 console = Console()
+
+
+
+pdf_meta_app = typer.Typer(
+    help="Read or write PDF Document Info metadata (offline).",
+)
+app.add_typer(pdf_meta_app, name="pdf-meta")
+
+
+@pdf_meta_app.command("read")
+def pdf_meta_read(
+    path: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    json_output: bool = typer.Option(False, "--json", help="Output metadata as JSON."),
+) -> None:
+    """Read PDF metadata without extracting or scanning page text."""
+    try:
+        details = read_pdf_metadata(path)
+    except (ValueError, OSError, PyPdfError) as exc:
+        raise RuntimeError(str(exc)) from exc
+    if json_output:
+        typer.echo(json.dumps(details, ensure_ascii=False, indent=2))
+        return
+    console.print(f"File: {details['file']}", markup=False)
+    console.print(f"DOI: {details['doi'] or '-'}  (status: {details['status']})", markup=False)
+    console.print("Document Info:", markup=False)
+    for key, value in sorted(details["document_info"].items()):
+        console.print(f"  {key}: {value}", markup=False)
+    for item in details["doi_sources"]:
+        console.print(f"  DOI {item['doi']} from {item['location']}", markup=False)
+
+
+@pdf_meta_app.command("write")
+def pdf_meta_write(
+    path: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
+    doi: str = typer.Option(..., "--doi", help="DOI to embed into the PDF."),
+    output: Path | None = typer.Option(None, "--output", help="Save to a new path instead of updating the input."),
+    replace: bool = typer.Option(False, "--replace", help="Replace conflicting PDF Document Info DOI values."),
+    title: str | None = typer.Option(None, "--title", help="Set PDF /Title."),
+    author: str | None = typer.Option(None, "--author", help="Set PDF /Author."),
+    subject: str | None = typer.Option(None, "--subject", help="Set PDF /Subject."),
+    keywords: str | None = typer.Option(None, "--keywords", help="Set PDF /Keywords."),
+) -> None:
+    """Atomically write DOI and optional Info fields using an incremental PDF update."""
+    try:
+        result = write_pdf_metadata(
+            path, doi, output=output, replace=replace, title=title,
+            author=author, subject=subject, keywords=keywords,
+        )
+    except (ValueError, OSError, PyPdfError) as exc:
+        raise RuntimeError(str(exc)) from exc
+    action = "Updated" if result["changed"] else "Already current"
+    console.print(f"{action}: {result['file']} (DOI: {result['doi']})", markup=False)
+    if result["changed"]:
+        console.print("PDF bytes/SHA-256 changed; re-upload if this PDF is already in NetVault.")
 
 
 def version_callback(value: bool) -> None:
@@ -317,6 +375,7 @@ def is_identity_rejection(error: Exception) -> bool:
             "No DOI candidate could be verified against metadata and the PDF title",
             "DOI candidates are ambiguous",
             "Multiple metadata DOI values",
+            "Multiple Document Info DOI values",
             "Multiple PDF content DOI values have similar confidence",
         )
     )
@@ -998,11 +1057,13 @@ Examples:
 \b
 Notes:
   Directories are scanned recursively for .pdf/.PDF files.
-  Existing PDFs are skipped before DOI extraction/upload by checking sha256 first.
+  Existing PDFs are checked by sha256 before uploading.
   File hashes are cached locally in ~/.config/netvault/hash-cache.json.
-  A sibling pdf-download-index.json is preferred over PDF DOI extraction.
+  A unique PDF Document Info DOI takes priority over DOI hints, indexes and caches.
+  Conflicting Document Info DOI values require correction; no DOI is guessed.
+  Without a Document Info DOI, existing DOI/index/cache extraction rules apply.
   A sibling cli-downloads.csv is also recognized; --csv works across subdirectories.
-  Explicit --csv trusts matched DOI/PDF pairs without reading PDF text (including scans).
+  Explicit --csv trusts matched DOI/PDF pairs and bypasses embedded DOI/content checks.
   It matches SHA-256 or filename and size; unmatched/ambiguous files fail without PDF fallback.
   Automatic CSV discovery still requires server title verification.
   Metadata lookup continues; ordinary CSV uploads do not require metadata availability.
@@ -1017,7 +1078,7 @@ Notes:
 )
 def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
-    doi: str | None = typer.Option(None, "--doi", help="Use this DOI instead of extracting it."),
+    doi: str | None = typer.Option(None, "--doi", help="Use this DOI when PDF Document Info has no DOI."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip online DOI/title verification and metadata lookup."),
     jobs: int = typer.Option(3, "--jobs", min=1, max=3, help="Concurrent uploads (default: 3)."),
     force: bool = typer.Option(
@@ -1028,7 +1089,7 @@ def upload_command(
     refresh_doi: bool = typer.Option(
         False,
         "--refresh-doi",
-        help="Re-run automatic DOI resolution and retry rejected identities; keep user-confirmed DOIs.",
+        help="Re-run automatic DOI resolution and retry rejected identities; keep user-confirmed fallbacks.",
     ),
     exclude_dir: list[str] | None = typer.Option(
         None,
@@ -1046,7 +1107,7 @@ def upload_command(
     ),
     csv_file: Path | None = typer.Option(
         None, "--csv", exists=True, file_okay=True, dir_okay=False, readable=True,
-        help="Trust DOI/PDF pairs in this cli-downloads.csv; skip PDF content verification. Match by hash or filename and size.",
+        help="Trust DOI/PDF pairs in this cli-downloads.csv; bypass embedded DOI/content checks. Match by hash or filename and size.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview local DOI matching without login, uploads or writes.",
@@ -1112,7 +1173,7 @@ def upload_command(
     )
 
     if dry_run:
-        counts = {"sha256": 0, "filename-size": 0, "title": 0,
+        counts = {"sha256": 0, "filename-size": 0, "title": 0, "pdf-metadata": 0,
                   "json-index": 0, "pdf-extraction": 0, "needs-review": 0}
         console.print("Dry run: local DOI matching only; no login, server requests, or files written.")
         for pdf_path in pdfs:
@@ -1120,10 +1181,15 @@ def upload_command(
                 if not has_pdf_header(pdf_path):
                     raise ValueError("invalid PDF header")
                 sha256 = file_sha256(pdf_path)
-                match = None if doi else index_resolver.resolve(
+                embedded = None if csv_file is not None else extract_document_info_evidence(pdf_path)
+                match = None if doi or embedded is not None else index_resolver.resolve(
                     pdf_path, sha256, pdf_path.stat().st_size
                 )
-                if doi:
+                if embedded is not None:
+                    resolved = embedded.doi
+                    kind = "pdf-metadata" if embedded.status == "ok" else "needs-review"
+                    counts[kind] += 1
+                elif doi:
                     resolved, kind = normalize_doi(doi), "user DOI"
                 elif match:
                     resolved = match.record.doi
@@ -1144,7 +1210,7 @@ def upload_command(
                 if csv_file is not None and match:
                     kind += "; CSV trusted, PDF content verification skipped"
                 console.print(f"{pdf_path}: {resolved or 'unresolved'} [{kind}]{renamed}",
-                              highlight=False)
+                              highlight=False, markup=False)
             except (OSError, ValueError, RuntimeError) as exc:
                 counts["needs-review"] += 1
                 console.print(f"{pdf_path}: needs review ({exc})", highlight=False)
@@ -1285,16 +1351,22 @@ def upload_command(
         )
 
         new_pdfs: list[Path] = []
+        embedded_by_path: dict[Path, DoiEvidence | None] = {}
         for pdf_path in unique_pdf_paths:
             sha256 = hashes_by_path[pdf_path]
+            embedded = None if csv_file is not None else extract_document_info_evidence(pdf_path)
+            embedded_by_path[pdf_path] = embedded
+            if embedded is not None and embedded.status == "conflict":
+                record_failure(pdf_path, ApiError(422, embedded.reason or "Multiple Document Info DOI values"))
+                continue
             existing_pdf = existing_by_sha.get(sha256)
             if existing_pdf and not force and csv_file is None:
                 try:
-                    asserted_doi = normalize_doi(doi) if doi else None
+                    asserted_doi = embedded.doi if embedded is not None else normalize_doi(doi) if doi else None
                     cached = cached_identity(identity_cache, sha256)
                     if not asserted_doi and cached and cached.get("source") == "user":
                         asserted_doi = normalize_doi(cached["doi"])
-                    if index_file is not None:
+                    if index_file is not None and embedded is None:
                         match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
                         if match is not None:
                             if asserted_doi and asserted_doi != match.record.doi:
@@ -1376,6 +1448,7 @@ def upload_command(
                 for pdf_path in preparation_batch:
                     try:
                         sha256 = hashes_by_path[pdf_path]
+                        embedded = embedded_by_path[pdf_path]
                         identity = cached_identity(identity_cache, sha256)
                         if not identity:
                             local_identity = upload_state.identity(pdf_path, sha256)
@@ -1389,14 +1462,18 @@ def upload_command(
                         index_match = None
                         if csv_file is not None:
                             index_match = csv_matches_by_path[pdf_path]
-                        elif not doi:
+                        elif not doi and embedded is None:
                             index_match = index_resolver.resolve(
                                 pdf_path,
                                 sha256,
                                 pdf_path.stat().st_size,
                             )
 
-                        if doi:
+                        if embedded is not None:
+                            identity = identity_from_evidence(embedded)
+                            store_identity(identity_cache, sha256, identity)
+                            identity_cache_pending += 1
+                        elif doi:
                             identity = manual_identity(doi)
                             store_identity(identity_cache, sha256, identity)
                             identity_cache_pending += 1
@@ -1425,7 +1502,9 @@ def upload_command(
                             doi_cache_hits += 1
                         else:
                             evidence = extract_doi_evidence(pdf_path)
-                            if evidence.status == "conflict" and evidence.candidates and not no_crossref:
+                            if (evidence.status == "conflict" and evidence.candidates and not no_crossref
+                                    and not any(item.detail.startswith("document-info:")
+                                                for item in evidence.candidates)):
                                 # Automatic identities are only upload hints. The server owns
                                 # Crossref verification and can safely fall back to another
                                 # candidate from the PDF.
@@ -1580,7 +1659,7 @@ Notes:
 )
 def doi_command(
     path: Path = typer.Argument(..., exists=True, readable=True, help="PDF file to inspect."),
-    doi: str | None = typer.Option(None, "--doi", help="Explicit DOI to validate and display."),
+    doi: str | None = typer.Option(None, "--doi", help="Fallback DOI to validate/display when Document Info has no DOI."),
     set_doi: str | None = typer.Option(
         None,
         "--set",

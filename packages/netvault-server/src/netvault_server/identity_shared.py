@@ -30,7 +30,7 @@ DOI_METADATA_PATTERNS = [
     )
 ]
 DOI_SOURCE_RANK = {"filename": 2, "pdf-content": 3, "pdf-metadata": 5, "explicit": 6}
-DOI_RESOLVER_VERSION = 9
+DOI_RESOLVER_VERSION = 10
 TRAILING_PUNCTUATION = " \t\r\n.,;:]>}'\""
 
 

@@ -50,7 +50,7 @@ def test_wrapped_doi_is_reconstructed_without_joining_prose(resolver):
     assert resolver.repair_doi_line_wraps(prose) == prose
 
 
-def test_compressed_xmp_is_read_outside_raw_header(resolver, tmp_path, monkeypatch):
+def test_compressed_xmp_is_not_an_authoritative_doi_source(resolver, tmp_path, monkeypatch):
     pdf = tmp_path / 'article.pdf'
     writer = PdfWriter()
     writer.add_blank_page(width=200, height=200)
@@ -71,9 +71,9 @@ def test_compressed_xmp_is_read_outside_raw_header(resolver, tmp_path, monkeypat
     monkeypatch.setattr(resolver, 'scan_with_pdftotext', lambda path: [])
 
     evidence = resolver.extract_doi_evidence(pdf)
-    assert evidence.status == 'ok'
-    assert evidence.doi == '10.1080/19463014.2018.1437759'
-    assert evidence.source == 'pdf-metadata'
+    assert evidence.status == 'no-doi'
+    assert evidence.doi is None
+    assert not evidence.candidates
 
 
 def test_bad_page_does_not_discard_good_pages_or_stronger_evidence(resolver, tmp_path, monkeypatch):

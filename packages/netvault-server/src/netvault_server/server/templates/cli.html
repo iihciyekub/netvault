@@ -61,6 +61,7 @@
     </header>
     <div class="command-card-body">
       <p><strong>Preview first, then upload.</strong> Folders include all subfolders.</p>
+      <p>A unique DOI in PDF Document Info takes priority over cached hints, download indexes, manual DOI hints, filenames and page text. NetVault fetches metadata for that DOI and binds the PDF to it; unavailable metadata does not change its identity. Conflicting Document Info DOIs require correction. Without an Info DOI, the existing resolver applies.</p>
       <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--dry-run</span></code>
@@ -71,7 +72,7 @@
           <button class="copy-button" type="button" data-copy="nv upload ./papers" aria-label="Copy folder upload command"><span data-copy-label>Copy</span></button>
         </div>
       </div>
-      <p class="command-help-gap">If <code>cli-downloads.csv</code> is in the folder, NetVault finds it automatically. PDF filenames stay unchanged.</p>
+      <p class="command-help-gap">Without a Document Info DOI, NetVault automatically looks for <code>cli-downloads.csv</code> in the folder. PDF filenames stay unchanged.</p>
       <p>Run the same upload command to continue. NetVault saves <code>.netvault-upload.sqlite3</code> beside the PDFs, skips files already on the server and remembers confirmed DOI/title rejections. New or changed files are processed; temporary errors can retry. Keep this hidden file when copying a folder. Full run results are saved in <code>nv-upload-report.json</code>; <code>--verbose</code> shows individual errors.</p>
       <details class="command-advanced">
         <summary>Retry files and PaperDock integration</summary>
@@ -85,7 +86,7 @@
             <button class="copy-button" type="button" data-copy="nv upload ./papers --refresh-doi" aria-label="Copy DOI resolution retry command"><span data-copy-label>Copy</span></button>
           </div>
         </div>
-        <p><code>--retry-failed</code> selects failed, pending and review files from directory state, with the upload report as a fallback for older records. <code>--refresh-doi</code> resolves automatic DOI identities again and retries rejections while keeping user-confirmed DOIs. Use it after correcting DOI evidence or changing server verification rules.</p>
+        <p><code>--retry-failed</code> selects failed, pending and review files from directory state, with the upload report as a fallback for older records. <code>--refresh-doi</code> resolves automatic DOI identities again and retries rejections while keeping user-confirmed hints. Document Info retains priority over those hints. Use it after correcting DOI evidence or changing server verification rules.</p>
         <p>PaperDock reads this state when preparing a download list and checks which DOI/PDF hashes are already on the server. No extra command is needed. A server lookup failure is shown as unavailable rather than treated as a missing PDF.</p>
       </details>
     </div>
@@ -172,7 +173,7 @@
       </details>
       <details class="command-advanced">
         <summary>CSV uploads and manual DOI</summary>
-        <p>Use <code>--csv</code> to trust a CSV's DOI/PDF pairs, including scanned PDFs without readable text. Files must match one CSV record by SHA-256 or filename and byte size. Unmatched or ambiguous files are reported as failures.</p>
+        <p>Explicit <code>--csv</code> is a separate trusted import mode that uses the CSV's DOI/PDF pairs, including scanned PDFs without readable text, instead of PDF DOI extraction. Files must match one CSV record by SHA-256 or filename and byte size. Unmatched or ambiguous files are reported as failures. Ordinary <code>--doi</code> hints apply only when Document Info has no DOI.</p>
         <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--csv</span> <span class="syntax-path">./cli-downloads.csv</span> <span class="syntax-option">--dry-run</span></code>
@@ -188,6 +189,25 @@
         </div>
         </div>
         <p>CSV rows need <code>file</code> or <code>filename</code>, <code>doi</code>, <code>bytes</code> or <code>size</code>, and <code>status=downloaded</code>. Optional <code>sha256</code> supports renamed files. Preview with <code>--dry-run</code> before uploading.</p>
+      </details>
+      <details class="command-advanced">
+        <summary>Read and write PDF DOI metadata</summary>
+        <p>Read Document Info offline, then append a DOI to its custom <code>/DOI</code> field. The write preserves existing page objects and other Info fields. XMP is unchanged and does not participate in DOI identity.</p>
+        <div class="command-list">
+          <div class="command-row">
+            <code>nv pdf-meta read ./paper.pdf --json</code>
+            <button class="copy-button" type="button" data-copy="nv pdf-meta read ./paper.pdf --json" aria-label="Copy PDF metadata read command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code>nv pdf-meta write ./paper.pdf --doi 10.1234/example</code>
+            <button class="copy-button" type="button" data-copy="nv pdf-meta write ./paper.pdf --doi 10.1234/example" aria-label="Copy PDF DOI write command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code>nv pdf-meta write ./paper.pdf --doi 10.1234/corrected --replace</code>
+            <button class="copy-button" type="button" data-copy="nv pdf-meta write ./paper.pdf --doi 10.1234/corrected --replace" aria-label="Copy PDF DOI correction command"><span data-copy-label>Copy</span></button>
+          </div>
+        </div>
+        <p>Use <code>--output ./tagged-paper.pdf</code> to keep the original. Correcting an existing different DOI requires <code>--replace</code>. Writing changes the file hash; <code>nv doi --set</code> changes only a local hint and leaves PDF bytes unchanged.</p>
       </details>
         <h3>DOI Audit and Correction</h3>
       <p>Admin-only tools for finding suspicious DOI identities and safely correcting the DOI attached to an existing PDF without replacing the PDF file.</p>

@@ -15,6 +15,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def cli_options() -> dict[str, set[str]]:
     result = {}
     tree = ast.parse((ROOT / "src/netvault/cli/user.py").read_text())
+    groups = {"app": ""}
+    for statement in tree.body:
+        call = statement.value if isinstance(statement, ast.Expr) else None
+        if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                and isinstance(call.func.value, ast.Name) and call.func.value.id == "app"
+                and call.func.attr == "add_typer" and call.args
+                and isinstance(call.args[0], ast.Name)):
+            for keyword in call.keywords:
+                if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+                    groups[call.args[0].id] = keyword.value.value
+                    result[keyword.value.value] = {"--help"}
     for function in tree.body:
         if not isinstance(function, ast.FunctionDef):
             continue
@@ -22,12 +33,13 @@ def cli_options() -> dict[str, set[str]]:
             if not (isinstance(decorator, ast.Call)
                     and isinstance(decorator.func, ast.Attribute)
                     and isinstance(decorator.func.value, ast.Name)
-                    and decorator.func.value.id == "app"
+                    and decorator.func.value.id in groups
                     and decorator.func.attr in {"command", "callback"}):
                 continue
             name = "" if decorator.func.attr == "callback" else function.name.replace("_", "-")
             if decorator.args and isinstance(decorator.args[0], ast.Constant):
                 name = decorator.args[0].value
+            name = " ".join(part for part in (groups[decorator.func.value.id], name) if part)
             options = {"--help"}
             for parameter, default in zip(function.args.args[-len(function.args.defaults):],
                                           function.args.defaults):
@@ -81,9 +93,11 @@ def main() -> None:
         if not copied or copied[0] != "nv":
             continue
         name = "" if copied[1].startswith("-") else copied[1]
+        if len(copied) > 2 and f"{name} {copied[2]}" in options:
+            name = f"{name} {copied[2]}"
         if name not in options:
             raise RuntimeError(f"Unknown CLI command in guide: {name}")
-        for token in copied[1 if not name else 2:]:
+        for token in copied[1 + len(name.split()):]:
             if token.startswith("-") and token.split("=", 1)[0] not in options[name]:
                 raise RuntimeError(f"Unknown option in guide: {name} {token}")
     print(f"CLI guide matches CLI declarations and copy buttons: {len(rows)} commands")

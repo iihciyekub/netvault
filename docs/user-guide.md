@@ -72,12 +72,14 @@ can shorten this with `NETVAULT_WEB_SESSION_DAYS` (1–400). Logging out, disabl
 the account, or resetting its password invalidates browser and CLI sessions.
 `nv logout` and browser Logout both revoke all existing sessions for the account.
 
-PDF DOI resolution reads document information, decoded XMP metadata, DOI links,
-and text from the first three pages using both Poppler and pypdf. A damaged page
-does not discard readable pages, and wrapped DOI tokens are repaired before
-candidate scoring. The server verifies automatic candidates against DOI metadata
-and the PDF title. If local extraction finds no DOI, the CLI still sends the PDF
-for server extraction; unsuccessful local results are retried on the next upload.
+Ordinary upload resolution starts with parsed PDF Document Info. A unique DOI
+supplies the identity before cached values, download indexes, `--doi`, filenames
+or page text. Multiple different Document Info DOIs stop resolution as a conflict.
+XMP is not read or written. Only with no Document Info DOI does the existing
+resolver use DOI hints, annotation links, filename patterns and the first three
+pages through Poppler and pypdf. That fallback retains server metadata/title
+verification. See the [PDF DOI metadata policy](pdf-doi-policy.md) for the shared
+rules and local read/write commands.
 
 Logout:
 
@@ -314,7 +316,9 @@ NetVault only accepts PDF files. On upload it:
 2. Computes sha256 locally.
 3. Checks server hashes before extracting DOI text or sending PDF bytes.
 4. Reuses directory state and skips unchanged confirmed identity rejections.
-5. Resolves DOI evidence for remaining files and sends them for server verification.
+5. Reads Document Info for remaining files: uses its unique DOI, stops on a
+   metadata conflict, or runs the existing hint/content resolver when no DOI is
+   embedded. The server independently applies the same identity rule.
 6. Stores a new PDF, or registers an accepted alternate hash for an existing DOI.
 7. Stores metadata in PostgreSQL and commits each local upload outcome.
 
@@ -328,6 +332,8 @@ identity results in `~/.config/netvault/identity-cache.json`. The identity cache
 is keyed by SHA-256 rather than path, so moving or renaming an unchanged PDF
 does not trigger another DOI scan. Automatic missing/conflict results are also
 cached; pass `--refresh-doi` when you want to retry them.
+Cached hints never override a unique Document Info DOI or resolve conflicting
+Document Info values.
 
 Upload uses one progress bar with a fixed total of files requiring processing.
 It advances on final results; existing hashes and local duplicates are summarized
@@ -359,12 +365,15 @@ status 0. Use `--refresh-doi` after server verification rules change. PaperDock 
 
 ### Download index files
 
+Indexes are fallback evidence only when Document Info has no DOI.
 Automatically discovered indexes skip invalid entries with one warning and use
 independent PDF extraction for those files. Valid SHA-bound entries remain usable.
-An explicitly supplied `--index-file` remains strict; stale hashes still fail.
+In this fallback path, an explicitly supplied `--index-file` remains strict;
+stale hashes still fail.
 
-If a PDF's immediate directory contains `pdf-download-index.json`, NetVault can
-use the downloader's DOI record before reading DOI text from the PDF. The JSON
+If Document Info has no DOI and the PDF's immediate directory contains
+`pdf-download-index.json`, NetVault can use the downloader's DOI record as a hint
+before page-text extraction. The JSON
 file must use version 1, declare `SHA-256`, and contain a `records` array. Each
 record contains `doi`, `filename`, `size`, `lastModified`, `sha256`,
 `downloadedAt`, `sourceUrl`, and a `validation` object with `status`, `checkedAt`,
@@ -372,8 +381,9 @@ record contains `doi`, `filename`, `size`, `lastModified`, `sha256`,
 
 NetVault still computes the PDF digest itself. It uses an index DOI only when the
 actual digest and size match and `validation.status` is `valid`. Files absent
-from the index use the normal DOI resolver. A matching filename with different
-bytes is treated as a stale index error and is not silently parsed or uploaded.
+from the index use the normal DOI resolver. Automatically discovered stale
+records are skipped with a warning; stale records in an explicit `--index-file`
+fail. `--no-index` disables download indexes without disabling Document Info.
 
 Specify one index for all selected PDFs or disable index lookup:
 
@@ -400,7 +410,8 @@ nv upload ~/Downloads/papers --csv ~/Downloads/cli-downloads.csv --dry-run
 nv upload ~/Downloads/papers --csv ~/Downloads/cli-downloads.csv
 ```
 
-Explicit `--csv` accepts matched DOI/PDF pairs without reading PDF text,
+Explicit `--csv` selects a separate trusted import mode and accepts matched
+DOI/PDF pairs without resolving Document Info DOI values, reading PDF text,
 extracting DOI candidates, or verifying PDF article titles. It requires a unique
 SHA-256 match or filename and byte-size match. CSV rows must contain `file` (or
 `filename`), `doi`, `bytes` (or `size`), and `status=downloaded`; optional `sha256`
@@ -415,8 +426,8 @@ but missing or unavailable metadata does not prevent an ordinary CSV upload.
 CSV assertions are recorded as `csv-trusted`, including aliases for another file
 with the same DOI. `--force` still requires available DOI metadata before replacing
 the stored file. A CSV discovered automatically beside the PDFs (or at the selected
-folder root) remains a `download-record` hint and still requires PDF title
-verification. Use explicit `--csv` even when the CSV is inside the upload folder
+folder root) remains a `download-record` hint used only when Document Info has no
+DOI and still requires PDF title verification. Use explicit `--csv` even when the CSV is inside the upload folder
 if you want to trust its pairs.
 
 When the server verifies an existing DOI for a PDF with different bytes, or accepts
@@ -436,7 +447,8 @@ intentionally omit identify collection folders:
 nv upload ./papers --exclude-dir unidentifys --exclude-dir duplicates
 ```
 
-If DOI extraction fails, provide the DOI manually:
+If Document Info has no DOI and automatic resolution fails, provide a DOI
+candidate for server verification:
 
 ```bash
 nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
@@ -448,16 +460,18 @@ Replace the PDF and all stored metadata for an existing DOI with `--force`:
 nv upload ~/Downloads/replacement.pdf --force
 ```
 
-Add `--doi DOI` when automatic DOI extraction is not possible. This is available
-to every authenticated user. NetVault requires a successful
-current Crossref response before it replaces the canonical PDF, clears old file
+Add `--doi DOI` when Document Info has no DOI and automatic resolution is not
+possible. It cannot override a unique embedded DOI or clear an embedded
+conflict. Replacement is available to every authenticated user. NetVault requires
+successful current DOI metadata retrieval before it replaces the canonical PDF, clears old file
 aliases, and overwrites the title, authors, journal, publisher, year, and URL.
 `--force` cannot change DOI identity. If a file was registered under an incorrect
 DOI, an administrator must correct that record before replacing its PDF.
 
-Automatic DOI claims are independently checked by the server. If a publisher
-download URL contains a DOI-like path that conflicts with the PDF's labeled DOI,
-update the CLI and inspect the evidence before confirming it explicitly:
+The server independently reads Document Info. Without an embedded DOI, automatic
+DOI claims and `--doi` hints retain server metadata/title verification. If a
+publisher download URL contains a DOI-like path that conflicts with printed
+article evidence, inspect the resolver output before supplying a candidate:
 
 ```bash
 nv update
@@ -465,8 +479,8 @@ nv doi ~/Downloads/paper.pdf --verbose
 nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
 ```
 
-For a PDF that has no embedded DOI but whose identity you have verified, save a
-user-confirmed mapping before upload:
+For a PDF with no Document Info DOI whose identity you have verified, save a
+user-confirmed local hint before upload:
 
 ```bash
 nv doi ~/Downloads/paper.pdf --set 10.1016/j.ijpe.2018.04.006
@@ -474,8 +488,10 @@ nv doi ~/Downloads/paper.pdf --show-cache
 nv upload ~/Downloads/paper.pdf
 ```
 
-The confirmation is bound to the PDF SHA-256, survives renames, and takes
-precedence over automatic extraction. If an assertion is wrong, remove it with:
+The cached confirmation is bound to the PDF SHA-256 and survives renames. It does
+not change PDF bytes or receive the embedded metadata shortcut; a unique Document
+Info DOI or embedded conflict takes priority. Use `nv pdf-meta write` to modify
+the PDF itself. If a cached assertion is wrong, remove it with:
 
 ```bash
 nv doi ~/Downloads/paper.pdf --remove
@@ -486,6 +502,11 @@ To skip online DOI/title verification and metadata lookup:
 ```bash
 nv upload ~/Downloads/paper.pdf --no-crossref
 ```
+
+This leaves Document Info precedence and conflict handling active. Ordinary
+uploads with a unique embedded DOI can also proceed when registry metadata is
+missing or temporarily unavailable. `--force` retains its successful-metadata
+requirement and cannot be combined with `--no-crossref`.
 
 ## Check Damaged PDFs
 
@@ -509,24 +530,59 @@ server. Encrypted PDFs are kept because encryption alone does not indicate that
 a file is damaged. If files have the same name, numbered names are used in
 `error/` rather than overwriting an existing file.
 
-## DOI Extraction
+## Read and Write PDF DOI Metadata
 
-NetVault uses a smart DOI resolver rather than a single PDF regex:
+Inspect embedded Document Info offline without page-text extraction:
 
-- explicit `--doi`
-- PDF metadata markers such as `prism:doi`, `crossmark:DOI`, `pdfx:doi`, and `dc:identifier`
-- filename DOI values, including names like `10.1016_j.chb.2015.03.041.pdf`
-- publisher filename patterns such as Springer `s12144-024-...`, PLOS `journal.pone...`, and Frontiers `fpsyg-...`
-- visible text from the first three pages if `pdftotext` is available
-- reference-list DOI candidates are heavily down-ranked
-- raw PDF text fallback for unusual encodings
-- confidence scoring when multiple DOI candidates are present
+```bash
+nv pdf-meta read ~/Downloads/paper.pdf
+nv pdf-meta read ~/Downloads/paper.pdf --json
+```
 
-During an automatic upload, the server tries filename, PDF metadata, and first-three-page DOI
-candidates in order. Each candidate is looked up in Crossref and, when PDF text is available,
-the normalized Crossref title must match the PDF. Invalid filename candidates automatically fall
-back to metadata or page content. Use `--no-crossref` only when this online verification is not
-required; ambiguous offline evidence still requires an explicit `--doi`.
+Write the DOI into `/DOI`, or save a separate PDF while preserving the original:
+
+```bash
+nv pdf-meta write ~/Downloads/paper.pdf --doi 10.1234/example.doi
+nv pdf-meta write ~/Downloads/paper.pdf --doi 10.1234/example.doi \
+  --output ~/Downloads/tagged-paper.pdf
+```
+
+The writer uses a validated pypdf incremental append and atomic replacement.
+Original bytes remain a prefix; pages and unrelated Document Info fields are
+preserved. XMP is untouched. Optional `--title`, `--author`, `--subject` and
+`--keywords` update those Document Info fields. A different existing embedded DOI
+requires explicit correction:
+
+```bash
+nv pdf-meta write ~/Downloads/paper.pdf --doi 10.1234/corrected.doi --replace
+```
+
+`--replace` updates conflicting DOI strings in eligible Document Info fields and
+sets `/DOI`. An existing `--output` destination is refused. Validation failures
+leave the original unchanged. A changed PDF has a new SHA-256; upload it again if
+the stored copy should receive the update. Repeating an already-current DOI
+write in place without optional field changes is a no-op.
+
+## DOI Resolution
+
+Document Info is authoritative for ordinary uploads: normalize and deduplicate
+DOIs from string fields such as `/DOI`, `/Subject` and `/Keywords`. A unique value
+is the identity, even when other hints disagree; multiple different values stop
+resolution as a conflict. The client and server skip page DOI extraction and
+title/content verification for that unique identity.
+
+Crossref is queried for that exact DOI. The existing DOI.org/Semantic Scholar
+provider fallback may supply metadata for the same identity. Missing or
+unavailable metadata does not select another DOI or block an ordinary upload
+with a unique embedded DOI. `--force` still requires successful metadata
+retrieval before replacing a stored file.
+
+Only when Document Info has no DOI does the existing smart resolver consider
+explicit `--doi`, cached identities, matched download records, filename DOI
+patterns, DOI links and the first three pages. Reference-list DOI candidates are
+down-ranked. Fallback candidates retain server registry/title/content checks;
+failed candidates can fall back to other evidence or bounded title lookup. XMP
+and arbitrary raw PDF object strings are excluded.
 
 PDFs without a DOI are rejected. This keeps the vault DOI-centered.
 
@@ -538,14 +594,18 @@ nv doi ~/Downloads/paper.pdf --verbose
 nv doi ~/Downloads/paper.pdf --show-cache
 ```
 
-If the resolver is still wrong or ambiguous, override it:
+If Document Info has no DOI and the fallback resolver is wrong or ambiguous,
+provide an explicit candidate:
 
 ```bash
 nv upload ~/Downloads/paper.pdf --doi 10.1016/j.ijpe.2018.04.006
 ```
 
 Online explicit DOI values are still verified against registry metadata and available PDF text;
-they are not a bypass around server-side identity checks.
+they do not override embedded metadata. To correct a unique embedded DOI or
+conflicting embedded values, use `nv pdf-meta read` and `nv pdf-meta write
+--replace`. See the [complete policy](pdf-doi-policy.md) for the explicit trusted
+CSV import exception and the responsibilities of each command.
 
 If an administrator later discovers that an already stored PDF has the wrong DOI, correct the
 identity without re-uploading the PDF:
@@ -692,12 +752,17 @@ nv login https://iiaide.com/nv
 
 `No DOI found`
 
-The PDF may be scanned or have unusual encoding. Upload with `--doi`.
+The PDF has no usable Document Info DOI or fallback identity. Inspect it with
+`nv pdf-meta read FILE` and `nv doi FILE --verbose`; supply a verified `--doi`
+candidate or embed the correct DOI with `nv pdf-meta write FILE --doi DOI`.
 
 `DOI conflict`
 
-The PDF or filename contains multiple high-confidence DOI candidates. Run
-`nv doi FILE --verbose` to inspect them, then upload with the correct `--doi` if needed.
+Run `nv pdf-meta read FILE` first. Multiple different Document Info DOI values
+must be corrected with `nv pdf-meta write FILE --doi DOI --replace`; `--doi`
+and cached hints cannot override that conflict. If Document Info has no DOI,
+inspect fallback candidates with `nv doi FILE --verbose` and supply a verified
+`--doi` candidate when needed.
 
 `PDF not found for DOI`
 

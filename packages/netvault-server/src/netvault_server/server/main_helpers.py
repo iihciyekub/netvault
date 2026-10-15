@@ -16,6 +16,7 @@ from netvault_server.server.doi import (
     DoiEvidence,
     extract_pdf_text,
     extract_pdf_title,
+    extract_document_info_evidence,
     extract_doi_evidence,
     normalize_doi,
     find_dois_in_text,
@@ -168,12 +169,63 @@ def _ordered_automatic_candidates(
     return unique[:12]
 
 
+def _authoritative_embedded_doi(evidence: DoiEvidence) -> bool:
+    """Only a locally parsed Document Info DOI can bypass content/title verification."""
+    if evidence.status != "ok" or evidence.source != "pdf-metadata" or not evidence.doi:
+        return False
+    embedded = {
+        item.doi
+        for item in evidence.candidates
+        if item.detail.startswith("document-info:")
+    }
+    return embedded == {evidence.doi}
+
+
 async def verify_automatic_doi(
     evidence,
     path,
     client_doi: str | None = None,
     client_source: str | None = None,
 ) -> tuple[object, CrossrefMetadata, list[dict]]:
+    embedded_dois = {
+        item.doi for item in evidence.candidates
+        if item.detail.startswith("document-info:")
+    }
+    if len(embedded_dois) > 1:
+        return (
+            replace(evidence, status="conflict", doi=None, source=None,
+                    reason="Multiple Document Info DOI values"),
+            CrossrefMetadata(status="skipped"),
+            [],
+        )
+    if _authoritative_embedded_doi(evidence):
+        # Fetch bibliographic fields when possible, but do not use PDF body,
+        # title matching, or provider availability to reject an embedded DOI.
+        metadata = await run_in_threadpool(fetch_doi_metadata, evidence.doi)
+        if metadata.canonical_doi:
+            try:
+                metadata_doi = normalize_doi(metadata.canonical_doi)
+            except ValueError:
+                metadata_doi = None
+            if metadata_doi != evidence.doi:
+                metadata = CrossrefMetadata(
+                    status="unavailable", fetched_at=metadata.fetched_at,
+                    provider=metadata.provider,
+                )
+        return (
+            evidence,
+            metadata,
+            [{
+                "doi": evidence.doi,
+                "source": "pdf-metadata",
+                "accepted": True,
+                "pdf_content_verified": False,
+                "metadata_status": metadata.status,
+                "metadata_verified": metadata.status == "ok",
+                "reason": "Unique PDF Document Info DOI trusted without PDF validation",
+            }],
+        )
+
     pdf_text = evidence.pdf_text or await run_in_threadpool(extract_pdf_text, path)
     attempts: list[dict] = []
     crossref_unavailable = False
@@ -453,20 +505,31 @@ async def process_upload(
             pdf_by_sha = db.scalar(select(Pdf).join(PdfFileAlias).where(PdfFileAlias.sha256 == sha256))
         if pdf_by_sha is not None and not force:
             changed = pdf_by_sha.is_deleted
-            if doi and doi_source not in AUTOMATIC_CLIENT_DOI_SOURCES:
+            embedded = None
+            if doi_source != "csv-trusted":
+                embedded = await run_in_threadpool(
+                    extract_document_info_evidence, staged_path or object_path(sha256)
+                )
+                if embedded is not None and embedded.status == "conflict":
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail=embedded.reason or "Multiple Document Info DOI values",
+                    )
+            asserted_doi = embedded.doi if embedded is not None else None
+            if asserted_doi is None and doi and doi_source not in AUTOMATIC_CLIENT_DOI_SOURCES:
                 try:
-                    normalized_explicit_doi = normalize_doi(doi)
+                    asserted_doi = normalize_doi(doi)
                 except ValueError as exc:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-                if pdf_by_sha.doi and pdf_by_sha.doi != normalized_explicit_doi:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=(
-                            f"This PDF is already linked to DOI {pdf_by_sha.doi}. "
-                            "Force upload replaces a file for the same DOI; an administrator must "
-                            "correct a wrong DOI identity."
-                        ),
-                    )
+            if asserted_doi is not None and pdf_by_sha.doi and pdf_by_sha.doi != asserted_doi:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"This PDF is already linked to DOI {pdf_by_sha.doi}. "
+                        "Force upload replaces a file for the same DOI; an administrator must "
+                        "correct a wrong DOI identity."
+                    ),
+                )
             if staged_path is not None:
                 if pdf_by_sha.sha256 == sha256:
                     promote_staged_pdf(staged_path, sha256)
@@ -482,7 +545,12 @@ async def process_upload(
             if not no_crossref and (
                 not pdf_by_sha.title or pdf_by_sha.crossref_status in (None, "pending", "unavailable", "skipped")
             ):
-                metadata = await run_in_threadpool(fetch_doi_metadata, pdf_by_sha.doi)
+                if embedded is not None:
+                    _, metadata, _ = await verify_automatic_doi(
+                        embedded, staged_path or object_path(sha256)
+                    )
+                else:
+                    metadata = await run_in_threadpool(fetch_doi_metadata, pdf_by_sha.doi)
                 apply_crossref_metadata(pdf_by_sha, metadata)
                 changed = True
             add_upload_record(pdf_by_sha, file, size, user, db, idempotency_key)
@@ -558,7 +626,8 @@ async def process_upload(
                     evidence_path,
                 )
                 timings["verify"] = monotonic() - verification_started
-        if doi_source is not None and not automatic_resolution and evidence.status == "ok":
+        if (doi_source is not None and not automatic_resolution
+                and evidence.status == "ok" and not _authoritative_embedded_doi(evidence)):
             evidence = replace(evidence, source=doi_source)
         if evidence.status == "conflict":
             raise HTTPException(
@@ -572,11 +641,14 @@ async def process_upload(
             )
         normalized_doi = evidence.doi
 
-        if force and verified_metadata is not None and verified_metadata.status != "ok":
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Force upload requires externally verified DOI metadata",
-            )
+        if force:
+            if verified_metadata is None:
+                verified_metadata = await run_in_threadpool(fetch_doi_metadata, normalized_doi)
+            if verified_metadata.status != "ok":
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Force upload requires externally verified DOI metadata",
+                )
 
         persist_started = monotonic()
         # Different byte hashes can resolve to the same DOI concurrently. Serialize

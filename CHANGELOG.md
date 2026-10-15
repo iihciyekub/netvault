@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.65 — 2026-10-15
+
+- Add offline `nv pdf-meta read` and validated incremental `write --doi`, with explicit DOI correction, output-file support and preservation of unrelated PDF metadata.
+- Use a unique parsed PDF Document Info DOI before upload hints, indexes, caches, filenames or page text in the CLI, API and web flow; stop on conflicting Info DOIs and retain the selected identity when registry enrichment is unavailable.
+- Preserve explicit CSV trust and the existing resolver when Info has no DOI; keep hash assignment conflicts and successful metadata requirements for force uploads.
+- Align the README, user guide, web CLI guide and shared PDF DOI policy, including the distinction between embedded metadata writes and local DOI cache hints.
+- Restore corrupted wheel hashes in both dependency locks from verified PyPI file records so locked builds pass validation.
+
 ## 0.7.64 — 2026-10-15
 
 - Place PDF Preview, Download, and Correct DOI controls on the first row at the upper right of search-result cards, beside DOI and Crossref metadata.
