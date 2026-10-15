@@ -434,9 +434,9 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
         'class="heatmap-limit-form"'
     )
-    assert 'data-journal-sort aria-controls="journal-year-heatmap"' in normal.text
-    assert '<i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>' in normal.text
-    assert "<span>Sort</span>" not in normal.text
+    assert 'id="journal-heatmap-sort" data-journal-sort aria-label="Sort journals" hidden>' in normal.text
+    assert 'data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>' in normal.text
+    assert 'data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name">Journal</button>' in normal.text
     assert '<option value="name-asc">Journal A–Z</option>' in normal.text
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
@@ -526,7 +526,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'data-journal-list-dialog' in dashboard.text
     assert 'data-journal-list-form' in dashboard.text
     assert 'data-journal-list-edit-trigger' in dashboard.text
-    assert "Saved to your account and available on every device where you sign in." in dashboard.text
+    assert "Changes are private to your account and sync across devices." in dashboard.text
     assert 'title="Click to filter; right-click to edit UTD24"' in dashboard.text
     assert "summary-count" in dashboard.text
     assert ">0</span>" in dashboard.text
@@ -586,7 +586,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "PaperDock" in cli_page.text
     assert cli_page.headers["cache-control"] == "no-store"
     assert "nv upload ./papers --csv ./cli-downloads.csv --dry-run" in cli_page.text
-    assert "NetVault finds it automatically" in cli_page.text
+    assert "NetVault automatically looks for" in cli_page.text
     assert "Unmatched or ambiguous files are reported as failures" in cli_page.text
     assert "status=downloaded" in cli_page.text
     assert "data-copy" in cli_page.text
