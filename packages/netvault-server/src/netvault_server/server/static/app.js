@@ -20,6 +20,24 @@
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
+  const applyTheme = theme => {
+    const dark = theme === "dark";
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    qsa("[data-theme-toggle]").forEach(button => {
+      button.setAttribute("aria-pressed", String(dark));
+      button.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
+      const icon = qs("i", button);
+      if (icon) icon.className = "fa-solid fa-fw " + (dark ? "fa-sun" : "fa-moon");
+    });
+  };
+  applyTheme(document.documentElement.dataset.theme);
+  document.addEventListener("click", event => {
+    if (!event.target.closest("[data-theme-toggle]")) return;
+    const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(theme);
+    try { localStorage.setItem("netvault:theme:v1", theme); } catch { /* Keep this page's theme. */ }
+  });
+
   const closeFilterMenus = (except = null) => {
     qsa("details.filter-menu[open]").forEach((menu) => {
       if (menu !== except) menu.removeAttribute("open");
@@ -721,9 +739,47 @@
   let rankSequence = 0;
   let rankResult = null;
   let rankDrag = null;
+  const rankPositionStorageKey = "netvault:rank-position:v1";
+  const rankCacheStorageKey = "netvault:journal-ranks:v1";
+  const rankCacheTtlMs = 24 * 60 * 60 * 1000;
+  const rankCache = new Map();
+  const rankPending = new Map();
+  let rankPosition = null;
+  const validRankResult = (data) => data && typeof data.journal_name === "string"
+    && Number.isFinite(data.queried_at) && data.queried_at > 0
+    && data.queried_at * 1000 <= Date.now() + 300000
+    && Array.isArray(data.rows) && data.rows.length <= 500
+    && data.rows.every(row => row && ["key", "name", "rank", "source"].every(
+      field => typeof row[field] === "string" && row[field].length <= 4000));
+  try {
+    const position = JSON.parse(localStorage.getItem(rankPositionStorageKey));
+    if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) rankPosition = position;
+    const entries = JSON.parse(localStorage.getItem(rankCacheStorageKey) || "[]");
+    if (Array.isArray(entries)) entries.slice(-100).forEach(entry => {
+      if (Array.isArray(entry) && typeof entry[0] === "string" && validRankResult(entry[1]))
+        rankCache.set(entry[0], entry[1]);
+    });
+  } catch { /* Memory caching still works when browser storage is unavailable. */ }
+  const rankIdentity = (url, name) => url + "\0" + name.trim().replace(/\s+/g, " ").toLowerCase();
+  const cacheRanks = (key, data) => {
+    const previous = rankCache.get(key);
+    if (previous && previous.queried_at > data.queried_at) return;
+    rankCache.delete(key);
+    rankCache.set(key, data);
+    while (rankCache.size > 100) rankCache.delete(rankCache.keys().next().value);
+    try { localStorage.setItem(rankCacheStorageKey, JSON.stringify([...rankCache])); } catch { /* Keep the memory cache. */ }
+  };
   const clampRankPanel = (panel, x, y) => {
+    const top = Math.max(8, Math.min(y, innerHeight - 160));
+    panel.style.maxHeight = `${Math.max(0, innerHeight - top - 8)}px`;
     panel.style.left = `${Math.max(8, Math.min(x, innerWidth - panel.offsetWidth - 8))}px`;
-    panel.style.top = `${Math.max(8, Math.min(y, innerHeight - panel.offsetHeight - 8))}px`;
+    panel.style.top = `${top}px`;
+  };
+  const rememberRankPosition = () => {
+    if (!rankDrag?.moved) { rankDrag = null; return; }
+    rankPosition = {x: parseFloat(rankDrag.panel.style.left), y: parseFloat(rankDrag.panel.style.top)};
+    try { localStorage.setItem(rankPositionStorageKey, JSON.stringify(rankPosition)); } catch { /* Keep the position for this page. */ }
+    rankDrag = null;
   };
   const renderRanks = () => {
     const panel = qs("[data-rank-panel]");
@@ -753,24 +809,48 @@
     const panel = qs("[data-rank-panel]");
     if (!panel?.dataset.journalName) return;
     const sequence = ++rankSequence;
-    rankResult = null;
-    qs("[data-rank-table]", panel).hidden = true;
-    qs("[data-rank-status]", panel).textContent = "Looking up easyScholar…";
+    const name = panel.dataset.journalName, key = rankIdentity(panel.dataset.rankUrl, name);
+    const cached = rankCache.get(key);
+    const current = () => sequence === rankSequence && panel.isConnected;
+    rankResult = cached || null;
+    panel.removeAttribute("aria-busy");
+    qs("[data-rank-refresh]", panel).disabled = false;
+    if (cached) {
+      renderRanks();
+      // Fresh results need no network round-trip. Older results stay visible during revalidation.
+      if (!refresh && Date.now() - cached.queried_at * 1000 < rankCacheTtlMs) return;
+    } else {
+      qs("[data-rank-table]", panel).hidden = true;
+      qs("[data-rank-status]", panel).textContent = "Looking up easyScholar…";
+    }
     panel.setAttribute("aria-busy", "true");
     qs("[data-rank-refresh]", panel).disabled = true;
     try {
-      const url = new URL(panel.dataset.rankUrl, location.origin);
-      url.search = new URLSearchParams({name: panel.dataset.journalName, refresh: String(refresh)});
-      const response = await fetch(url, {credentials: "same-origin", cache: "no-store"});
-      if (!response.headers.get("content-type")?.includes("application/json")) throw Error("Please sign in again.");
-      const data = await response.json();
-      if (!response.ok) throw Error(typeof data.detail === "string" ? data.detail : "Unable to look up this journal.");
-      if (sequence !== rankSequence || !panel.isConnected) return;
-      rankResult = data; renderRanks();
+      let pending = refresh ? null : rankPending.get(key);
+      if (!pending) {
+        pending = (async () => {
+          const url = new URL(panel.dataset.rankUrl, location.origin);
+          url.search = new URLSearchParams({name, refresh: String(refresh)});
+          const response = await fetch(url, {credentials: "same-origin", cache: "no-store"});
+          if (!response.headers.get("content-type")?.includes("application/json")) throw Error("Please sign in again.");
+          const data = await response.json();
+          if (!response.ok) throw Error(typeof data.detail === "string" ? data.detail : "Unable to look up this journal.");
+          if (!validRankResult(data) || rankIdentity(panel.dataset.rankUrl, data.journal_name) !== key)
+            throw Error("Invalid journal ranking response.");
+          cacheRanks(key, data);
+          return data;
+        })();
+        rankPending.set(key, pending);
+      }
+      let data;
+      try { data = await pending; }
+      finally { if (rankPending.get(key) === pending) rankPending.delete(key); }
+      if (!current()) return;
+      rankResult = rankCache.get(key) || data; renderRanks();
     } catch (error) {
-      if (sequence === rankSequence && panel.isConnected) qs("[data-rank-status]", panel).textContent = error.message;
+      if (current()) qs("[data-rank-status]", panel).textContent = error.message + (cached ? " Showing saved rankings." : "");
     } finally {
-      if (sequence === rankSequence) {
+      if (current()) {
         panel.removeAttribute("aria-busy"); qs("[data-rank-refresh]", panel).disabled = false;
       }
     }
@@ -783,9 +863,8 @@
     qs("[data-rank-title]", panel).textContent = menu.dataset.journalName;
     qs("[data-rank-table]", panel).hidden = true;
     panel.hidden = false;
-    const top = Math.max(8, Math.min(Number(menu.dataset.anchorY) + 12, innerHeight - 248));
-    panel.style.maxHeight = `${Math.min(560, innerHeight - top - 8)}px`;
-    clampRankPanel(panel, Number(menu.dataset.anchorX) + 12, top);
+    clampRankPanel(panel, rankPosition?.x ?? Number(menu.dataset.anchorX) + 12,
+      rankPosition?.y ?? Number(menu.dataset.anchorY) + 12);
     closeJournalMenu();
     qs("[data-rank-close]", panel).focus({preventScroll: true});
     loadRanks();
@@ -805,10 +884,13 @@
     header.setPointerCapture(event.pointerId); event.preventDefault();
   });
   document.addEventListener("pointermove", event => {
-    if (rankDrag) clampRankPanel(rankDrag.panel, event.clientX - rankDrag.x, event.clientY - rankDrag.y);
+    if (rankDrag) {
+      rankDrag.moved = true;
+      clampRankPanel(rankDrag.panel, event.clientX - rankDrag.x, event.clientY - rankDrag.y);
+    }
   });
-  document.addEventListener("pointerup", () => { rankDrag = null; });
-  document.addEventListener("pointercancel", () => { rankDrag = null; });
+  document.addEventListener("pointerup", rememberRankPosition);
+  document.addEventListener("pointercancel", rememberRankPosition);
   window.addEventListener("resize", () => {
     const panel = qs("[data-rank-panel]");
     if (panel && !panel.hidden) clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));

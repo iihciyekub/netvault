@@ -320,7 +320,7 @@ def dashboard_revision(request: Request, db: Session = Depends(get_db)) -> Any:
 @router.get("/web", response_class=HTMLResponse, include_in_schema=False)
 def dashboard(
     request: Request,
-    filter: str = "all",
+    filter: str = "utd24",
     pin: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:

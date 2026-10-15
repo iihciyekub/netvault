@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.48 — 2026-10-15
+
+- Default the dashboard to UTD24 and add a persistent light/dark theme toggle at the bottom of the sidebar.
+- Remember the dragged ranking panel position across journal changes and browser reloads.
+- Display browser-cached journal rankings immediately for 24 hours; revalidate older results in the background and preserve them if refresh fails.
+- Reuse in-flight lookups, retain manual refresh, and adapt panel height to the viewport with a vertically scrolling results list.
+
 ## 0.7.47 — 2026-10-15
 
 - Compact the ranking panel header, controls and table, removing repeated labels, timestamps and footer copy.

@@ -415,8 +415,8 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
         db.commit()
     stats.invalidate_stats_cache()
 
-    normal = client.get("/web")
-    pinned = client.get("/web", params={"pin": "Journal 20"})
+    normal = client.get("/web", params={"filter": "all"})
+    pinned = client.get("/web", params={"filter": "all", "pin": "Journal 20"})
     assert "JOURNAL 20" in dashboard_journal_names(normal)
     assert "JOURNAL 20" in dashboard_journal_names(pinned)
     assert len(dashboard_journal_names(normal)) == 21
@@ -512,7 +512,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
         data={"username": "admin", "password": "admin-pass", "csrf_token": csrf},
     )
     assert response.status_code == 200
-    dashboard = client.get("/web")
+    dashboard = client.get("/web", params={"filter": "all"})
     assert dashboard.status_code == 200
     assert '<h1 class="sr-only">NetVault dashboard</h1>' in dashboard.text
     assert "No journal-year data." in dashboard.text
@@ -671,7 +671,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
         )
         db.commit()
     stats.invalidate_stats_cache()
-    dashboard = client.get("/web")
+    dashboard = client.get("/web", params={"filter": "all"})
     assert dashboard.status_code == 200
     assert "journal-heatmap" in dashboard.text
     assert 'data-journal-filter' in dashboard.text
@@ -1134,7 +1134,7 @@ def test_heatmap_search_matches_node_and_retains_filters_on_pagination(client: T
         db.commit()
     stats.invalidate_stats_cache()
 
-    dashboard = client.get("/web")
+    dashboard = client.get("/web", params={"filter": "all"})
     row = next(row for row in dashboard_journal_data(dashboard) if row[0] == journal.upper())
     assert row[1] == 27
     assert next(cell[1] for cell in row[2] if cell[0] == 0) == 26
@@ -1329,3 +1329,15 @@ def test_easyscholar_official_custom_cache_and_redacted_failure(monkeypatch):
     with pytest.raises(ValueError) as error:
         ranks.lookup('Nature', refresh=True)
     assert ranks.BUNDLED_API_KEY not in str(error.value)
+
+
+
+def test_dashboard_defaults_to_utd24_and_all_remains_explicit(client):
+    web_login(client)
+    default = client.get("/web")
+    assert re.search(r'class="active"\s+href="/web\?filter=utd24"', default.text)
+    assert 'data-theme-toggle' in default.text
+    assert '/static/theme.js?v=' in default.text
+    assert default.text.index('/static/theme.js?v=') < default.text.index('/static/styles.css?v=')
+    all_journals = client.get("/web?filter=all")
+    assert re.search(r'class="active"\s+href="/web\?filter=all"', all_journals.text)
