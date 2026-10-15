@@ -75,7 +75,8 @@ the account, or resetting its password invalidates browser and CLI sessions.
 Ordinary upload resolution starts with parsed PDF Document Info. A unique DOI
 supplies the identity before cached values, download indexes, `--doi`, filenames
 or page text. Multiple different Document Info DOIs stop resolution as a conflict.
-XMP is not read or written. Only with no Document Info DOI does the existing
+XMP is never used for DOI identification or modified; automatic writeback only
+compares its raw bytes for preservation. Only with no Document Info DOI does the existing
 resolver use DOI hints, annotation links, filename patterns and the first three
 pages through Poppler and pypdf. That fallback retains server metadata/title
 verification. See the [PDF DOI metadata policy](pdf-doi-policy.md) for the shared
@@ -310,7 +311,8 @@ Upload multiple files and directories in one command:
 nv upload ~/Downloads/a.pdf ~/Downloads/b.pdf ~/Downloads/papers
 ```
 
-NetVault only accepts PDF files. On upload it:
+NetVault only accepts PDF files. Ordinary uploads leave local PDF bytes
+unchanged. On an ordinary upload it:
 
 1. Checks the file is a PDF.
 2. Computes sha256 locally.
@@ -362,6 +364,59 @@ from directory state, with the chosen report as a fallback for legacy records. B
 force uploads also bypass them. Success clears a remembered rejection. Fresh errors
 or rejections exit with status 1; skipping remembered review files alone exits with
 status 0. Use `--refresh-doi` after server verification rules change. PaperDock uses a private versioned interface to read the same directory state and query server DOI/hash presence; the public CLI command set is unchanged.
+
+### Automatically write an independently verified DOI
+
+Opt in to supplementing missing Document Info DOI metadata before upload:
+
+```bash
+nv upload ./papers --write-doi --dry-run
+nv upload ./papers --write-doi
+```
+
+The dry run is a local preview only. It does not contact the server or Crossref,
+change PDFs, or establish that a candidate DOI is verified. The live command
+cannot be combined with `--csv`, `--no-crossref` or `--doi`.
+
+For each eligible PDF without an Info DOI, the server independently examines the
+original bytes using authenticated `POST /pdfs/verify-doi`. This temporary
+verification does not create a vault record or hash alias. The returned evidence
+is bound to the original SHA-256. Automatic writing requires all of these:
+
+- An article DOI printed explicitly on the first page, excluding references,
+  download URLs and journal/issue/volume DOIs.
+- An exact Crossref lookup whose canonical DOI matches the printed DOI.
+- A first-page article title matching the Crossref title with similarity of at
+  least `0.98`, plus independent first-page author and publication-year evidence.
+- Exactly one candidate satisfying all checks.
+
+Only Crossref article records qualify. Title search alone, DOI.org/Semantic
+Scholar results, filenames, cache/index hints, explicit CSV pairs and a successful
+upload cannot authorize a write. A Crossref record existing by itself does not
+prove it belongs to the PDF. The rule is conservative and high confidence;
+preprint/version ambiguity and incomplete evidence still need review.
+
+An existing unique Info DOI is not rewritten and follows ordinary upload rules,
+including signed PDFs with an existing DOI. For missing-DOI files, encryption,
+signatures, a nonempty invalid DOI field, conflicts or insufficient evidence keep
+the source unchanged and prevent upload for that file in this invocation.
+Verification/provider errors are reported as failures or review outcomes;
+they never trigger an unverified write or upload of the original instead.
+
+Before a verified write, NetVault creates a byte-for-byte backup beside the
+source: `filename.pdf.nv-doi-<original-sha256>.bak`. It verifies the source hash,
+creates and validates an incremental temporary PDF preserving the original-byte
+prefix and page structure, rechecks the source hash and atomically replaces the
+source. A safety-check or write failure leaves the source unchanged and stops
+that file's upload. The order is verification, backup, validated write, new
+SHA-256, then upload. Per-file report entries include verification, original and
+resulting hashes, and the backup path.
+
+Ordinary deduplication still retains an existing canonical server PDF for the
+same DOI, even if this local PDF now has metadata and different bytes. It may
+register the new hash as an alias; downloads can return the retained server
+copy. Add `--force` to request canonical replacement, which continues to require
+successful registry metadata. See the [complete policy](pdf-doi-policy.md).
 
 ### Download index files
 
@@ -418,7 +473,7 @@ SHA-256 match or filename and byte-size match. CSV rows must contain `file` (or
 supports renamed files. Unmatched or ambiguous files fail without PDF fallback,
 even when a cached DOI is available. This trust applies only to this invocation;
 it is not stored in the local DOI cache. `--csv` cannot be combined with `--doi`,
-`--index-file`, or `--no-index`.
+`--index-file`, `--no-index`, or `--write-doi`.
 
 PDF signature/completeness checks, upload size limits, deduplication, and existing
 hash/DOI conflict checks still apply. Metadata lookup continues unless disabled,
@@ -559,9 +614,13 @@ nv pdf-meta write ~/Downloads/paper.pdf --doi 10.1234/corrected.doi --replace
 
 `--replace` updates conflicting DOI strings in eligible Document Info fields and
 sets `/DOI`. An existing `--output` destination is refused. Validation failures
-leave the original unchanged. A changed PDF has a new SHA-256; upload it again if
-the stored copy should receive the update. Repeating an already-current DOI
-write in place without optional field changes is a no-op.
+leave the original unchanged. A changed PDF has a new SHA-256. Ordinary uploads
+can retain an existing same-DOI server copy through deduplication; use
+`nv upload ~/Downloads/paper.pdf --force` to request replacing that stored copy.
+Repeating an already-current DOI write in place without optional field changes
+is a no-op. This offline command records the supplied DOI without independent
+article-identity verification; `nv upload ./papers --write-doi` performs the
+stricter automatic verification and missing-DOI write workflow described above.
 
 ## DOI Resolution
 

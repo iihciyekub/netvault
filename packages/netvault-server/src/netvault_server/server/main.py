@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 import os
+import re
 from pathlib import Path
 import logging
 from time import perf_counter
@@ -9,6 +10,7 @@ import shutil
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -44,6 +46,7 @@ from netvault_server.server.schemas import (
     PdfDoiCorrectionResponse,
     PdfDetail,
     PdfRead,
+    PdfDoiVerification,
     Sha256ExistsRequest,
     Sha256ExistsResponse,
     TokenResponse,
@@ -56,7 +59,8 @@ from netvault_server.server.security import (
     hash_password,
     activity_is_allowed,
 )
-from netvault_server.server.storage import ensure_storage_dirs
+from netvault_server.server.storage import ensure_storage_dirs, store_pdf, object_path
+from netvault_server.server.doi_writeback import verify_pdf_doi_writeback
 from netvault_server.server.stats import invalidate_stats_cache, router as stats_router
 from netvault_server.server.journal_export import router as journal_export_router
 from netvault_server.server.web import router as web_router
@@ -219,6 +223,9 @@ async def upload_pdf(
     idempotency_key = request.headers.get("idempotency-key")
     if idempotency_key and len(idempotency_key) > 128:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency key is too long")
+    expected_sha256 = request.headers.get("x-netvault-expected-sha256")
+    if expected_sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        raise HTTPException(status_code=400, detail="Expected PDF SHA-256 must contain 64 hexadecimal characters")
     timings: dict[str, float] = {}
     result = await process_upload(
         file,
@@ -230,11 +237,37 @@ async def upload_pdf(
         force=force,
         doi_source=doi_source,
         timings=timings,
+        expected_sha256=expected_sha256,
     )
     response.headers["Server-Timing"] = ", ".join(
         f"{name};dur={seconds * 1000:.2f}" for name, seconds in timings.items()
     )
     return result
+
+
+@app.post("/pdfs/verify-doi", response_model=PdfDoiVerification)
+async def verify_pdf_doi(
+    file: UploadFile = File(...),
+    expected_sha256: str = Form(..., pattern=r"^[0-9a-fA-F]{64}$"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PdfDoiVerification:
+    """Verify original bytes for local writeback without creating a vault record."""
+    if not activity_is_allowed(f"doi-writeback:{user.id}", get_settings().upload_rate_per_hour):
+        raise HTTPException(status_code=429, detail="DOI verification rate limit exceeded")
+    # Release the authentication read transaction before network verification.
+    db.rollback()
+    sha256, _, _, _, staged_path = await store_pdf(file)
+    try:
+        if sha256 != expected_sha256.lower():
+            raise HTTPException(status_code=409, detail="PDF hash differs from the file selected for DOI verification")
+        result = await run_in_threadpool(
+            verify_pdf_doi_writeback, staged_path or object_path(sha256), sha256
+        )
+        return PdfDoiVerification(**result)
+    finally:
+        if staged_path is not None:
+            staged_path.unlink(missing_ok=True)
 
 
 @app.get("/pdfs", response_model=list[PdfRead])

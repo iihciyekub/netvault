@@ -129,6 +129,7 @@ def _upload_pdf_once(
         headers["Content-Type"] = monitor.content_type
         if sha256:
             headers["Idempotency-Key"] = sha256
+            headers["X-NetVault-Expected-SHA256"] = sha256
         try:
             response = http_session().post(
                 f"{server_url()}/pdfs/upload",
@@ -167,3 +168,39 @@ def upload_pdf(path: Path, **kwargs: Any) -> Any:
             if attempt == 2:
                 raise
         sleep(2 ** attempt)
+
+
+def _verify_pdf_doi_once(path: Path, sha256: str) -> dict[str, Any]:
+    """Request a read-only verification receipt for these exact source bytes."""
+    with path.open("rb") as handle:
+        encoder = MultipartEncoder(fields={
+            "expected_sha256": sha256,
+            "file": (path.name, handle, "application/pdf"),
+        })
+        headers = auth_headers()
+        headers["Content-Type"] = encoder.content_type
+        # A separate default request avoids the upload session's adapter retries;
+        # only the bounded connection retries below apply to this endpoint.
+        response = requests.post(
+            f"{server_url()}/pdfs/verify-doi", headers=headers, data=encoder, timeout=300,
+        )
+    if response.status_code == 404:
+        raise ApiError(404, "DOI writeback verification requires NetVault server 0.7.66 or newer; "
+                       "the PDF was not changed or uploaded.")
+    raise_for_api_error(response)
+    receipt = response.json()
+    if not isinstance(receipt, dict):
+        raise ValueError("Invalid DOI verification response; expected an object")
+    return receipt
+
+
+def verify_pdf_doi(path: Path, sha256: str) -> dict[str, Any]:
+    """Verify without uploading, retrying connection failures at most twice."""
+    for attempt in range(3):
+        try:
+            return _verify_pdf_doi_once(path, sha256)
+        except requests.ConnectionError:
+            if attempt == 2:
+                raise
+        sleep(2 ** attempt)
+    raise RuntimeError("DOI verification did not return a receipt")

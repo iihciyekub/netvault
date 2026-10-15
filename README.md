@@ -21,9 +21,16 @@ README and the [user guide](docs/user-guide.md) describe the same commands.
 
 A unique DOI in parsed PDF Document Info has highest priority during ordinary uploads. It supplies the PDF identity before cached identities, download indexes, `--doi`, filenames or page text. Crossref metadata for that exact DOI enriches the record when available; missing metadata never triggers a search for a different DOI. Multiple different Document Info DOIs stop resolution as a conflict. See the [PDF DOI metadata policy](docs/pdf-doi-policy.md) for the complete rules and local read/write commands.
 
+Optional `nv upload ./papers --write-doi` independently verifies a missing DOI
+before appending it to the local PDF. It requires an explicit article DOI on the
+first page, an exact Crossref DOI match, title similarity of at least `0.98`,
+and independent first-page author/year evidence, with exactly one qualifying
+candidate. Existing unique Info DOIs are left unchanged. Ordinary uploads do not
+modify local PDF bytes. See the policy for write safeguards and review outcomes.
+
 Only when Document Info has no DOI, a sibling EBSCO `cli-downloads.csv` supplies DOI hints when the downloaded filename and byte size match. For recursive uploads, a CSV at the selected folder root also applies to PDFs in nested subfolders. Renamed PDFs can be matched by SHA-256 or a unique article-title column matched against the PDF first page. These hints and SHA-256-bound JSON index hints retain server identity/title verification. `--no-index` disables both index formats without disabling Document Info. Without a usable hint, the existing PDF/filename resolver and bounded title lookup apply. MIS Quarterly and MIS Quarterly Executive remain separate journals.
 
-**Explicit `--csv PATH` trusts the CSV's DOI/PDF pairs**, including scanned PDFs with no readable text. It matches a unique record by SHA-256 or filename and byte size, without PDF title matching, PDF content verification, or PDF DOI fallback. Unmatched, ambiguous, or conflicting records are reported as failures. CSV rows need `file` (or `filename`), `doi`, `bytes` (or `size`), and `status=downloaded`; `sha256` is optional and supports renamed files. Trust applies only to the explicit invocation and is not saved in the DOI cache. PDF signature/completeness checks, size limits, hash deduplication, and existing DOI assignment conflict checks remain active. Metadata lookup continues unless `--no-crossref` is used; missing or unavailable metadata does not block ordinary CSV uploads. `--force` still requires available DOI metadata. Use `--dry-run` to preview matches without login, uploads, or local writes. `--csv` cannot be combined with `--doi`, `--index-file`, or `--no-index`.
+**Explicit `--csv PATH` trusts the CSV's DOI/PDF pairs**, including scanned PDFs with no readable text. It matches a unique record by SHA-256 or filename and byte size, without PDF title matching, PDF content verification, or PDF DOI fallback. Unmatched, ambiguous, or conflicting records are reported as failures. CSV rows need `file` (or `filename`), `doi`, `bytes` (or `size`), and `status=downloaded`; `sha256` is optional and supports renamed files. Trust applies only to the explicit invocation and is not saved in the DOI cache. PDF signature/completeness checks, size limits, hash deduplication, and existing DOI assignment conflict checks remain active. Metadata lookup continues unless `--no-crossref` is used; missing or unavailable metadata does not block ordinary CSV uploads. `--force` still requires available DOI metadata. Use `--dry-run` to preview matches without login, uploads, or local writes. `--csv` cannot be combined with `--doi`, `--index-file`, `--no-index`, or `--write-doi`.
 
 ## What It Provides
 
@@ -220,6 +227,38 @@ nv upload ~/Documents/papers
 nv upload ./paper.pdf
 nv upload ./paper-a.pdf ./paper-b.pdf ~/Documents/papers
 ```
+
+To automatically supplement missing PDF DOI metadata before uploading:
+
+```bash
+nv upload ./papers --write-doi --dry-run
+nv upload ./papers --write-doi
+```
+
+The preview is offline and makes no PDF changes or verification claims. The live
+command uses the independent server verification endpoint, `POST /pdfs/verify-doi`,
+which temporarily examines the exact original SHA-256 without storing an item.
+Only one explicit first-page article DOI that passes exact Crossref lookup,
+title similarity of at least `0.98`, and independent author/year checks may be
+written. Title search alone, other metadata providers, cache/index/CSV hints,
+filenames and upload success cannot authorize a write.
+
+`--write-doi` is incompatible with `--csv`, `--no-crossref` and `--doi`. Existing
+unique Info DOIs are left unchanged. Conflicts, invalid nonempty DOI fields,
+encryption, signatures or insufficient evidence preserve the original PDF and
+stop that file's upload with a review/failure outcome; an existing DOI in a signed PDF
+can still follow ordinary upload rules without rewriting. This conservative
+check cannot guarantee identity in every case, including preprint/version
+ambiguity.
+
+A successful write first saves a backup beside the PDF as
+`filename.pdf.nv-doi-<original-sha256>.bak`, validates an incremental temporary
+file and unchanged source hash, then atomically replaces the source. Upload uses
+the new SHA-256. A failed write or safety check stops upload for that file.
+The upload report records per-file verification, original/new hashes and backup
+paths. Ordinary DOI deduplication still retains an existing canonical server
+copy; use `--force` if that copy must be replaced. Deduplication does not promise
+that a downloaded server copy has the same bytes as a locally tagged PDF.
 
 Before uploading bytes, the CLI checks the local PDF's DOI and sha256 against
 the server. If the PDF is already in the vault, it is reported as `skipped`
@@ -464,9 +503,13 @@ resulting Document Info, and commits it by atomic replacement (or a separate
 `--output` file), preserving page objects and other Document Info fields. Existing
 conflicting Document Info DOI values block writing unless `--replace` is explicitly
 specified; that option updates conflicting DOI values inside Document Info only.
-XMP is neither read nor written. An existing `--output` path is
+XMP is never used for DOI identification or modified. Automatic writeback checks
+its raw bytes for preservation. An existing `--output` path is
 rejected. Repeating an already-current DOI write without optional field changes is
 a no-op.
+The offline write command records the supplied DOI; it does not independently
+verify article identity. For conservative automatic verification and missing-DOI
+supplementation, use `nv upload ./papers --write-doi` as described above.
 Writing PDF metadata changes the PDF bytes and SHA-256. To replace an already stored
 file for the same DOI, use `nv upload ./paper.pdf --force`; an ordinary upload can
 deduplicate to the retained file and does not replace its bytes. Do not modify signed PDFs without reviewing the

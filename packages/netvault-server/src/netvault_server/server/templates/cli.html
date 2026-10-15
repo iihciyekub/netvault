@@ -73,6 +73,25 @@
         </div>
       </div>
       <p class="command-help-gap">Without a Document Info DOI, NetVault automatically looks for <code>cli-downloads.csv</code> in the folder. PDF filenames stay unchanged.</p>
+      <p>Ordinary uploads leave local PDF bytes unchanged. To automatically add a missing DOI before uploading, opt in with <code>--write-doi</code>. Existing unique Info DOIs are left unchanged.</p>
+      <details class="command-advanced">
+        <summary>Automatically write a verified missing DOI</summary>
+        <div class="command-list">
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--write-doi</span> <span class="syntax-option">--dry-run</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./papers --write-doi --dry-run" aria-label="Copy DOI write eligibility preview command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--write-doi</span></code>
+            <button class="copy-button" type="button" data-copy="nv upload ./papers --write-doi" aria-label="Copy verified DOI write and upload command"><span data-copy-label>Copy</span></button>
+          </div>
+        </div>
+        <p>The preview runs locally without online verification or PDF changes. It cannot confirm that a DOI is verified. The live command independently checks each eligible missing-DOI PDF on the server before writing.</p>
+        <p>Writing requires exactly one explicit first-page article DOI, an exact Crossref DOI match, title similarity of at least 0.98, and independent first-page author and year evidence. Reference-list DOIs, download URLs and journal, issue or volume DOIs are excluded. Title search alone, other metadata providers, filenames, cached hints, CSV pairs and successful uploads cannot authorize a write. This conservative rule can still require review for preprints or version ambiguity.</p>
+        <p>An existing unique Info DOI is unchanged and follows ordinary upload rules, including signed PDFs. Conflicting or invalid DOI fields, encrypted or signed files needing a DOI, insufficient evidence and verification failures preserve the source and stop that file's upload.</p>
+        <p>A successful write creates <code>filename.pdf.nv-doi-&lt;original-sha256&gt;.bak</code> beside the source, validates an incremental temporary file and the unchanged source hash, then atomically replaces the source. Upload uses the new SHA-256. The report records verification, original/new hashes and the backup path. Write failures stop that file's upload.</p>
+        <p><code>--write-doi</code> cannot be combined with <code>--csv</code>, <code>--no-crossref</code> or <code>--doi</code>. Ordinary deduplication retains an existing same-DOI server copy, so downloads may differ from the locally tagged PDF. Add <code>--force</code> to request canonical replacement; successful registry metadata is still required.</p>
+      </details>
       <p>Run the same upload command to continue. NetVault saves <code>.netvault-upload.sqlite3</code> beside the PDFs, skips files already on the server and remembers confirmed DOI/title rejections. New or changed files are processed; temporary errors can retry. Keep this hidden file when copying a folder. Full run results are saved in <code>nv-upload-report.json</code>; <code>--verbose</code> shows individual errors.</p>
       <details class="command-advanced">
         <summary>Retry files and PaperDock integration</summary>
@@ -188,7 +207,7 @@
           <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example" aria-label="Copy manual DOI upload command"><span data-copy-label>Copy</span></button>
         </div>
         </div>
-        <p>CSV rows need <code>file</code> or <code>filename</code>, <code>doi</code>, <code>bytes</code> or <code>size</code>, and <code>status=downloaded</code>. Optional <code>sha256</code> supports renamed files. Preview with <code>--dry-run</code> before uploading.</p>
+        <p>CSV rows need <code>file</code> or <code>filename</code>, <code>doi</code>, <code>bytes</code> or <code>size</code>, and <code>status=downloaded</code>. Optional <code>sha256</code> supports renamed files. Preview with <code>--dry-run</code> before uploading. CSV imports cannot use <code>--write-doi</code>.</p>
       </details>
       <details class="command-advanced">
         <summary>Read and write PDF DOI metadata</summary>
@@ -207,7 +226,7 @@
             <button class="copy-button" type="button" data-copy="nv pdf-meta write ./paper.pdf --doi 10.1234/corrected --replace" aria-label="Copy PDF DOI correction command"><span data-copy-label>Copy</span></button>
           </div>
         </div>
-        <p>Use <code>--output ./tagged-paper.pdf</code> to keep the original. Correcting an existing different DOI requires <code>--replace</code>. Writing changes the file hash; <code>nv doi --set</code> changes only a local hint and leaves PDF bytes unchanged.</p>
+        <p>Use <code>--output ./tagged-paper.pdf</code> to keep the original. Correcting an existing different DOI requires <code>--replace</code>. This offline command records the supplied DOI without independently verifying the article. Writing changes the file hash; <code>nv doi --set</code> changes only a local hint and leaves PDF bytes unchanged. Use the verified missing-DOI upload option above for automatic supplementation.</p>
       </details>
         <h3>DOI Audit and Correction</h3>
       <p>Admin-only tools for finding suspicious DOI identities and safely correcting the DOI attached to an existing PDF without replacing the PDF file.</p>

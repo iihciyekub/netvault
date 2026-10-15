@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.66 — 2026-10-15
+
+- Add opt-in `nv upload --write-doi`: independently verify a missing DOI against Crossref and first-page article evidence, back up the source, append the DOI, and upload using the new SHA-256.
+- Require an exact canonical DOI, one supported printed article identity, a matching heading, author and publication year; embedded metadata, CSV trust, filenames and ordinary upload acceptance do not authorize automatic writes.
+- Bind verification to original bytes, reject unsafe/conflicting PDFs and concurrent source changes, preserve pages and unrelated metadata, and record original/new hashes, verification and backup paths in the upload report.
+- Add an authenticated temporary-only DOI verification endpoint; preserve normal upload behavior, explicit CSV trust and existing DOI deduplication unless `--write-doi` is selected.
+
 ## 0.7.65 — 2026-10-15
 
 - Add offline `nv pdf-meta read` and validated incremental `write --doi`, with explicit DOI correction, output-file support and preservation of unrelated PDF metadata.

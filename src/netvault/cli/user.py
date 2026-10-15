@@ -45,8 +45,14 @@ from netvault.cli.http import (
     raise_for_api_error,
     server_url,
     upload_pdf,
+    verify_pdf_doi,
 )
-from netvault.cli.pdf_meta import read_pdf_metadata, write_pdf_metadata
+from netvault.cli.pdf_meta import (
+    check_pdf_writeback_safety,
+    read_pdf_metadata,
+    write_pdf_metadata,
+    write_verified_pdf_doi,
+)
 from netvault.cli.cache import CacheWriter, load_cache, save_cache
 from netvault.cli.update import update_from_github
 from netvault.cli.export import default_export_destination, normalize_export_issn, save_issn_export
@@ -1050,6 +1056,8 @@ Examples:
   nv upload ./paper.pdf --doi 10.1016/j.ijpe.2018.04.006
   nv upload ./new-paper.pdf --force
   nv upload ~/Downloads/papers --no-crossref
+  nv upload ~/Downloads/papers --write-doi
+  nv upload ~/Downloads/papers --write-doi --dry-run
   nv upload ~/Downloads/papers --index-file ./pdf-download-index.json
   nv upload ~/Downloads/papers --csv ./cli-downloads.csv
   nv upload ~/Downloads/papers --csv ./cli-downloads.csv --dry-run
@@ -1062,6 +1070,10 @@ Notes:
   A unique PDF Document Info DOI takes priority over DOI hints, indexes and caches.
   Conflicting Document Info DOI values require correction; no DOI is guessed.
   Without a Document Info DOI, existing DOI/index/cache extraction rules apply.
+  --write-doi independently verifies missing DOI against Crossref before local writeback.
+  It backs up each changed original, writes incrementally, and uploads using the new hash.
+  Unverified or unsafe files are left unchanged and are not uploaded in this mode.
+  Existing unique Info DOI values are retained; this mode never corrects them automatically.
   A sibling cli-downloads.csv is also recognized; --csv works across subdirectories.
   Explicit --csv trusts matched DOI/PDF pairs and bypasses embedded DOI/content checks.
   It matches SHA-256 or filename and size; unmatched/ambiguous files fail without PDF fallback.
@@ -1080,6 +1092,10 @@ def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
     doi: str | None = typer.Option(None, "--doi", help="Use this DOI when PDF Document Info has no DOI."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip online DOI/title verification and metadata lookup."),
+    write_doi: bool = typer.Option(
+        False, "--write-doi",
+        help="Verify a missing DOI independently with Crossref, back up and write it locally before uploading.",
+    ),
     jobs: int = typer.Option(3, "--jobs", min=1, max=3, help="Concurrent uploads (default: 3)."),
     force: bool = typer.Option(
         False,
@@ -1121,9 +1137,11 @@ def upload_command(
     retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed, pending or review files from directory state; fall back to --report."),
     verbose: bool = typer.Option(False, "--verbose", help="Show individual errors, cache statistics and upload timings."),
 ) -> None:
+    if write_doi and (csv_file is not None or no_crossref or doi is not None):
+        raise typer.BadParameter("--write-doi cannot be combined with --csv, --no-crossref or --doi")
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
     pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
-    if retry_failed:
+    if retry_failed and not (write_doi and dry_run):
         retry_server = str(load_credentials().get("server_url") or DEFAULT_SERVER_URL).rstrip("/")
         with UploadState() as state:
             statuses = {path: state.path_status(path, retry_server, hash_file=file_sha256) for path in pdfs}
@@ -1176,6 +1194,11 @@ def upload_command(
         counts = {"sha256": 0, "filename-size": 0, "title": 0, "pdf-metadata": 0,
                   "json-index": 0, "pdf-extraction": 0, "needs-review": 0}
         console.print("Dry run: local DOI matching only; no login, server requests, or files written.")
+        if write_doi:
+            console.print("DOI writeback preview: online verification was not performed; "
+                          "local DOI candidates are not approved for writeback.")
+            if retry_failed:
+                console.print("Dry run previews all selected PDFs without updating retry state.")
         for pdf_path in pdfs:
             try:
                 if not has_pdf_header(pdf_path):
@@ -1219,6 +1242,13 @@ def upload_command(
 
     ensure_logged_in()
     upload_report = UploadReport(report, pdfs, warnings=index_warnings)
+    if write_doi:
+        for pdf_path in pdfs:
+            upload_report.record_metadata_writeback(pdf_path, {
+                "status": "pending", "doi": None, "original_sha256": None,
+                "sha256": None, "backup": None,
+            })
+        upload_report.checkpoint(force=True)
     uploaded = 0
     replaced = 0
     skipped = 0
@@ -1269,16 +1299,25 @@ def upload_command(
             return {sibling.resolve().parent: sibling
                     for sibling in pdf_paths_by_sha.get(sha, [path])}.values()
 
-        def record_failure(path, error):
+        def record_failure(path, error, *, review=None):
             nonlocal needs_review
-            rejection = is_identity_rejection(error)
+            rejection = is_identity_rejection(error) if review is None else review
             if rejection:
                 needs_review += 1
             failed.append((path, str(error)))
             upload_report.record(path, "needs-review" if rejection else "failed",
                                  sha256=hashes_by_path.get(path), error=str(error))
             sha = hashes_by_path.get(path)
-            if sha:
+            if sha is None and write_doi:
+                metadata_result = upload_report.rows[str(path.resolve())].get("metadata_writeback", {})
+                sha = metadata_result.get("sha256") or metadata_result.get("original_sha256")
+                if sha:
+                    # A writeback failure supersedes an older ordinary-upload
+                    # success for these bytes, so --retry-failed can select it.
+                    upload_state.record(path, sha, upload_server,
+                                        "needs-review" if rejection else "failed",
+                                        error=str(error), attempted=True)
+            elif sha:
                 for sibling in state_paths(path, sha):
                     upload_state.record(sibling, sha, upload_server,
                                         "needs-review" if rejection else "failed",
@@ -1301,12 +1340,66 @@ def upload_command(
             upload_server_version = version
 
         for pdf_path in pdfs:
+            writeback = None
+            if write_doi:
+                writeback = {"status": "pending", "doi": None, "original_sha256": None,
+                             "sha256": None, "backup": None}
+                upload_report.record_metadata_writeback(pdf_path, writeback)
             try:
+                if writeback is not None:
+                    original_sha256 = file_sha256(pdf_path)
+                    writeback.update(original_sha256=original_sha256, sha256=original_sha256)
+                    upload_report.record_metadata_writeback(pdf_path, writeback)
                 if not has_pdf_header(pdf_path):
+                    if writeback is not None:
+                        writeback.update(status="blocked", reason="invalid PDF header")
+                        upload_report.record_metadata_writeback(pdf_path, writeback)
                     record_failure(pdf_path, "invalid PDF file: expected %PDF- header")
                     continue
-                sha256, from_cache = upload_state.hash_file(
-                    pdf_path, lambda path: cached_file_sha256(path, hash_cache)[0])
+                if writeback is not None:
+                    metadata = read_pdf_metadata(pdf_path)
+                    for key, value in metadata["document_info"].items():
+                        if str(key).casefold() == "/doi" and str(value).strip():
+                            try:
+                                normalize_doi(str(value))
+                            except ValueError as exc:
+                                raise ValueError("Nonempty invalid Document Info DOI requires manual review") from exc
+                    if metadata["status"] == "conflict":
+                        raise ValueError("Multiple Document Info DOI values require manual review")
+                    if metadata["status"] == "ok" and metadata.get("doi"):
+                        writeback.update(status="unchanged", doi=metadata["doi"],
+                                         original_sha256=original_sha256,
+                                         sha256=original_sha256,
+                                         reason="Existing unique Document Info DOI retained; no automatic correction")
+                    elif metadata["status"] == "no-doi":
+                        check_pdf_writeback_safety(pdf_path)
+                        verification = verify_pdf_doi(pdf_path, original_sha256)
+                        writeback.update(verification=verification, doi=verification.get("doi"))
+                        if verification.get("decision") != "verified":
+                            reason = str(verification.get("reason") or "DOI could not be independently verified")
+                            writeback.update(status=str(verification.get("decision") or "unverified"),
+                                             reason=reason, sha256=original_sha256)
+                            upload_report.record_metadata_writeback(pdf_path, writeback)
+                            record_failure(pdf_path, reason,
+                                           review=verification.get("decision") != "unavailable")
+                            continue
+                        result = write_verified_pdf_doi(pdf_path, verification)
+                        writeback.update(result)
+                        writeback["status"] = "written" if result["changed"] else "unchanged"
+                    else:
+                        raise ValueError("Unsupported PDF metadata status; manual review required")
+                    # Both caches must observe the final bytes. Force the directory
+                    # state to recompute even if a previous signature still matches.
+                    hash_cache.pop(file_cache_key(pdf_path), None)
+                    sha256, from_cache = upload_state.hash_file(
+                        pdf_path, lambda path: cached_file_sha256(path, hash_cache)[0], force=True)
+                    if writeback.get("sha256") and writeback["sha256"] != sha256:
+                        raise RuntimeError("PDF changed after DOI writeback; file was not uploaded")
+                    writeback["sha256"] = sha256
+                    upload_report.record_metadata_writeback(pdf_path, writeback)
+                else:
+                    sha256, from_cache = upload_state.hash_file(
+                        pdf_path, lambda path: cached_file_sha256(path, hash_cache)[0])
                 cache_changed = cache_changed or not from_cache
                 if csv_file is not None:
                     match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
@@ -1315,8 +1408,16 @@ def upload_command(
                     csv_matches_by_path[pdf_path] = match
                 hashes_by_path[pdf_path] = sha256
                 upload_state.pending(pdf_path, sha256, upload_server)
-            except (OSError, ValueError, RuntimeError) as exc:
-                record_failure(pdf_path, exc)
+            except (OSError, ValueError, RuntimeError, PyPdfError, requests.RequestException) as exc:
+                if writeback is not None:
+                    if getattr(exc, "pdf_writeback_backup", None):
+                        writeback["backup"] = exc.pdf_writeback_backup
+                    review = isinstance(exc, ValueError) and writeback.get("verification", {}).get("decision") != "verified"
+                    writeback.update(status="blocked" if review else "failed", reason=str(exc))
+                    upload_report.record_metadata_writeback(pdf_path, writeback)
+                    record_failure(pdf_path, exc, review=review)
+                else:
+                    record_failure(pdf_path, exc)
             finally:
                 progress.advance(task, 1)
 

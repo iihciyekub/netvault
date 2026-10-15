@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -62,6 +63,24 @@ class UploadResponse(BaseModel):
     pdf: PdfRead
     deduplicated: bool
     replaced: bool = False
+
+
+class PdfDoiVerification(BaseModel):
+    policy_version: Literal[1] = 1
+    input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    doi: str | None = None
+    decision: Literal["verified", "already-present", "conflict", "unverified", "unavailable", "blocked"]
+    writeback_allowed: bool = False
+    metadata_status: str = "skipped"
+    metadata_provider: str | None = None
+    canonical_doi: str | None = None
+    printed_doi_confirmed: bool = False
+    title_match_score: float | None = None
+    author_match: bool = False
+    year_match: bool = False
+    verified_at: datetime
+    reason: str
+    attempts: list[dict] = Field(default_factory=list)
 
 
 class Sha256ExistsRequest(BaseModel):

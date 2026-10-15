@@ -471,6 +471,7 @@ async def process_upload(
     force: bool = False,
     doi_source: str | None = None,
     timings: dict[str, float] | None = None,
+    expected_sha256: str | None = None,
 ) -> UploadResponse:
     if force and no_crossref:
         raise HTTPException(
@@ -492,6 +493,10 @@ async def process_upload(
     started = monotonic()
     persist_started = None
     sha256, size, relative_path, object_deduplicated, staged_path = await store_pdf(file)
+    if expected_sha256 is not None and sha256 != expected_sha256.lower():
+        if staged_path is not None:
+            staged_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail="Uploaded PDF hash differs from the bytes selected for upload; refresh the local file hash")
     timings["store"] = monotonic() - started
     promoted_new_object = False
     # Authentication has opened a read transaction. Do not hold its connection

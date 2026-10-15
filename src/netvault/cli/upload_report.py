@@ -21,7 +21,8 @@ class UploadReport:
         self.checkpoint(force=True)
 
     def record(self, path: Path, status: str, *, sha256: str | None = None,
-               pdf: dict | None = None, error: str | None = None):
+               pdf: dict | None = None, error: str | None = None,
+               metadata_writeback: dict | None = None):
         row = self.rows[str(path.resolve())]
         self.counts[row["status"]] -= 1
         self.counts[status] += 1
@@ -32,6 +33,13 @@ class UploadReport:
             row.update({k: pdf.get(k) for k in ("id", "doi", "title", "container_title")})
         if error:
             row["error"] = error
+        if metadata_writeback is not None:
+            row["metadata_writeback"] = metadata_writeback
+        self.checkpoint()
+
+    def record_metadata_writeback(self, path: Path, result: dict) -> None:
+        """Keep preparation evidence through later upload and dedup outcomes."""
+        self.rows[str(path.resolve())]["metadata_writeback"] = dict(result)
         self.checkpoint()
 
     def checkpoint(self, *, force: bool = False, finished: bool = False):

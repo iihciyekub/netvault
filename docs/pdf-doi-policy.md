@@ -12,7 +12,8 @@ The resolver normalizes DOI strings found in string fields such as `/DOI`,
 equivalent plain DOI represent one identity. Fields explicitly describing a
 journal, issue or volume DOI are excluded from article DOI evidence.
 
-XMP is not read, written or used in DOI identity decisions. Raw PDF objects,
+XMP is not parsed for DOI identity and is never modified. Automatic writeback
+compares its raw bytes only to verify preservation. Raw PDF objects,
 annotation links, page text and filenames are not Document Info. They cannot
 receive its authoritative identity shortcut.
 
@@ -81,7 +82,87 @@ to that invocation and is not persisted as a trusted cache entry. File integrity
 deduplication and existing DOI/hash assignment conflicts still apply. Ordinary
 CSV imports may proceed without registry enrichment; `--force` retains its
 metadata-success requirement. `--csv` cannot be combined with `--doi`,
-`--index-file` or `--no-index`.
+`--index-file`, `--no-index` or `--write-doi`.
+
+## Independently verified automatic DOI writing
+
+Automatic writing is opt-in:
+
+```bash
+# Offline preview only: no server, Crossref, PDF writes or validation claim.
+nv upload ./papers --write-doi --dry-run
+
+# Independently verify eligible files, append /DOI, then upload.
+nv upload ./papers --write-doi
+```
+
+Ordinary `nv upload` does not change local PDF bytes. `--write-doi` cannot be
+combined with `--csv`, `--no-crossref` or `--doi`. Its stricter write decision is
+separate from ordinary upload identity selection: accepting an existing unique
+Document Info DOI is not permission to manufacture that evidence in another PDF.
+Crossref finding a DOI proves that a registry record exists, not that the DOI
+belongs to this PDF.
+
+Only a PDF with no Document Info DOI is eligible for automatic supplementation.
+Before writing, the CLI submits the original bytes to authenticated
+`POST /pdfs/verify-doi`. This endpoint temporarily inspects the PDF without
+creating a vault item or registering a hash alias. The server derives its own
+evidence and binds the result to the original SHA-256. All of these requirements
+must be met:
+
+- The first page explicitly prints an article DOI. Reference-list DOIs, download
+  URL paths, and journal, issue or volume DOIs do not qualify.
+- An exact lookup returns primary Crossref metadata with the same normalized
+  canonical DOI and type `journal-article` or `proceedings-article`.
+- The Crossref title matches the first-page article title with similarity at
+  least `0.98`, and both an author and the publication year are independently
+  corroborated on that page.
+- Exactly one candidate passes these checks.
+
+Title search alone cannot supply a DOI for automatic writing in this release.
+DOI.org or Semantic Scholar metadata, filenames, cached identities, download
+indexes, CSV pairs, and successful uploads are insufficient write evidence.
+Provider failures and version ambiguity, including preprint/published-version
+ambiguity, require review. This is a conservative high-confidence rule, not a
+mathematical guarantee of article identity.
+Correction, erratum, retraction, commentary, reply and manuscript-version notices
+in the heading also require review; an original article's DOI must not be
+automatically assigned to a related document. Author evidence must come from a
+separate byline, not a surname appearing in the title or journal name.
+
+| Input or result | `--write-doi` behavior |
+| --- | --- |
+| Existing unique Document Info DOI | Leave bytes unchanged and follow the ordinary upload identity policy; signed files with an existing DOI are not rewritten. |
+| Conflicting DOI values or a nonempty invalid DOI field | Preserve the file and report the need for review; do not overwrite or upload it in this invocation. |
+| Encrypted or signed PDF without an existing usable DOI | Preserve the file and report that automatic writing cannot proceed; do not upload it in this invocation. |
+| Missing DOI with insufficient, ambiguous or unavailable verification | Preserve the file, do not upload it, and report review or verification failure; do not claim that a DOI was verified. |
+| Missing DOI with all checks passed | Safely append the verified `/DOI`, compute the new hash, and use the resulting file for upload. |
+| Write or safety check failure | Preserve the source, report the failure, and do not upload that file in this invocation. |
+
+For a successful write, a byte-for-byte backup is created beside the source as
+`filename.pdf.nv-doi-<original-sha256>.bak`. The CLI verifies that the source
+still matches the verified original hash, writes a same-directory temporary PDF
+using a real incremental append, and validates the resulting Document Info,
+preserved original-byte prefix and page structure. It checks the source hash
+again before atomically replacing it. A failed safety check does not replace the
+source. The backup remains available after a successful change.
+
+The order is **independent verification → backup and validated append → atomic
+replacement → new SHA-256 → upload**. Per-file entries in
+`nv-upload-report.json` record the verification outcome, original and resulting
+hashes, and backup path. `--dry-run --write-doi` only previews local eligibility;
+it performs no online verification and cannot report a candidate as verified.
+The server independently checks the received upload hash against the CLI's final
+hash before binding or replacing a file. If upload fails after a successful local
+write, the tagged local PDF and original backup remain; retrying retains that
+DOI without writing again. Reports are per run; use `--report PATH` to retain
+separate reports when an audit trail across runs is needed.
+
+An existing canonical server PDF for the same DOI is still retained by ordinary
+deduplication. A locally tagged PDF may be accepted as an alias without replacing
+that server file, so a later download need not be byte-for-byte identical to the
+local file. Use `--force` to request replacement of the canonical copy; its
+successful-metadata requirement still applies.
 
 ## Command responsibilities
 
@@ -91,6 +172,7 @@ metadata-success requirement. `--csv` cannot be combined with `--doi`,
 | `nv pdf-meta write --doi DOI` | Append an embedded `/DOI` and optional Document Info field changes, offline. | Yes, unless already current |
 | `nv doi` | Inspect resolver evidence or manage a local SHA-bound identity hint with `--set`, `--show-cache` or `--remove`. | No |
 | `nv upload` | Apply the identity policy, enrich metadata when enabled, deduplicate and bind/store the PDF on the server. | No local PDF change |
+| `nv upload --write-doi` | Independently verify an eligible missing DOI, safely append it locally, then apply upload/deduplication policy using the resulting hash. | Yes, only after all write checks pass; `--dry-run` never writes |
 | `nv identify` | Match local SHA-256 values to existing server hashes/aliases or an exported inventory, with optional renaming/organization. It does not infer a new DOI from metadata or page text. | No byte changes; `--rename` can move files |
 | `nv check-pdfs` | Check whether PDFs can be opened and optionally move damaged files into `error/`. It does not validate DOI identity or metadata. | No byte changes; damaged files can move |
 | `nv correct-doi` | Administratively correct an existing server identity and registry metadata after preview and confirmation. | No byte changes |

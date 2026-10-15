@@ -79,13 +79,13 @@ class UploadState:
             self.connections.popitem(last=False)[1].close()
         return connection
 
-    def hash_file(self, path, hash_file):
+    def hash_file(self, path, hash_file, *, force=False):
         path = path.resolve()
         before = signature(path)
         connection = self.connection(path.parent)
         row = connection.execute("SELECT sha256, signature FROM files WHERE name=?",
                                  (path.name,)).fetchone()
-        if row and row["signature"] == before:
+        if not force and row and row["signature"] == before:
             return row["sha256"], True
         sha256 = hash_file(path)
         if signature(path) != before:
