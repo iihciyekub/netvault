@@ -1,17 +1,19 @@
 """Shared PDF lookup, search and delivery rules for API and web routes."""
 
 from pathlib import Path
+import logging
 import re
 
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
+from pypdf import PdfReader
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
 from netvault_server import __version__
 from netvault_server.server.config import get_settings
-from netvault_server.server.doi import normalize_doi
+from netvault_server.server.doi import document_info_candidates, normalize_doi
 from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.main_helpers import pdf_to_read
 from netvault_server.server.journal_filters import normalize_journal_name
@@ -21,6 +23,37 @@ from netvault_server.server.queries import pdf_contains_query, pdf_read_options
 from netvault_server.server.schemas import PdfDoiCorrectionRead, Sha256ExistsResponse
 from netvault_server.server.security import activity_is_allowed
 from netvault_server.server.storage import object_path
+
+logger = logging.getLogger(__name__)
+
+
+def read_pdf_document_info(path: Path) -> dict:
+    """Inspect the stored PDF's Document Info without changing the file or reading XMP.
+
+    Keep embedded PDF metadata separate from the database's verified DOI record.
+    A damaged or encrypted file must not hide the still-useful database record.
+    """
+    empty = {"status": "unavailable", "doi": None, "dois": [], "fields": {}, "page_count": None}
+    try:
+        reader = PdfReader(str(path))
+        if reader.is_encrypted:
+            return {**empty, "status": "encrypted"}
+        fields = {
+            str(key)[:120]: str(value)[:4096]
+            for key, value in list((reader.metadata or {}).items())[:64]
+            if value is not None
+        }
+        dois = sorted({item.doi for item in document_info_candidates(reader)})
+        return {
+            "status": "conflict" if len(dois) > 1 else "ok" if dois else "no-doi",
+            "doi": dois[0] if len(dois) == 1 else None,
+            "dois": dois,
+            "fields": fields,
+            "page_count": len(reader.pages),
+        }
+    except Exception as exc:
+        logger.warning("Could not inspect stored PDF Document Info: %s", type(exc).__name__)
+        return empty
 
 
 def existing_pdfs(db: Session, hashes=(), dois=()) -> Sha256ExistsResponse:

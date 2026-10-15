@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.67 — 2026-10-15
+
+- Add a read-only Meta action to PDF search results, with a responsive dialog showing the vault's catalog metadata separately from the original PDF Document Info.
+- Inspect embedded PDF Title, Author, DOI, page count and custom Info fields without modifying the stored PDF or trusting XMP for DOI identity; show conflicting embedded DOIs explicitly.
+- Require a valid web session to read file metadata and return a clear unavailable or encrypted state when a PDF cannot be inspected; safely render user-supplied Info strings as text.
+
 ## 0.7.66 — 2026-10-15
 
 - Add opt-in `nv upload --write-doi`: independently verify a missing DOI against Crossref and first-page article evidence, back up the source, append the DOI, and upload using the new SHA-256.

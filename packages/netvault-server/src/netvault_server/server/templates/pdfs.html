@@ -47,6 +47,7 @@
         </div>
         <div class="pdf-actions paper-result-actions">
           <a class="button pdf-action" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
+          <button class="button pdf-action" type="button" data-pdf-meta data-meta-url="{{ path_for('/web/pdfs/metadata') }}?pdf_id={{ pdf.id }}" aria-haspopup="dialog"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Meta</span></button>
           <a class="button primary pdf-action" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
           {% if user.role == "admin" %}
           <button
@@ -95,6 +96,32 @@
 {% else %}
 <div class="empty-state"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>Search by DOI or Crossref metadata.</div>
 {% endif %}
+
+<dialog class="pdf-meta-dialog" data-pdf-meta-dialog aria-labelledby="pdf-meta-title">
+  <div class="pdf-meta-shell">
+    <header class="pdf-meta-header">
+      <div>
+        <h2 id="pdf-meta-title">PDF metadata</h2>
+        <p data-pdf-meta-filename></p>
+      </div>
+      <button type="button" class="icon-button" data-pdf-meta-close aria-label="Close PDF metadata"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </header>
+    <p class="pdf-meta-status" data-pdf-meta-status role="status" aria-live="polite"></p>
+    <div class="pdf-meta-sections" data-pdf-meta-sections hidden>
+      <section aria-labelledby="pdf-meta-vault-title">
+        <h3 id="pdf-meta-vault-title">Vault record</h3>
+        <p>Metadata saved in NetVault. It may differ from the original PDF.</p>
+        <dl class="pdf-meta-fields" data-pdf-meta-vault></dl>
+      </section>
+      <section aria-labelledby="pdf-meta-document-title">
+        <h3 id="pdf-meta-document-title">PDF Document Info</h3>
+        <p>Read directly from the stored PDF; XMP is not used for DOI identity.</p>
+        <p class="pdf-meta-document-status" data-pdf-meta-document-status></p>
+        <dl class="pdf-meta-fields" data-pdf-meta-document></dl>
+      </section>
+    </div>
+  </div>
+</dialog>
 
 {% if user.role == "admin" %}
 <dialog class="doi-correction-dialog" data-doi-dialog>

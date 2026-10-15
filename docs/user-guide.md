@@ -772,6 +772,16 @@ https://iiaide.com/nv/web
 The web UI uses the same username and password as the CLI. It provides dashboard
 statistics, PDF listing/search, browser upload, and DOI-based download.
 
+### View stored PDF metadata
+
+Search for a PDF and click **Meta** beside **Preview** and **Download**. The
+read-only dialog displays the verified NetVault catalog record separately from
+the original file's embedded PDF Document Info (for example `/Title`, `/Author`,
+`/DOI`, `/Subject`, `/Keywords`, and custom Info fields). It also reports missing
+or conflicting embedded DOIs. An encrypted or unreadable PDF still displays the
+catalog metadata where available. The dialog does not rewrite the PDF, and XMP
+is not used as an authoritative embedded DOI source.
+
 ### Editable journal filters
 
 Type a journal name or initials in the dashboard filter. Initials omit function

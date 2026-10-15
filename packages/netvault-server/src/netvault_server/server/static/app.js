@@ -1848,6 +1848,93 @@
     if (cancelButton) cancelButton.hidden = true;
   };
 
+  // Never inject PDF metadata as HTML: document fields are controlled by the PDF author.
+  const renderPdfMetaFields = (root, rows) => {
+    root.replaceChildren();
+    rows.forEach(([name, value]) => {
+      if (value === null || value === undefined || value === "") return;
+      const row = document.createElement("div");
+      const label = document.createElement("dt");
+      const content = document.createElement("dd");
+      label.textContent = name;
+      content.textContent = String(value);
+      row.append(label, content);
+      root.append(row);
+    });
+    if (!root.children.length) {
+      const empty = document.createElement("p");
+      empty.className = "pdf-meta-empty";
+      empty.textContent = "No metadata fields found.";
+      root.append(empty);
+    }
+  };
+
+  const openPdfMeta = async (button) => {
+    const dialog = qs("[data-pdf-meta-dialog]");
+    if (!dialog) return;
+    const url = sameOriginUrl(button.dataset.metaUrl);
+    const status = qs("[data-pdf-meta-status]", dialog);
+    const sections = qs("[data-pdf-meta-sections]", dialog);
+    const filename = qs("[data-pdf-meta-filename]", dialog);
+    if (!url || url.origin !== window.location.origin || !/\/web\/pdfs\/metadata$/.test(url.pathname)) return;
+    filename.textContent = "";
+    sections.hidden = true;
+    status.textContent = "Loading PDF metadata...";
+    if (!dialog.open) dialog.showModal();
+    try {
+      const response = await fetch(url.href, { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok || !(response.headers.get("content-type") || "").includes("application/json")) {
+        let message = response.status === 401 || response.redirected
+          ? "Session expired. Sign in and try again." : "Unable to read PDF metadata.";
+        if (response.headers.get("content-type")?.includes("application/json")) {
+          const payload = await response.json();
+          if (typeof payload.detail === "string") message = payload.detail;
+        }
+        throw new Error(message);
+      }
+      const metadata = await response.json();
+      if (!dialog.open) return;
+      filename.textContent = `${metadata.filename} · PDF ID ${metadata.pdf_id}`;
+      const vault = metadata.vault;
+      renderPdfMetaFields(qs("[data-pdf-meta-vault]", dialog), [
+        ["DOI", vault.doi], ["DOI source", vault.doi_source],
+        ["Title", vault.title], ["Authors", vault.authors],
+        ["Journal", vault.journal], ["Publisher", vault.publisher],
+        ["Year", vault.year], ["Metadata status", vault.metadata_status],
+        ["Size (bytes)", vault.size], ["SHA-256", vault.sha256],
+      ]);
+      const embedded = metadata.document;
+      const messages = {
+        ok: `Embedded DOI: ${embedded.doi}`,
+        "no-doi": "No DOI found in PDF Document Info.",
+        conflict: `Conflicting embedded DOIs: ${embedded.dois.join(", ")}`,
+        encrypted: "PDF is encrypted; Document Info cannot be read.",
+        unavailable: "PDF Document Info could not be read.",
+      };
+      qs("[data-pdf-meta-document-status]", dialog).textContent = messages[embedded.status] || "";
+      renderPdfMetaFields(qs("[data-pdf-meta-document]", dialog), [
+        ["Pages", embedded.page_count],
+        ...Object.entries(embedded.fields || {}).map(([key, value]) => [key.replace(/^\//, ""), value]),
+      ]);
+      sections.hidden = false;
+      status.textContent = "";
+    } catch (error) {
+      if (dialog.open) status.textContent = error.message || "Unable to read PDF metadata.";
+    }
+  };
+
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-pdf-meta]");
+    if (trigger) {
+      event.preventDefault();
+      openPdfMeta(trigger);
+      return;
+    }
+    if (event.target.closest("[data-pdf-meta-close]")) {
+      qs("[data-pdf-meta-dialog]")?.close();
+    }
+  });
+
   const doiCorrectionDialog = () => qs("[data-doi-dialog]");
 
   const setDoiCorrectionStatus = (dialog, text, state = "") => {

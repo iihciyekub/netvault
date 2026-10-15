@@ -158,6 +158,102 @@ def web_login(client: TestClient) -> None:
     assert response.history[0].status_code == 303
 
 
+def test_web_pdf_metadata_inspects_document_info_separately_from_vault_record(client: TestClient) -> None:
+    from pypdf import PdfWriter
+
+    assert client.get("/web/pdfs/metadata", params={"pdf_id": 1}).status_code == 401
+    web_login(client)
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    storage = importlib.import_module("netvault_server.server.storage")
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_metadata({
+        "/Title": "Embedded PDF title", "/Author": "PDF Author",
+        "/DOI": "10.8888/embedded", "/Subject": "<img src=x onerror=alert(1)>",
+    })
+    content = io.BytesIO()
+    writer.write(content)
+    blob = content.getvalue()
+    sha = hashlib.sha256(blob).hexdigest()
+    path = storage.object_path(sha)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(blob)
+
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        pdf = models.Pdf(
+            doi="10.8888/vault", doi_source="manual", sha256=sha,
+            original_name="example.pdf", title="Verified vault title", authors="Catalog Author",
+            crossref_status="ok", size=len(blob), storage_path=str(path),
+            uploaded_by_id=admin.id,
+        )
+        db.add(pdf)
+        db.commit()
+        pdf_id = pdf.id
+
+    search = client.get("/web/pdfs", params={"q": "10.8888/vault"})
+    assert search.status_code == 200
+    assert 'data-pdf-meta data-meta-url="/web/pdfs/metadata?pdf_id=' in search.text
+    assert '<h2 id="pdf-meta-title">PDF metadata</h2>' in search.text
+    assert 'data-pdf-meta-document' in search.text
+
+    response = client.get("/web/pdfs/metadata", params={"pdf_id": pdf_id})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    data = response.json()
+    assert data["pdf_id"] == pdf_id
+    assert data["filename"] == "example.pdf"
+    assert data["vault"]["doi"] == "10.8888/vault"
+    assert data["vault"]["title"] == "Verified vault title"
+    assert data["vault"]["authors"] == "Catalog Author"
+    assert data["vault"]["sha256"] == sha
+    assert data["document"]["doi"] == "10.8888/embedded"
+    assert data["document"]["status"] == "ok"
+    assert data["document"]["page_count"] == 1
+    assert data["document"]["fields"]["/Title"] == "Embedded PDF title"
+    assert data["document"]["fields"]["/Author"] == "PDF Author"
+    assert data["document"]["fields"]["/Subject"] == "<img src=x onerror=alert(1)>"
+    assert "xmp" not in data["document"]
+
+    with database.SessionLocal() as db:
+        pdf = db.get(models.Pdf, pdf_id)
+        pdf.is_deleted = True
+        db.commit()
+    assert client.get("/web/pdfs/metadata", params={"pdf_id": pdf_id}).status_code == 404
+    assert client.get("/web/pdfs/metadata", params={"pdf_id": 99999}).status_code == 404
+    assert client.get("/web/pdfs/metadata", params={"pdf_id": 0}).status_code == 422
+
+
+def test_web_pdf_metadata_falls_back_gracefully_for_unreadable_pdf(client: TestClient) -> None:
+    web_login(client)
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    storage = importlib.import_module("netvault_server.server.storage")
+    content = b"not a real PDF"
+    sha = hashlib.sha256(content).hexdigest()
+    path = storage.object_path(sha)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username="admin").one()
+        pdf = models.Pdf(
+            doi="10.8888/unreadable", sha256=sha, original_name="bad.pdf",
+            title="Catalog title remains available", size=len(content), storage_path=str(path),
+            uploaded_by_id=admin.id,
+        )
+        db.add(pdf)
+        db.commit()
+        pdf_id = pdf.id
+    response = client.get("/web/pdfs/metadata", params={"pdf_id": pdf_id})
+    assert response.status_code == 200
+    assert response.json()["vault"]["title"] == "Catalog title remains available"
+    assert response.json()["document"] == {
+        "status": "unavailable", "doi": None, "dois": [], "fields": {}, "page_count": None,
+    }
+
+
 def test_web_session_persists_and_renews_legacy_login(client: TestClient) -> None:
     from jose import jwt
     from datetime import datetime, timezone

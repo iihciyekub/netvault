@@ -6,7 +6,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 from starlette.background import BackgroundTask
@@ -32,7 +32,8 @@ from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf
 from netvault_server.server.main_helpers import process_upload
 from netvault_server.server.models import Pdf, User, UserRole
 from netvault_server.server.pdf_service import (existing_pdfs, search_pdfs_query,
-    search_pdfs_by_dois_query, resolve_pdf_file, send_pdf_file, doi_correction_history)
+    search_pdfs_by_dois_query, resolve_pdf_file, send_pdf_file, doi_correction_history,
+    read_pdf_document_info)
 from netvault_server.server.bulk_doi_search import create_doi_batch, get_doi_batch
 from netvault_server.server import accounts
 from netvault_server.server.schemas import PasswordResetRequest, UserCreateRequest, Sha256ExistsRequest
@@ -912,6 +913,39 @@ def web_pdf_preview(
         return user
     pdf, _ = _resolve_web_pdf_file(db, doi=doi, pdf_id=pdf_id)
     return send_pdf_file(pdf, user, db, preview=True)
+
+
+@router.get("/web/pdfs/metadata", include_in_schema=False)
+def web_pdf_metadata(
+    request: Request,
+    pdf_id: int = Query(ge=1),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Return the vault's catalog data and the PDF's embedded Document Info separately."""
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    pdf, path = _resolve_web_pdf_file(db, doi=None, pdf_id=pdf_id)
+    return JSONResponse(
+        {
+            "pdf_id": pdf.id,
+            "filename": pdf.original_name,
+            "vault": {
+                "doi": pdf.doi,
+                "doi_source": pdf.doi_source,
+                "title": pdf.title,
+                "authors": pdf.authors,
+                "journal": pdf.container_title,
+                "publisher": pdf.publisher,
+                "year": pdf.published_year,
+                "metadata_status": pdf.crossref_status,
+                "sha256": pdf.sha256,
+                "size": pdf.size,
+            },
+            "document": read_pdf_document_info(path),
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/web/pdfs/download", include_in_schema=False)

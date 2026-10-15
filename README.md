@@ -422,6 +422,10 @@ The command previews the canonical DOI and fresh metadata first, then asks for c
 The same correction workflow is available to administrators from the PDF search page in the Web
 UI through **Correct DOI**.
 
+On PDF search results, **Meta** opens a read-only viewer showing the vault record
+and the stored file's PDF Document Info in separate sections. It can reveal an
+embedded DOI that differs from the catalog DOI; viewing never changes either.
+
 
 If you only want DOI indexing and PDF storage, skip Crossref:
 
