@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.63 — 2026-10-15
+
+- Keep one batch DOI toolbar shortcut; search from the modal Search PDFs action.
+- Fix the native regex checkbox to 16px and prevent its label from wrapping.
+
 ## 0.7.62 — 2026-10-15
 
 - Add two compact DOI batch shortcuts before the heatmap legend: edit a multiline DOI list or immediately search the prepared batch.

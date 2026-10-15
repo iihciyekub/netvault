@@ -3532,14 +3532,38 @@ body.with-sidebar {
 .doi-batch-regex-label {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   gap: 7px;
   min-height: 26px;
+  width: max-content;
+  max-width: 100%;
+  white-space: nowrap;
   color: var(--muted);
   cursor: pointer;
 }
-.doi-batch-regex-label input {
+.doi-batch-regex-label > span {
+  white-space: nowrap;
+}
+.doi-batch-regex-label > input[type="checkbox"] {
+  appearance: auto;
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  max-height: 16px;
   margin: 0;
+  padding: 0;
+  border-radius: 3px;
   accent-color: var(--link);
+  box-shadow: none;
+}
+.doi-batch-regex-label > input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 .doi-batch-options output {
   color: var(--fg);

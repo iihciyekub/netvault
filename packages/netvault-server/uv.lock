@@ -669,7 +669,7 @@ wheels = [
 
 [[package]]
 name = "netvault-server"
-version = "0.7.62"
+version = "0.7.63"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },

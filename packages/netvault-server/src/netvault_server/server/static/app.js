@@ -375,8 +375,6 @@
     updateDoiBatchCount(dialog);
     doiBatchSubmitting = true;
     updateDoiBatchCount(dialog);
-    const toolbarButton = qs("[data-doi-batch-run]");
-    if (toolbarButton) toolbarButton.setAttribute("aria-busy", "true");
     doiBatchStatus(dialog, "Searching…");
     try {
       const response = await fetch(dialog.dataset.batchUrl, {
@@ -402,14 +400,13 @@
       openDoiBatch(error.message || "Could not search the DOI list.");
     } finally {
       doiBatchSubmitting = false;
-      if (toolbarButton?.isConnected) toolbarButton.removeAttribute("aria-busy");
       if (dialog.isConnected) updateDoiBatchCount(dialog);
     }
   };
 
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-doi-batch-open]")) { openDoiBatch(); return; }
-    if (event.target.closest("[data-doi-batch-run], [data-doi-batch-search]")) {
+    if (event.target.closest("[data-doi-batch-search]")) {
       submitDoiBatch();
       return;
     }
