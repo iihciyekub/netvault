@@ -1506,6 +1506,7 @@
     const link = qs("[data-journal-wos-link]", menu);
     const name = (target.dataset.journalName || "").replace(/\s+/g, " ").trim();
     if (!menu || !link || !name) return;
+    window.clearTimeout(rankHoverTimer);
     closeJournalMenu();
     const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
     link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
@@ -1527,6 +1528,10 @@
   let rankSequence = 0;
   let rankResult = null;
   let rankDrag = null;
+  let rankHoverTimer = null;
+  let rankHoverEnabled = false;
+  const rankHoverStorageKey = () => "netvault:rank-hover:v1:" + (document.body?.dataset.userId || "");
+  const rankHoverDelayMs = 180;
   const rankPositionStorageKey = "netvault:rank-position:v1";
   const rankCacheStorageKey = "netvault:journal-ranks:v1";
   // PostgreSQL is the durable cache. Revalidate browser results periodically
@@ -1728,22 +1733,73 @@
       }
     }
   };
-  const openRankPanel = () => {
-    const menu = qs("[data-journal-context-menu]"), panel = qs("[data-rank-panel]");
-    if (!menu || !panel) return;
-    panel.dataset.journalName = menu.dataset.journalName;
-    panel.dataset.rankUrl = menu.dataset.rankUrl;
-    qs("[data-rank-title]", panel).textContent = menu.dataset.journalName;
+  const showRankPanel = (name, url, x, y, hover = false) => {
+    const panel = qs("[data-rank-panel]");
+    if (!panel || !name || !url) return;
+    const visible = !panel.hidden;
+    if (hover && visible && panel.dataset.journalName === name) return;
+    // Keep the floating window in place while scanning journals. Its drag
+    // position applies equally to a manual context-menu open and hover open.
+    const left = visible ? parseFloat(panel.style.left) : NaN;
+    const top = visible ? parseFloat(panel.style.top) : NaN;
+    panel.dataset.journalName = name;
+    panel.dataset.rankUrl = url;
+    panel.dataset.rankOpenMode = hover ? "hover" : "manual";
+    qs("[data-rank-title]", panel).textContent = name;
     qs("[data-rank-table]", panel).hidden = true;
     panel.hidden = false;
-    clampRankPanel(panel, rankPosition?.x ?? Number(menu.dataset.anchorX) + 12,
-      rankPosition?.y ?? Number(menu.dataset.anchorY) + 12);
-    closeJournalMenu();
-    qs("[data-rank-close]", panel).focus({preventScroll: true});
-    loadRanks();
+    clampRankPanel(panel,
+      Number.isFinite(left) ? left : (rankPosition?.x ?? x),
+      Number.isFinite(top) ? top : (rankPosition?.y ?? y));
+    if (!hover) qs("[data-rank-close]", panel).focus({preventScroll: true});
+    void loadRanks();
   };
+  const openRankPanel = () => {
+    const menu = qs("[data-journal-context-menu]");
+    if (!menu) return;
+    window.clearTimeout(rankHoverTimer);
+    showRankPanel(menu.dataset.journalName, menu.dataset.rankUrl,
+      Number(menu.dataset.anchorX) + 12, Number(menu.dataset.anchorY) + 12);
+    closeJournalMenu();
+  };
+  document.addEventListener("change", event => {
+    if (!event.target.matches?.("[data-rank-hover-toggle]")) return;
+    rankHoverEnabled = event.target.checked;
+    window.clearTimeout(rankHoverTimer);
+    try { localStorage.setItem(rankHoverStorageKey(), String(rankHoverEnabled)); } catch { /* Optional. */ }
+    const panel = qs("[data-rank-panel]");
+    if (!rankHoverEnabled && panel?.dataset.rankOpenMode === "hover") {
+      panel.hidden = true;
+      rankSequence++;
+    }
+  });
+  document.addEventListener("pointerover", event => {
+    if (!rankHoverEnabled || event.pointerType !== "mouse" || rankDrag || event.buttons) return;
+    const journal = event.target.closest?.(".heat-journal[data-journal-name]");
+    if (!journal || (event.relatedTarget && journal.contains(event.relatedTarget))) return;
+    const menu = qs("[data-journal-context-menu]");
+    if (!menu || !menu.hidden) return;
+    window.clearTimeout(rankHoverTimer);
+    const name = (journal.dataset.journalName || "").replace(/\s+/g, " ").trim();
+    const panel = qs("[data-rank-panel]");
+    if (!name || (panel && !panel.hidden && panel.dataset.journalName === name)) return;
+    rankHoverTimer = window.setTimeout(() => {
+      if (!rankHoverEnabled || !journal.isConnected || rankDrag || !menu.hidden) return;
+      const rect = journal.getBoundingClientRect();
+      showRankPanel(name, menu.dataset.rankUrl, rect.right + 12, rect.top + 8, true);
+    }, rankHoverDelayMs);
+  });
+  document.addEventListener("pointerout", event => {
+    const journal = event.target.closest?.(".heat-journal[data-journal-name]");
+    if (journal && (!event.relatedTarget || !journal.contains(event.relatedTarget)))
+      window.clearTimeout(rankHoverTimer);
+  });
   document.addEventListener("click", event => {
-    if (event.target.closest("[data-rank-close]")) { qs("[data-rank-panel]").hidden = true; rankSequence++; }
+    if (event.target.closest("[data-rank-close]")) {
+      window.clearTimeout(rankHoverTimer);
+      qs("[data-rank-panel]").hidden = true;
+      rankSequence++;
+    }
     if (event.target.closest("[data-rank-refresh]")) loadRanks(true);
     const selected = event.target.closest("[data-rank-selected]");
     if (selected) {
@@ -1754,11 +1810,13 @@
   });
   let rankBatchTimer = null;
   let lastCompletedRankJob = null;
-  const setRankBatchMessage = (panel, message, retry = false) => {
+  const setRankBatchMessage = (panel, message, retry = false, brief = "Ranks") => {
     const banner = qs("[data-rank-batch-banner]", panel);
     if (!banner) return;
     banner.hidden = false;
+    banner.title = message;
     qs("[data-rank-batch-message]", banner).textContent = message;
+    qs("[data-rank-batch-brief]", banner).textContent = brief;
     qs("[data-rank-batch-retry]", banner).hidden = !retry;
   };
   const showRankBatchProgress = (panel, job) => {
@@ -1771,7 +1829,9 @@
       ? "Ranking check " + (job.status === "completed" ? "completed" : "finished with errors")
         + ": " + progress + (job.last_error ? ". Last error: " + job.last_error : "")
       : "Checking list rankings in the background: " + progress;
-    setRankBatchMessage(panel, message, done);
+    const brief = "Ranks " + job.processed + "/" + job.total + (job.failed ? " !" : "");
+    setRankBatchMessage(panel, message, done, brief);
+    qs("[data-rank-batch-banner]", panel).dataset.rankState = job.status;
     if (done && lastCompletedRankJob !== job.id) {
       invalidateRankCache();
       lastCompletedRankJob = job.id;
@@ -1814,7 +1874,7 @@
       setRankBatchMessage(panel, "Please sign in again before requesting rankings.");
       return;
     }
-    setRankBatchMessage(panel, "Starting background journal ranking check...");
+    setRankBatchMessage(panel, "Starting background journal ranking check...", false, "Ranks…");
     try {
       const response = await fetch(panel.dataset.rankBatchUrl, {
         method: "POST", credentials: "same-origin",
@@ -1860,6 +1920,7 @@
   });
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") {
+      window.clearTimeout(rankHoverTimer);
       const panel = qs("[data-rank-panel]");
       if (panel) { panel.hidden = true; rankSequence++; }
     }
@@ -1943,6 +2004,12 @@
 
   const initHeatmap = (root = document) => {
     qsa(".heatmap-panel", root).forEach((panel) => {
+      const hoverToggle = qs("[data-rank-hover-toggle]", panel);
+      if (hoverToggle) {
+        try { rankHoverEnabled = localStorage.getItem(rankHoverStorageKey()) === "true"; }
+        catch { rankHoverEnabled = false; }
+        hoverToggle.checked = rankHoverEnabled;
+      }
       if (panel.dataset.rankBatchStatusUrl) void pollRankBatch(panel);
       const view = loadJournalView(panel);
       const search = qs("[data-journal-filter]", panel);

@@ -5,6 +5,16 @@ const {join} = require("node:path");
 const {runInNewContext} = require("node:vm");
 const app = readFileSync(join(__dirname,
   "../packages/netvault-server/src/netvault_server/server/static/app.js"), "utf8");
+const template = readFileSync(join(__dirname,
+  "../packages/netvault-server/src/netvault_server/server/templates/dashboard.html"), "utf8");
+const toolbarPosition = template.indexOf('<div class="heatmap-filter-bar">');
+const indicatorPosition = template.indexOf('data-rank-batch-banner');
+const heatmapPosition = template.indexOf('data-journal-heatmap-data');
+assert.ok(toolbarPosition >= 0 && indicatorPosition > toolbarPosition
+  && indicatorPosition < heatmapPosition,
+  'Ranking progress must live in the existing toolbar, not a full-width banner above it');
+assert.ok(template.includes('data-rank-hover-toggle'));
+assert.ok(app.includes('localStorage.getItem(rankHoverStorageKey()) === "true"'));
 
 const labelStart = app.indexOf("  const rankDatasetLabels =");
 const labelEnd = app.indexOf("  const renderRanks =", labelStart);
@@ -26,7 +36,7 @@ assert.ok(from > 0 && until > from);
 const records = [];
 const requested = [];
 const nodes = new Map();
-function node() {return {hidden: true, textContent: "", isConnected: true};}
+function node() {return {hidden: true, textContent: "", title: "", dataset: {}, isConnected: true};}
 function qs(selector) {
   if (!nodes.has(selector)) nodes.set(selector, node());
   return nodes.get(selector);
@@ -76,6 +86,7 @@ runInNewContext(app.slice(from, until) +
   assert.deepEqual(records, [{filter:"custom_aadefa5c8ab1", refresh:false}]);
   await new Promise(resolve => setImmediate(resolve));
   assert.match(qs("[data-rank-batch-message]").textContent, /3\/3 journals/);
+  assert.equal(qs("[data-rank-batch-brief]").textContent, "Ranks 3/3");
   assert.equal(qs("[data-rank-batch-retry]").hidden, false);
   assert.equal(invalidations, 1);
 

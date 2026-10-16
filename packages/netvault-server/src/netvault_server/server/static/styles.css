@@ -2593,21 +2593,69 @@ body.with-sidebar {
 .rank-tools label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; }
 .rank-tools input { width: 13px; height: 13px; min-height: 0; margin: 0; padding: 0; }
 .journal-rank-panel [data-rank-status] { margin: 0 12px 5px; font-size: 11px; line-height: 1.35; color: var(--muted); }
-.rank-batch-banner:not([hidden]) {
-  display: flex;
+/* A compact ranking indicator occupies the existing filter toolbar, never
+   its own row above the heatmap. The full progress is available as a tooltip. */
+.rank-quick-tools {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--soft);
-  color: var(--fg);
-  font-size: 12px;
+  flex: 0 0 auto;
+  gap: 9px;
+  min-height: 30px;
 }
-.rank-batch-banner [data-rank-batch-message] { flex: 1 1 240px; }
-.rank-batch-banner button { padding: 5px 10px; font-size: 12px; }
+.rank-hover-setting {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rank-hover-setting input {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--fg);
+  cursor: pointer;
+}
+.rank-batch-inline:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 26px;
+  padding: 0 2px 0 8px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rank-batch-inline[data-rank-state="completed"] { color: var(--fg); }
+.rank-batch-inline[data-rank-state="partial"] { color: var(--danger, var(--fg)); }
+.rank-batch-inline [data-rank-batch-brief] { white-space: nowrap; }
+.rank-batch-inline [data-rank-batch-retry]:not([hidden]) {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  min-height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+.rank-batch-inline [data-rank-batch-retry]:hover,
+.rank-batch-inline [data-rank-batch-retry]:focus-visible {
+  background: var(--soft);
+  outline-offset: -2px;
+}
 .rank-table-scroll { min-height: 0; overflow: auto; padding: 0 8px; }
 .journal-rank-panel th, .journal-rank-panel td { padding: 6px 8px; line-height: 1.35; }
 .journal-rank-panel th { text-transform: none; }

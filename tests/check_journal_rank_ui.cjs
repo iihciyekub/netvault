@@ -10,6 +10,8 @@ const requests = [];
 let fail = false;
 function environment() {
   const nodes = new Map();
+  const timers = new Map();
+  let nextTimer = 0;
   function node() { return {hidden: false, disabled: false, style: {}, dataset: {},
     append() {}, replaceChildren() {}, setAttribute() {}, removeAttribute() {}, focus() {}}; }
   const panel = node();
@@ -22,8 +24,9 @@ function environment() {
   const context = {URL, URLSearchParams, Date, Map, JSON, Number, Math, innerHeight:800, innerWidth:1200,
     location:{origin:'https://example.test'}, qs, qsa:()=>[], closeJournalMenu(){},
     localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
-    document:{createElement:node,addEventListener:(name, fn)=>(events[name] ||= []).push(fn)},
-    window:{addEventListener(){}},
+    document:{body:{dataset:{userId:'1'}},createElement:node,addEventListener:(name, fn)=>(events[name] ||= []).push(fn)},
+    window:{addEventListener(){},clearTimeout:id=>timers.delete(id),
+      setTimeout(fn){const id=++nextTimer;timers.set(id,fn);return id;}},
     fetch:async url=>{
       requests.push(String(url));
       if (fail) throw Error('Offline');
@@ -32,7 +35,9 @@ function environment() {
         rows:[{key:'sci',name:'SCI',rank:'Q1',source:'Official datasets',selected:true}]})};
     }};
   runInNewContext(code + '\nthis.ui = {loadRanks, openRankPanel, clampRankPanel, cacheRanks, rankIdentity, rememberRankPosition, getPosition:()=>rankPosition, setDrag:value=>rankDrag=value};', context);
-  return {context, panel, menu, nodes, qs, ui:context.ui};
+  return {context, panel, menu, nodes, qs, events,
+    fireTimers(){for(const [id,fn] of [...timers]){timers.delete(id);fn();}},
+    ui:context.ui};
 }
 (async()=>{
   let env = environment();
@@ -73,6 +78,55 @@ function environment() {
   const beforeConcurrent = requests.length;
   await Promise.all([env.ui.loadRanks(), env.ui.loadRanks()]);
   assert.equal(requests.length, beforeConcurrent + 1, 'Concurrent lookups must share one request');
+  // Opt-in pointer hover uses the very same floating, draggable results
+  // window, updates it in place for another journal, and never steals focus.
+  env = environment(); fail = false;
+  env.panel.hidden = true; env.menu.hidden = true;
+  let closeFocuses = 0;
+  env.qs('[data-rank-close]').focus = () => {closeFocuses++;};
+  const toggle = {checked:true, matches:selector=>selector === '[data-rank-hover-toggle]'};
+  env.events.change[0]({target:toggle});
+  assert.equal(storage.get('netvault:rank-hover:v1:1'), 'true');
+  function journal(name, top) {
+    return {isConnected:true,dataset:{journalName:name},contains:()=>false,
+      getBoundingClientRect:()=>({left:30,right:240,top,bottom:top+24})};
+  }
+  function pointer(name, type='mouse') {
+    return {pointerType:type,buttons:0,relatedTarget:null,target:{
+      closest:selector=>selector === '.heat-journal[data-journal-name]' ? name : null,
+    }};
+  }
+  const first = journal('APPLIED LINGUISTICS', 100);
+  const second = journal('SYSTEM', 140);
+  const startRequests = requests.length;
+  env.events.pointerover[0](pointer(first));
+  env.fireTimers();
+  assert.equal(env.panel.dataset.journalName, 'APPLIED LINGUISTICS');
+  assert.equal(env.panel.dataset.rankOpenMode, 'hover');
+  assert.equal(closeFocuses,0,'Hovering must not move keyboard focus');
+  assert.equal(requests.length,startRequests+1);
+  const firstLeft = env.panel.style.left, firstTop = env.panel.style.top;
+  env.events.pointerover[0](pointer(second));
+  env.fireTimers();
+  assert.equal(env.panel.dataset.journalName,'SYSTEM');
+  assert.equal(env.panel.style.left,firstLeft,'The panel should not jump while scanning journals');
+  assert.equal(env.panel.style.top,firstTop);
+  assert.equal(requests.length,startRequests+2);
+  env.events.pointerover[0](pointer(first,'touch'));
+  env.fireTimers();
+  assert.equal(env.panel.dataset.journalName,'SYSTEM','Touch input must not trigger mouse hover');
+  toggle.checked = false;
+  env.events.change[0]({target:toggle});
+  assert.equal(storage.get('netvault:rank-hover:v1:1'),'false');
+  assert.equal(env.panel.hidden,true,'Disabling hover closes only its auto-opened panel');
+  env.events.pointerover[0](pointer(first));
+  env.fireTimers();
+  assert.equal(env.panel.hidden,true);
+  env.menu.dataset.journalName='NATURE';
+  env.ui.openRankPanel();
+  assert.equal(env.panel.hidden,false,'Manual journal ranking action still works');
+  assert.equal(env.panel.dataset.rankOpenMode,'manual');
+  assert.equal(closeFocuses,1,'Manually opened results remain keyboard accessible');
   const bootstrap = readFileSync(join(__dirname, '../packages/netvault-server/src/netvault_server/server/static/theme.js'), 'utf8');
   const themeRoot = {dataset:{}};
   runInNewContext(bootstrap, {document:{documentElement:themeRoot},localStorage:{getItem:()=> 'dark'}});

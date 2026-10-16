@@ -123,10 +123,6 @@
 
 <section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-filter="{{ journal_filter }}" data-dashboard-preference-url="{{ path_for('/web/preferences/dashboard-filter') }}" data-rank-batch-url="{{ path_for('/web/journal-rank-batches') }}" data-rank-batch-status-url="{{ path_for('/web/journal-rank-batches/latest') }}" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
-    <div class="rank-batch-banner" data-rank-batch-banner hidden>
-      <span data-rank-batch-message role="status" aria-live="polite"></span>
-      <button type="button" class="ghost" data-rank-batch-retry hidden>Re-fetch list rankings</button>
-    </div>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">
       <button type="button" class="doi-batch-inline-button" data-doi-batch-open
@@ -150,6 +146,19 @@
         >
       </div>
       <span class="sr-only" data-journal-suggestion aria-live="polite" hidden></span>
+      <div class="rank-quick-tools">
+        <label class="rank-hover-setting" title="Show journal rankings when hovering over journal names">
+          <input type="checkbox" data-rank-hover-toggle>
+          <span>Hover ranks</span>
+        </label>
+        <div class="rank-batch-inline" data-rank-batch-banner hidden>
+          <span data-rank-batch-brief>Ranks</span>
+          <span class="sr-only" data-rank-batch-message role="status" aria-live="polite"></span>
+          <button type="button" data-rank-batch-retry title="Re-fetch list rankings" aria-label="Re-fetch list rankings" hidden>
+            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
       <div class="heatmap-filter-summary">
         <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite">{{ journal_year.rows|length }} journal{% if journal_year.rows|length != 1 %}s{% endif %}</output>
         <span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs|number }}</span>

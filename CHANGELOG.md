@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.76 — 2026-10-16
+
+- Move the list-wide ranking status into the existing Dashboard search toolbar as a compact `Ranks x/y` indicator, with full progress available on hover and an icon-only re-fetch control. Remove the separate full-width banner so it no longer pushes the heatmap downward.
+- Add an opt-in **Hover ranks** checkbox beside the compact status. Mouse hover over a journal name opens the existing draggable rank window and hovering another name updates its contents without moving the window or stealing keyboard focus.
+- Remember each user's hover setting in browser storage. Debounce hover requests, ignore touch input, and keep the original context-menu lookup and manual refresh unchanged.
+- Run focused ranking UI and layout checks rather than rerunning unrelated PDF extraction tests.
+
 ## 0.7.75 — 2026-10-16
 
 - Restore the existing Chinese easyScholar dataset labels in the journal ranking panel, including previously browser-cached responses. Group headings now match the Chinese ranking taxonomy instead of overriding the server mapping with English labels.
