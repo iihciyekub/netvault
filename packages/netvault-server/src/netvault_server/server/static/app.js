@@ -262,6 +262,7 @@
   // Align with the backend's DOI patterns. Extraction is explicitly opt-in.
   const doiBatchPattern = /\b10\.\d{4,9}\/[-._;()/:a-z0-9+%=&]+/gi;
   let doiBatchSubmitting = false;
+  let doiBatchRevision = 0;
 
   const normalizeBatchDoi = (value) => {
     let doi = String(value || "").trim().normalize("NFKC");
@@ -319,9 +320,20 @@
     const parsed = readDoiBatch(dialog);
     const count = qs("[data-doi-batch-count]", dialog);
     const button = qs("[data-doi-batch-search]", dialog);
+    const check = qs("[data-doi-batch-check]", dialog);
     if (count) count.textContent = parsed.dois.length.toLocaleString("en-US") + " DOIs";
     if (button) button.disabled = doiBatchSubmitting || parsed.dois.length === 0 || parsed.dois.length > doiBatchMax;
+    if (check) check.disabled = doiBatchSubmitting || parsed.dois.length === 0 || parsed.dois.length > doiBatchMax;
     return parsed;
+  };
+  const resetDoiBatchAvailability = (dialog) => {
+    doiBatchRevision++;
+    const result = qs("[data-doi-batch-availability]", dialog);
+    const download = qs("[data-doi-batch-download]", dialog);
+    const ids = qs("[data-doi-batch-download-ids]");
+    if (result) result.hidden = true;
+    if (download) { download.hidden = true; download.disabled = true; }
+    if (ids) ids.replaceChildren();
   };
   const doiBatchStatus = (dialog, text = "") => {
     const status = qs("[data-doi-batch-status]", dialog);
@@ -425,10 +437,79 @@
     }
   };
 
+  const checkDoiBatchAvailability = async () => {
+    const dialog = doiBatchDialog();
+    if (!dialog || doiBatchSubmitting) return;
+    restoreDoiBatch(dialog);
+    const parsed = readDoiBatch(dialog);
+    if (!parsed.extract && parsed.invalid) {
+      doiBatchStatus(dialog, parsed.invalid + " invalid DOI line(s). Check the entries or enable regex.");
+      return;
+    }
+    if (!parsed.dois.length || parsed.dois.length > doiBatchMax) {
+      doiBatchStatus(dialog, "Enter between 1 and " + doiBatchMax + " DOIs.");
+      return;
+    }
+    resetDoiBatchAvailability(dialog);
+    const revision = doiBatchRevision;
+    persistDoiBatch(dialog);
+    doiBatchSubmitting = true;
+    updateDoiBatchCount(dialog);
+    doiBatchStatus(dialog, "Checking server availability…");
+    try {
+      const response = await fetch(dialog.dataset.batchUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": qs("[data-doi-batch-csrf]", dialog)?.value || "",
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({ dois: parsed.dois }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Availability check failed.");
+      if (revision !== doiBatchRevision || !dialog.isConnected) return;
+      const box = qs("[data-doi-batch-availability]", dialog);
+      qs("[data-doi-batch-available]", dialog).textContent = Number(result.available_count).toLocaleString("en-US");
+      qs("[data-doi-batch-requested]", dialog).textContent = Number(result.count).toLocaleString("en-US");
+      const missing = result.count - result.available_count;
+      const detail = qs("[data-doi-batch-detail]", dialog);
+      detail.textContent = (missing ? missing + " unavailable (including " + result.storage_missing_count + " missing stored files). " : "All DOIs matched. ")
+        + (result.zip_error || "Ready to download as ZIP.");
+      box.hidden = false;
+      const ids = qs("[data-doi-batch-download-ids]");
+      const download = qs("[data-doi-batch-download]", dialog);
+      if (result.zip_ready && Array.isArray(result.pdf_ids)) {
+        const fragment = document.createDocumentFragment();
+        result.pdf_ids.forEach((id) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "pdf_ids";
+          input.value = String(id);
+          fragment.append(input);
+        });
+        ids.replaceChildren(fragment);
+        download.disabled = false;
+        download.hidden = false;
+      }
+      doiBatchStatus(dialog);
+    } catch (error) {
+      if (revision === doiBatchRevision) doiBatchStatus(dialog, error.message || "Could not check the DOI list.");
+    } finally {
+      doiBatchSubmitting = false;
+      if (dialog.isConnected) updateDoiBatchCount(dialog);
+    }
+  };
+
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-doi-batch-open]")) { openDoiBatch(); return; }
     if (event.target.closest("[data-doi-batch-search]")) {
       submitDoiBatch();
+      return;
+    }
+    if (event.target.closest("[data-doi-batch-check]")) {
+      checkDoiBatchAvailability();
       return;
     }
     if (event.target.closest("[data-doi-batch-close]")) {
@@ -445,11 +526,12 @@
     if (!event.target.matches?.("[data-doi-batch-regex]")) return;
     const dialog = event.target.closest("[data-doi-batch-dialog]");
     // Checking the box extracts DOI patterns and immediately rewrites the input.
-    if (dialog) formatDoiBatch(dialog);
+    if (dialog) { resetDoiBatchAvailability(dialog); formatDoiBatch(dialog); }
   });
   document.addEventListener("input", (event) => {
     if (!event.target.matches?.("[data-doi-batch-input]")) return;
     const dialog = event.target.closest("[data-doi-batch-dialog]");
+    resetDoiBatchAvailability(dialog);
     doiBatchStatus(dialog);
     updateDoiBatchCount(dialog);
     persistDoiBatch(dialog);
@@ -1072,7 +1154,8 @@
     const computed = getComputedStyle(frame);
     const totalWidth = parseFloat(computed.getPropertyValue("--heat-total-width")) || 60;
     const fixedNameWidth = nameWidth ?? (parseFloat(computed.getPropertyValue("--heat-journal-width")) || 180);
-    const naturalWidth = yearGrid.scrollWidth + totalWidth + fixedNameWidth + 12;
+    const scrollbarRail = parseFloat(computed.getPropertyValue("--heat-scrollbar-rail")) || 16;
+    const naturalWidth = yearGrid.scrollWidth + totalWidth + fixedNameWidth + scrollbarRail + 12;
     const preferredWidth = Math.min(1320, Math.max(640, Math.ceil(naturalWidth)));
     page.style.setProperty("--dashboard-content-width", preferredWidth + "px");
   };
@@ -1164,11 +1247,30 @@
     const scroll = qs("[data-heatmap-years-viewport]", panel);
     if (frame) frame.hidden = shown.length === 0;
     if (scroll && frame) {
+      const horizontal = qs("[data-heatmap-scrollbar-x]", frame);
+      const vertical = qs("[data-heatmap-scrollbar-y]", frame);
+      const horizontalSpacer = qs("[data-heatmap-scrollbar-x-spacer]", frame);
+      const verticalSpacer = qs("[data-heatmap-scrollbar-y-spacer]", frame);
       const syncFixedRows = () => {
         const fixed = qs("[data-heatmap-fixed-body]", panel);
         if (fixed) fixed.style.transform = "translate3d(0, " + (-scroll.scrollTop) + "px, 0)";
       };
+      const syncScrollbarPositions = () => {
+        if (horizontal && horizontal.scrollLeft !== scroll.scrollLeft) horizontal.scrollLeft = scroll.scrollLeft;
+        if (vertical && vertical.scrollTop !== scroll.scrollTop) vertical.scrollTop = scroll.scrollTop;
+      };
+      const resizeScrollbarRails = () => {
+        // Match scroll ranges exactly. The rails are separate from the grid,
+        // so macOS overlay scrollbars never cover year squares.
+        if (horizontalSpacer) horizontalSpacer.style.width = scroll.scrollWidth + "px";
+        if (vertical && verticalSpacer) {
+          verticalSpacer.style.height = Math.max(1, vertical.clientHeight
+            + scroll.scrollHeight - scroll.clientHeight) + "px";
+        }
+        syncScrollbarPositions();
+      };
       syncFixedRows();
+      resizeScrollbarRails();
       if (!scroll.dataset.yearScrollReady) {
         scroll.dataset.yearScrollReady = "true";
         // Oldest years at left, newest at right. Only year cells scroll horizontally.
@@ -1176,13 +1278,31 @@
           if (!scroll.isConnected || !scroll.clientWidth) return;
           scroll.scrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
         };
-        requestAnimationFrame(alignLatest);
+        requestAnimationFrame(() => {
+          resizeScrollbarRails();
+          alignLatest();
+          syncScrollbarPositions();
+        });
         const observer = new ResizeObserver(() => {
+          resizeScrollbarRails();
           if (scroll.dataset.userYearScroll !== "true") alignLatest();
           syncFixedRows();
+          syncScrollbarPositions();
         });
         observer.observe(scroll);
-        scroll.addEventListener("scroll", syncFixedRows, { passive: true });
+        scroll.addEventListener("scroll", () => {
+          syncFixedRows();
+          syncScrollbarPositions();
+        }, { passive: true });
+        if (horizontal) horizontal.addEventListener("scroll", () => {
+          if (Math.abs(horizontal.scrollLeft - scroll.scrollLeft) < 1) return;
+          scroll.dataset.userYearScroll = "true";
+          scroll.scrollLeft = horizontal.scrollLeft;
+        }, { passive: true });
+        if (vertical) vertical.addEventListener("scroll", () => {
+          if (Math.abs(vertical.scrollTop - scroll.scrollTop) < 1) return;
+          scroll.scrollTop = vertical.scrollTop;
+        }, { passive: true });
         const fixedViewport = qs("[data-heatmap-fixed-viewport]", panel);
         if (fixedViewport) {
           fixedViewport.addEventListener("wheel", (event) => {
@@ -1933,6 +2053,42 @@
     if (event.target.closest("[data-pdf-meta-close]")) {
       qs("[data-pdf-meta-dialog]")?.close();
     }
+  });
+
+  // The ZIP endpoint already validates the authenticated IDs, CSRF token and
+  // archive limits. Form-associated checkboxes submit only checked PDFs from
+  // the current search page; nothing is copied into hidden inputs by JS.
+  const pdfSelectionCheckboxes = () => qsa(
+    "[data-pdf-select-item] [data-pdf-select-checkbox]", qs(mainSelector) || document
+  );
+  const updatePdfSelection = () => {
+    const toolbar = qs("[data-pdf-selection-toolbar]");
+    if (!toolbar) return;
+    const checkboxes = pdfSelectionCheckboxes();
+    const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+    const allSelected = checkboxes.length > 0 && selected === checkboxes.length;
+    const toggle = qs("[data-pdf-select-toggle]", toolbar);
+    const label = qs("[data-pdf-select-toggle-label]", toolbar);
+    const count = qs("[data-pdf-selected-count]", toolbar);
+    const download = qs("[data-pdf-selected-zip]", toolbar);
+    if (toggle) toggle.setAttribute("aria-pressed", String(allSelected));
+    if (label) label.textContent = allSelected ? "Deselect all" : "Select all";
+    if (count) count.textContent = selected + " selected";
+    if (download) download.disabled = selected === 0;
+    checkboxes.forEach((checkbox) => {
+      checkbox.closest("[data-pdf-select-item]")?.classList.toggle("is-selected", checkbox.checked);
+    });
+  };
+  document.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-pdf-select-toggle]");
+    if (!toggle) return;
+    const checkboxes = pdfSelectionCheckboxes();
+    const selectAll = checkboxes.some((checkbox) => !checkbox.checked);
+    checkboxes.forEach((checkbox) => { checkbox.checked = selectAll; });
+    updatePdfSelection();
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.matches?.("[data-pdf-select-checkbox]")) updatePdfSelection();
   });
 
   const doiCorrectionDialog = () => qs("[data-doi-dialog]");

@@ -793,6 +793,63 @@ tr:last-child td { border-bottom: 0; }
   font-weight: 600;
 }
 
+.paper-selection-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.paper-selection-toolbar .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.paper-selection-toolbar [data-pdf-selected-zip] {
+  margin-left: auto;
+}
+
+.paper-selection-toolbar [data-pdf-selected-zip]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paper-selected-count {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paper-select-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  cursor: pointer;
+}
+
+.paper-select-label input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent, #3267b1);
+}
+
+.paper-select-label input:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+}
+
+.paper-result.is-selected {
+  border-color: var(--line-strong);
+  box-shadow: inset 3px 0 0 var(--fg);
+}
+
 .paper-results {
   display: grid;
   gap: 10px;
@@ -3050,14 +3107,56 @@ body.with-sidebar {
   --heat-total-width: 60px;
   --heat-journal-width: clamp(190px, 32vw, 540px);
   --heat-grid-row-gap: 4px;
+  --heat-row-height: 20px;
+  --heat-scrollbar-rail: 16px;
+}
+.dashboard-body .heatmap-years-shell {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-rows: minmax(0, 1fr) var(--heat-scrollbar-rail);
+  min-width: 64px;
+  min-height: 0;
 }
 .dashboard-body .heatmap-years-viewport {
-  flex: 1 1 0;
-  min-width: 64px;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  /* Native overlay scrollbars cannot reserve gutters on macOS. Keep the
+     scrollable grid here but place its visible controls in separate rails. */
+  scrollbar-width: none;
+}
+.dashboard-body .heatmap-years-viewport::-webkit-scrollbar {
+  display: none;
+}
+.dashboard-body .heatmap-scrollbar-x,
+.dashboard-body .heatmap-scrollbar-y {
+  min-width: 0;
+  min-height: 0;
   scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.dashboard-body .heatmap-scrollbar-x {
+  overflow-x: scroll;
+  overflow-y: hidden;
+}
+.dashboard-body .heatmap-scrollbar-x-spacer {
+  height: 1px;
+}
+.dashboard-body .heatmap-scrollbar-y-shell {
+  display: grid;
+  flex: 0 0 var(--heat-scrollbar-rail);
+  grid-template-rows: 48px minmax(0, 1fr) var(--heat-scrollbar-rail);
+  min-width: 0;
+  min-height: 0;
+}
+.dashboard-body .heatmap-scrollbar-y {
+  grid-row: 2;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+.dashboard-body .heatmap-scrollbar-y-spacer {
+  width: 1px;
 }
 .dashboard-body .heatmap-years-viewport:focus-visible {
   outline: 1px solid var(--choice-line);
@@ -3078,10 +3177,12 @@ body.with-sidebar {
   flex: 0 0 calc(var(--heat-total-width) + var(--heat-journal-width));
   flex-direction: column;
   width: calc(var(--heat-total-width) + var(--heat-journal-width));
-  max-width: calc(100% - 64px);
+  max-width: calc(100% - 64px - var(--heat-scrollbar-rail));
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  box-sizing: border-box;
+  padding-bottom: var(--heat-scrollbar-rail);
   background: var(--bg);
 }
 .dashboard-body .heatmap-fixed-heading,
@@ -3148,6 +3249,7 @@ body.with-sidebar {
   grid-auto-rows: var(--heat-row-height);
   row-gap: var(--heat-grid-row-gap);
   padding-top: var(--heat-grid-row-gap);
+  align-items: center;
   will-change: transform;
 }
 .dashboard-body .heatmap-fixed-body .heat-total {
@@ -3159,6 +3261,8 @@ body.with-sidebar {
   min-width: 0;
   padding-inline: 0 8px;
   text-align: right;
+  box-sizing: border-box;
+  line-height: 1;
 }
 .dashboard-body .heatmap-fixed-body .heat-journal {
   display: flex;
@@ -3174,6 +3278,8 @@ body.with-sidebar {
   background: transparent;
   text-align: left;
   white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
 }
 .dashboard-body .heatmap-fixed-body .heat-journal-name {
   display: block;
@@ -3642,11 +3748,28 @@ body.with-sidebar {
 .doi-batch-status:empty {
   display: none;
 }
+.doi-batch-availability {
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 13px;
+}
+.doi-batch-availability strong {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.doi-batch-availability p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 .doi-batch-shell footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .doi-batch-shell footer button {
   display: inline-flex;

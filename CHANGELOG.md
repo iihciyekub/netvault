@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.7.70 — 2026-10-16
+
+- Remove the visible Correct DOI action from Search PDFs without changing the protected administrative correction API.
+- Add an accessible checkbox to each search result, a Select all / Deselect all toggle scoped to the current page, a live selection count, and Download selected ZIP using the existing authenticated, CSRF-protected streaming ZIP endpoint.
+- Disable ZIP download when nothing is selected and keep PDF selection behavior working after in-app navigation.
+- Add selection interaction and selective ZIP regression tests.
+
+## 0.7.69 — 2026-10-15
+
+- Move dashboard heatmap scrollbars into separate horizontal and vertical rails outside the year squares, including macOS overlay scrollbar configurations.
+- Keep the fixed TOTAL and JOURNAL columns vertically aligned with the independently scrolling year matrix, and synchronize scroll positions in both directions.
+
+## 0.7.68 — 2026-10-15
+
+- Consolidate DOI ZIP downloads into the dashboard Batch DOI editor, showing the exact count of stored PDFs available before offering a ZIP; retain the paginated Search PDFs action and remove the retired download page/sidebar link.
+- Align fixed journal totals and names with the year grid rows.
+- Refresh first-party static scripts and styles after deployment rather than letting the browser cache outdated click handlers for a year; keep vendor assets immutable.
+
 ## 0.7.67 — 2026-10-15
 
 - Add a read-only Meta action to PDF search results, with a responsive dialog showing the vault's catalog metadata separately from the original PDF Document Info.

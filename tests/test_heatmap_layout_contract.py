@@ -31,3 +31,44 @@ def test_heatmap_journal_labels_have_no_background_or_right_stickiness() -> None
     grid = re.search(r"(?m)^\.dashboard-body \.journal-heatmap \{([^}]*)\}", css)
     assert grid is not None
     assert "grid-template-columns: repeat(var(--year-count), var(--cell-column)) 60px minmax(160px, 340px);" in grid.group(1)
+
+
+def test_year_scrollbars_are_outside_grid_and_keep_fixed_rows_aligned() -> None:
+    template = (SERVER / "templates/dashboard.html").read_text(encoding="utf-8")
+    css = (SERVER / "static/styles.css").read_text(encoding="utf-8")
+    js = (SERVER / "static/app.js").read_text(encoding="utf-8")
+
+    # Vertical and horizontal rails must be siblings, not descendants of the
+    # year grid. This keeps macOS overlay scrollbars off actual year cells.
+    assert 'class="heatmap-years-shell"' in template
+    assert template.index('data-heatmap-years-viewport') < template.index(
+        'data-heatmap-scrollbar-x'
+    )
+    assert template.index('data-heatmap-scrollbar-x') < template.index(
+        'data-heatmap-scrollbar-y'
+    )
+    assert template.index('data-heatmap-scrollbar-y') < template.index(
+        'data-heatmap-fixed-viewport'
+    )
+    assert 'data-heatmap-scrollbar-x-spacer' in template
+    assert 'data-heatmap-scrollbar-y-spacer' in template
+    viewport = re.search(
+        r"(?m)^\.dashboard-body \.heatmap-years-viewport \{([^}]*)\}", css
+    )
+    assert viewport is not None
+    assert "scrollbar-width: none;" in viewport.group(1)
+    assert ".dashboard-body .heatmap-years-viewport::-webkit-scrollbar" in css
+    assert "grid-template-rows: minmax(0, 1fr) var(--heat-scrollbar-rail);" in css
+    assert "grid-template-rows: 48px minmax(0, 1fr) var(--heat-scrollbar-rail);" in css
+    fixed = re.search(
+        r"(?m)^\.dashboard-body \.heatmap-fixed-viewport \{([^}]*)\}", css
+    )
+    assert fixed is not None
+    assert "padding-bottom: var(--heat-scrollbar-rail);" in fixed.group(1)
+
+    assert 'horizontal.scrollLeft = scroll.scrollLeft' in js
+    assert 'vertical.scrollTop = scroll.scrollTop' in js
+    assert 'scroll.scrollLeft = horizontal.scrollLeft' in js
+    assert 'scroll.scrollTop = vertical.scrollTop' in js
+    assert 'vertical.clientHeight' in js
+    assert 'scroll.scrollHeight - scroll.clientHeight' in js

@@ -18,7 +18,6 @@ from netvault_server import __version__
 from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.download_audit import record_completed_downloads
-from netvault_server.server.doi import find_dois_in_text
 from netvault_server.server.journal_filters import (
     create_user_journal_filter,
     delete_user_journal_filter,
@@ -518,7 +517,41 @@ def create_web_doi_batch(
         token, count = create_doi_batch(user.id, payload.dois)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    return {"url": external_path("/web/pdfs") + "?batch=" + token, "count": count}
+    # The same DOI batch backs both the search link and the ZIP preview.
+    # Count only active records whose PDF files are actually on disk.
+    dois = get_doi_batch(user.id, token)
+    pdfs = db.scalars(
+        select(Pdf).where(Pdf.doi.in_(dois), Pdf.is_deleted.is_(False))
+    ).all()
+    by_doi = {pdf.doi: pdf for pdf in pdfs}
+    available = []
+    storage_missing = 0
+    for doi in dois:
+        pdf = by_doi.get(doi)
+        if pdf is None:
+            continue
+        if object_path(pdf.sha256).is_file():
+            available.append(pdf)
+        else:
+            storage_missing += 1
+    settings = get_settings()
+    total_bytes = sum(pdf.size for pdf in available)
+    zip_error = None
+    if not available:
+        zip_error = "No matching PDFs are available for download."
+    elif len(available) > settings.max_zip_files:
+        zip_error = f"A ZIP can contain at most {settings.max_zip_files} PDFs."
+    elif total_bytes > settings.max_zip_bytes:
+        zip_error = f"The matching PDFs exceed the {format_bytes(settings.max_zip_bytes)} ZIP limit."
+    return {
+        "url": external_path("/web/pdfs") + "?batch=" + token,
+        "count": count,
+        "available_count": len(available),
+        "storage_missing_count": storage_missing,
+        "pdf_ids": [pdf.id for pdf in available],
+        "zip_ready": zip_error is None,
+        "zip_error": zip_error,
+    }
 
 
 @router.get("/web/pdfs", response_class=HTMLResponse, include_in_schema=False)
@@ -843,53 +876,6 @@ async def web_existing_pdfs_by_sha256(
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="Provide at most 500 hashes and DOI values") from exc
     return existing_pdfs(db, payload.sha256, payload.doi).model_dump(mode="json")
-
-
-@router.get("/web/download", response_class=HTMLResponse, include_in_schema=False)
-def download_page(request: Request, db: Session = Depends(get_db)) -> Any:
-    user = require_web_user(request, db)
-    if isinstance(user, RedirectResponse):
-        return user
-    return render(
-        request,
-        "download.html",
-        {"user": user, "matches": [], "missing": [], "doi_text": "", "error": None},
-    )
-
-
-@router.post("/web/download", response_class=HTMLResponse, include_in_schema=False)
-def download_lookup(
-    request: Request,
-    doi_text: str = Form(""),
-    csrf_token_value: str = Form("", alias="csrf_token"),
-    db: Session = Depends(get_db),
-) -> Any:
-    validate_csrf(request, csrf_token_value)
-    user = require_web_user(request, db)
-    if isinstance(user, RedirectResponse):
-        return user
-    dois = find_dois_in_text(doi_text)
-    if len(dois) > 500:
-        return render(
-            request,
-            "download.html",
-            {
-                "user": user,
-                "matches": [],
-                "missing": [],
-                "doi_text": doi_text,
-                "error": "Submit at most 500 DOI values at once.",
-            },
-        )
-    pdfs = db.scalars(select(Pdf).where(Pdf.doi.in_(dois), Pdf.is_deleted.is_(False))).all() if dois else []
-    by_doi = {pdf.doi: pdf for pdf in pdfs}
-    matches = [by_doi[doi] for doi in dois if doi in by_doi]
-    missing = [doi for doi in dois if doi not in by_doi]
-    return render(
-        request,
-        "download.html",
-        {"user": user, "matches": matches, "missing": missing, "doi_text": doi_text, "error": None},
-    )
 
 
 def _resolve_web_pdf_file(

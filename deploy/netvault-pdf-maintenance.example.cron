@@ -1,0 +1,12 @@
+# OPTIONAL read-only NetVault maintenance audit (NOT installed by default).
+# Review docs/pdf-maintenance-runbook.md before copying to /etc/cron.d/.
+# Do not schedule metadata repair --apply, PDFCraft compression, DOI correction,
+# or prune scripts: those can mutate PostgreSQL and/or canonical PDF objects.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Every 6 hours: only SQL counters and bounded sample JSON (no PDF read).
+23 */6 * * * root cd /root/iiaide/netvault && /usr/bin/flock -n /var/lock/netvault-pdf-audit.lock /root/iiaide/netvault/.venv/bin/python scripts/audit_pdf_maintenance.py --min-age-hours 2 --recent-days 7 --limit 100 >> /var/log/netvault-pdf-maintenance.log 2>&1
+
+# Weekly: also inspect Document Info on at most 50 recent PDF objects, read-only.
+41 5 * * 0 root cd /root/iiaide/netvault && /usr/bin/flock -n /var/lock/netvault-pdf-audit.lock /root/iiaide/netvault/.venv/bin/python scripts/audit_pdf_maintenance.py --min-age-hours 2 --recent-days 7 --limit 100 --inspect-embedded 50 >> /var/log/netvault-pdf-maintenance.log 2>&1

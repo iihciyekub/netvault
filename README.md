@@ -38,7 +38,7 @@ Only when Document Info has no DOI, a sibling EBSCO `cli-downloads.csv` supplies
 - `netvault-server`: separate FastAPI service package for Docker deployments, web UI, API, and admin CLI.
 - PostgreSQL metadata storage via Docker Compose.
 - Local filesystem PDF object storage under `storage/objects`.
-- Authenticated web pages for dashboard stats, PDF upload, PDF list, and DOI download.
+- Authenticated web dashboard, PDF upload/search, and Batch DOI lookup with availability counts and ZIP download.
 - Per-user editable UTD24, FT50, ABS, and Custom journal dashboard filters.
 - Click a populated heatmap cell to search its exact journal and year; keep those filters across pages and further keyword searches.
 - Local hash-based DOI identification, safe file renaming, duplicate collection, and CSV reports.
@@ -272,10 +272,19 @@ conflict results are cached too; use `--refresh-doi` to rerun automatic DOI
 resolution. User-confirmed identities remain cached until removed, but cannot
 override a unique Document Info DOI or clear a Document Info DOI conflict.
 When a local file has the DOI of an existing vault item but a different SHA-256,
-the server validates the uploaded file before recording its digest as an alias.
-A manual DOI or local confirmation is a hint, not permission to register a new hash
-without server verification. Explicit CSV pairs remain user-trusted. Later uploads
-from either CLI or web can skip accepted aliases during the initial hash check.
+ordinary `nv upload` now first performs a batched DOI lookup for a unique
+Document Info DOI or user-confirmed identity. If already present, it skips
+transferring the PDF and **does not** register a file alias or replace the stored
+document. With `--no-skip-existing-doi`, the server instead verifies the uploaded
+file before recording any new hash alias, as before. A manual DOI or local
+confirmation is not permission to register a new hash without server verification.
+Content-derived DOI hints only skip when the **single DOI printed on the first
+page** and the stored article's **complete heading title** corroborate each
+other. Ambiguous content and filename-guessed DOI hints still require server
+verification. Explicit `--csv` pairs preserve their existing user-trusted
+upload behavior.
+Later uploads from either CLI or web can skip accepted aliases during the
+initial hash check.
 
 Download indexes are fallback evidence when Document Info has no DOI.
 Automatically discovered indexes skip invalid entries with one warning and use
@@ -325,6 +334,8 @@ nv upload ./papers --index-file ./custom-download-index.json
 nv upload ./papers --csv ./cli-downloads.csv
 nv upload ./papers --csv ./cli-downloads.csv --dry-run
 nv upload ./papers --no-index
+nv upload ./papers --verbose
+nv upload ./papers --no-skip-existing-doi
 ```
 
 Passing `--csv` explicitly accepts the matched DOI/PDF pairs without reading PDF text;
@@ -332,6 +343,13 @@ placing the CSV next to the PDFs without that option keeps automatic title verif
 Existing DOI records with a different file hash are deduplicated as CSV-trusted aliases;
 an existing hash assigned to a different DOI is rejected, and files are not replaced
 unless `--force` is passed.
+
+For faster duplicate-only runs, ordinary upload now skips PDF Document Info
+parsing when the server already has those exact SHA-256 bytes. Different bytes
+with a trusted embedded or user-confirmed DOI can be skipped using the batched
+DOI lookup, without sending another PDF. `--force` and `--write-doi` retain their
+explicitly requested processing behavior. Use `--verbose` to distinguish DOI
+preparation, batch DOI prechecks, transfer time and server response latency.
 
 Ordinary upload resolution first accepts a unique Document Info DOI or stops on
 conflicting Document Info DOIs. Only when Document Info has no DOI do explicit

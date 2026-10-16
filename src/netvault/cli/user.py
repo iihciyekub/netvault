@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 from threading import Event
@@ -763,6 +764,44 @@ def find_existing_pdf_before_upload(
     return None
 
 
+def verified_first_page_doi_and_title(path: Path, doi: str, server_title: str | None) -> bool:
+    """Conservatively confirm a content-derived DOI without sending PDF bytes.
+
+    A DOI in the references of an unrelated PDF must never silently suppress
+    its upload. Require exactly one first-page DOI and the full stored paper
+    title in the *beginning* of the first page. Ambiguities fall back to the
+    existing upload/server verification, without changing any stored object.
+    """
+    if not isinstance(server_title, str):
+        return False
+
+    def words(value: str) -> list[str]:
+        return re.findall(r"[^\W_]+", value.casefold(), flags=re.UNICODE)
+
+    title_words = words(server_title)
+    if len(title_words) < 4 or len("".join(title_words)) < 20:
+        return False
+    try:
+        with path.open("rb") as handle:
+            reader = PdfReader(handle, strict=False)
+            if reader.is_encrypted or not reader.pages:
+                return False
+            first_page = (reader.pages[0].extract_text() or "")[:12000]
+        header = re.split(
+            r"(?im)^\s*(?:references|bibliography)\b", first_page, maxsplit=1
+        )[0]
+        printed_dois = set(find_dois_in_text(header[:8000]))
+        if printed_dois != {normalize_doi(doi)}:
+            return False
+        # Restrict title corroboration to the article heading, not a title in
+        # body citations or a later reference list.
+        return " ".join(title_words) in " ".join(words(header[:2800]))
+    except Exception:
+        # Fast-path failures must never turn a potentially valid upload into
+        # a hard failure. The normal server-side verification remains available.
+        return False
+
+
 def save_login(server: str, username: str, password: str) -> None:
     response = http_session().post(
         f"{server.rstrip('/')}/auth/login",
@@ -1102,6 +1141,13 @@ def upload_command(
         "--force",
         help="Replace the existing PDF for its DOI and refresh all metadata from Crossref.",
     ),
+    skip_existing_doi: bool = typer.Option(
+        True,
+        "--skip-existing-doi/--no-skip-existing-doi",
+        help="Skip when a server DOI already has a trusted embedded/user-confirmed "
+             "identity, or uniquely matching first-page DOI and article title. "
+             "Keep the stored PDF unchanged.",
+    ),
     refresh_doi: bool = typer.Option(
         False,
         "--refresh-doi",
@@ -1252,6 +1298,7 @@ def upload_command(
     uploaded = 0
     replaced = 0
     skipped = 0
+    skipped_by_doi = 0
     needs_review = 0
     review_skipped = 0
     failed: list[tuple[Path, str]] = []
@@ -1274,6 +1321,7 @@ def upload_command(
     local_duplicate_paths = 0
     stats = UploadStats()
     preparation_seconds = 0.0
+    doi_precheck_seconds = 0.0
     pdf_paths_by_sha: dict[str, list[Path]] = {}
     started = monotonic()
 
@@ -1455,19 +1503,17 @@ def upload_command(
         embedded_by_path: dict[Path, DoiEvidence | None] = {}
         for pdf_path in unique_pdf_paths:
             sha256 = hashes_by_path[pdf_path]
-            embedded = None if csv_file is not None else extract_document_info_evidence(pdf_path)
-            embedded_by_path[pdf_path] = embedded
-            if embedded is not None and embedded.status == "conflict":
-                record_failure(pdf_path, ApiError(422, embedded.reason or "Multiple Document Info DOI values"))
-                continue
             existing_pdf = existing_by_sha.get(sha256)
             if existing_pdf and not force and csv_file is None:
                 try:
-                    asserted_doi = embedded.doi if embedded is not None else normalize_doi(doi) if doi else None
+                    # The server has already identified these exact PDF bytes.
+                    # Do not open and parse a potentially large PDF just to
+                    # discover a DOI that the existing SHA lookup already knows.
+                    asserted_doi = normalize_doi(doi) if doi else None
                     cached = cached_identity(identity_cache, sha256)
                     if not asserted_doi and cached and cached.get("source") == "user":
                         asserted_doi = normalize_doi(cached["doi"])
-                    if index_file is not None and embedded is None:
+                    if index_file is not None:
                         match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
                         if match is not None:
                             if asserted_doi and asserted_doi != match.record.doi:
@@ -1485,6 +1531,13 @@ def upload_command(
                 for sibling in state_paths(pdf_path, sha256):
                     upload_state.record(sibling, sha256, upload_server, "existing", pdf=existing_pdf)
             else:
+                embedded = None if csv_file is not None else extract_document_info_evidence(pdf_path)
+                embedded_by_path[pdf_path] = embedded
+                if embedded is not None and embedded.status == "conflict":
+                    record_failure(
+                        pdf_path, ApiError(422, embedded.reason or "Multiple Document Info DOI values")
+                    )
+                    continue
                 new_pdfs.append(pdf_path)
 
         initial_skips = []
@@ -1671,11 +1724,65 @@ def upload_command(
                             identity_writer.checkpoint()
                             identity_cache_pending = 0
                         update_counts()
-                # Every new hash reaches server identity verification. A DOI match
-                # alone cannot establish a new file alias.
+                # For a unique Document Info DOI or explicit user-confirmed DOI,
+                # checking the indexed server DOI is enough to *skip* upload.
+                # This deliberately does not register an alias, overwrite the
+                # canonical PDF, or trust a DOI guessed from page references.
+                # Preserve CSV-trusted uploads and --write-doi's explicit flow.
                 ready_paths = upload_candidates
-
                 preparation_seconds += monotonic() - prepare_started
+                if skip_existing_doi and not (force or write_doi or csv_file is not None):
+                    eligible_sources = {"pdf-metadata", "pdf-content", "explicit", "user"}
+                    eligible_paths = [
+                        path for path in ready_paths
+                        if dois_by_path.get(path)
+                        and doi_sources_by_path.get(path) in eligible_sources
+                    ]
+                    if eligible_paths:
+                        precheck_started = monotonic()
+                        by_doi = get_existing_pdfs_by_doi(
+                            dois_by_path[path] for path in eligible_paths
+                        )
+                        retained_paths = []
+                        for pdf_path in ready_paths:
+                            pdf = (
+                                by_doi.get(dois_by_path[pdf_path])
+                                if pdf_path in eligible_paths else None
+                            )
+                            if pdf is not None:
+                                embedded = embedded_by_path.get(pdf_path)
+                                source = doi_sources_by_path.get(pdf_path)
+                                trusted = source in {"explicit", "user"} or (
+                                    source == "pdf-metadata" and embedded is not None
+                                    and embedded.status == "ok"
+                                    and embedded.doi == dois_by_path[pdf_path]
+                                )
+                                if not trusted and not verified_first_page_doi_and_title(
+                                    pdf_path, dois_by_path[pdf_path], pdf.get("title")
+                                ):
+                                    # An annotation or first-page reference is
+                                    # not authoritative. Let the server verify
+                                    # the candidate DOI and entire PDF.
+                                    pdf = None
+                            if pdf is None:
+                                retained_paths.append(pdf_path)
+                                continue
+                            skipped += 1
+                            skipped_by_doi += 1
+                            latest_pdf = pdf
+                            upload_report.record(
+                                pdf_path, "existing", sha256=hashes_by_path[pdf_path], pdf=pdf
+                            )
+                            for sibling in state_paths(pdf_path, hashes_by_path[pdf_path]):
+                                upload_state.record(
+                                    sibling, hashes_by_path[pdf_path], upload_server,
+                                    "existing", context=upload_contexts.get(pdf_path), pdf=pdf
+                                )
+                            progress.advance(task, 1)
+                            update_counts()
+                        ready_paths = retained_paths
+                        doi_precheck_seconds += monotonic() - precheck_started
+
                 record_outcomes(pipeline.collect())
                 for pdf_path in ready_paths:
                     record_outcomes(pipeline.submit(
@@ -1710,7 +1817,9 @@ def upload_command(
     parts.append(f"report: {upload_report.path}")
     if verbose:
         parts.extend([f"found paths: {len(pdfs)}", f"unique PDFs: {len(unique_pdf_paths)}",
-                      f"DOI preparation: {preparation_seconds:.1f}s"])
+                      f"DOI preparation: {preparation_seconds:.1f}s",
+                      f"DOI precheck: {doi_precheck_seconds:.1f}s; "
+                      f"trusted DOI skips: {skipped_by_doi}"])
     if verbose and stats.started is not None:
         parts.append(stats.display())
     if verbose and stats.measured:

@@ -19,13 +19,16 @@ DOI = "10.5555/metadata.article"
 OTHER = "10.5555/other.article"
 
 
-def make_pdf(path, *, doi=None, subject_doi=None, title="A sample article", pages=2, xmp_doi=None):
+def make_pdf(path, *, doi=None, subject_doi=None, title="A sample article", pages=2, xmp_doi=None,
+             lowercase_doi=None):
     writer = PdfWriter()
     for _ in range(pages):
         writer.add_blank_page(width=200, height=200)
     details = {"/Title": title}
     if doi:
         details["/DOI"] = doi
+    if lowercase_doi:
+        details["/doi"] = lowercase_doi
     if subject_doi:
         details["/Subject"] = f"DOI: {subject_doi}"
     writer.add_metadata(details)
@@ -87,6 +90,38 @@ def test_pdf_meta_write_cli_uses_incremental_update_and_is_idempotent(tmp_path):
     assert second.exit_code == 0, second.output
     assert "Already current" in second.output
     assert pdf.read_bytes() == updated
+
+
+@pytest.mark.parametrize("with_canonical", [False, True])
+def test_pdf_meta_write_removes_repeated_case_variant_doi(tmp_path, with_canonical):
+    pdf = make_pdf(tmp_path / "paper.pdf", doi=DOI if with_canonical else None,
+                   lowercase_doi=DOI)
+    original = pdf.read_bytes()
+    result = CliRunner().invoke(app, ["pdf-meta", "write", str(pdf), "--doi", DOI])
+    assert result.exit_code == 0, result.output
+    assert pdf.read_bytes().startswith(original)
+    metadata = PdfReader(pdf).metadata
+    assert metadata["/DOI"] == DOI
+    assert "/doi" not in metadata
+    assert metadata["/Title"] == "A sample article"
+    details = json.loads(CliRunner().invoke(
+        app, ["pdf-meta", "read", str(pdf), "--json"]
+    ).stdout)
+    assert details["doi_sources"] == [{"doi": DOI, "location": "document-info:/DOI"}]
+    updated = pdf.read_bytes()
+    again = CliRunner().invoke(app, ["pdf-meta", "write", str(pdf), "--doi", DOI])
+    assert again.exit_code == 0, again.output
+    assert "Already current" in again.output
+    assert pdf.read_bytes() == updated
+
+
+def test_pdf_meta_write_rejects_conflicting_case_variant_doi(tmp_path):
+    pdf = make_pdf(tmp_path / "paper.pdf", doi=DOI, lowercase_doi=OTHER)
+    original = pdf.read_bytes()
+    refused = CliRunner().invoke(app, ["pdf-meta", "write", str(pdf), "--doi", DOI])
+    assert refused.exit_code != 0
+    assert pdf.read_bytes() == original
+    assert PdfReader(pdf).metadata["/doi"] == OTHER
 
 
 def test_pdf_meta_write_output_preserves_original_and_refuses_overwrite(tmp_path):

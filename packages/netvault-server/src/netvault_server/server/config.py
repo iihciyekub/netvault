@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     max_pdf_bytes: int = Field(default=95 * 1024 * 1024, validation_alias="NETVAULT_MAX_PDF_BYTES")
     max_upload_files: int = Field(default=25, validation_alias="NETVAULT_MAX_UPLOAD_FILES")
     max_batch_bytes: int = Field(default=95 * 1024 * 1024, validation_alias="NETVAULT_MAX_BATCH_BYTES")
-    max_zip_files: int = Field(default=100, validation_alias="NETVAULT_MAX_ZIP_FILES")
+    # One Batch DOI request supports 500 entries; the ZIP size cap still applies.
+    max_zip_files: int = Field(default=500, validation_alias="NETVAULT_MAX_ZIP_FILES")
     max_zip_bytes: int = Field(default=1024 * 1024 * 1024, validation_alias="NETVAULT_MAX_ZIP_BYTES")
     secure_cookies: bool = Field(default=False, validation_alias="NETVAULT_SECURE_COOKIES")
     base_path: str = Field(default="", validation_alias="NETVAULT_BASE_PATH")

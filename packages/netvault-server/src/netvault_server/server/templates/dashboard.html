@@ -156,11 +156,21 @@
     </div>
     <script type="application/json" data-journal-heatmap-data>{{ heatmap_rows|tojson }}</script>
     <div class="heatmap-scroll">
-      <div class="heatmap-years-viewport" data-heatmap-years-viewport tabindex="0" role="region" aria-label="Year grid, horizontally and vertically scrollable">
-        <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
-          {% for year in journal_year.years|reverse %}
-            <div class="heat-year"><span>{{ year }}</span></div>
-          {% endfor %}
+      <div class="heatmap-years-shell">
+        <div class="heatmap-years-viewport" data-heatmap-years-viewport tabindex="0" role="region" aria-label="Year grid, horizontally and vertically scrollable">
+          <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
+            {% for year in journal_year.years|reverse %}
+              <div class="heat-year"><span>{{ year }}</span></div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="heatmap-scrollbar-x" data-heatmap-scrollbar-x aria-hidden="true">
+          <div class="heatmap-scrollbar-x-spacer" data-heatmap-scrollbar-x-spacer></div>
+        </div>
+      </div>
+      <div class="heatmap-scrollbar-y-shell" aria-hidden="true">
+        <div class="heatmap-scrollbar-y" data-heatmap-scrollbar-y>
+          <div class="heatmap-scrollbar-y-spacer" data-heatmap-scrollbar-y-spacer></div>
         </div>
       </div>
       <div class="heatmap-fixed-viewport" data-heatmap-fixed-viewport>
@@ -233,16 +243,30 @@
       <output data-doi-batch-count aria-live="polite">0 DOIs</output>
     </div>
     <p class="doi-batch-status" id="doi-batch-status" data-doi-batch-status role="status" aria-live="polite"></p>
+    <div class="doi-batch-availability" data-doi-batch-availability role="status" aria-live="polite" hidden>
+      <div><strong data-doi-batch-available>0</strong> of <span data-doi-batch-requested>0</span> DOIs available on the server</div>
+      <p data-doi-batch-detail></p>
+    </div>
     <footer>
       <button type="button" class="ghost" data-doi-batch-format title="Normalize and remove duplicate DOIs">
         <i class="fa-solid fa-align-left" aria-hidden="true"></i><span>Format</span>
       </button>
-      <button type="button" class="primary" data-doi-batch-search>
+      <button type="button" class="ghost" data-doi-batch-search>
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Search PDFs</span>
+      </button>
+      <button type="button" class="primary" data-doi-batch-check>
+        <i class="fa-solid fa-list-check" aria-hidden="true"></i><span>Check availability</span>
+      </button>
+      <button type="submit" class="primary" form="doi-batch-zip-form" data-doi-batch-download disabled hidden>
+        <i class="fa-solid fa-file-zipper" aria-hidden="true"></i><span>Download ZIP</span>
       </button>
     </footer>
   </form>
 </dialog>
+<form id="doi-batch-zip-form" method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div data-doi-batch-download-ids></div>
+</form>
 
 <div class="journal-context-menu" data-journal-context-menu data-rank-url="{{ path_for('/web/journal-rank') }}" role="menu" aria-label="Journal actions" hidden>
   <button type="button" role="menuitem" data-journal-copy><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy journal name</span></button>

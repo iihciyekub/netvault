@@ -635,7 +635,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "fa-chart-column" in dashboard.text
     assert "fa-magnifying-glass" in dashboard.text
     assert "fa-cloud-arrow-up" not in dashboard.text
-    assert "fa-cloud-arrow-down" in dashboard.text
+    assert "fa-cloud-arrow-down" not in dashboard.text
     assert "fa-quote-left" in dashboard.text
     assert "fa-box-archive" not in dashboard.text
     assert "app-sidebar" in dashboard.text
@@ -655,12 +655,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "data-upload-form" in upload_page.text
     assert "data-precheck-url=\"/web/pdfs/exists\"" in upload_page.text
     assert "upload-progress" in upload_page.text
-    download_page = client.get("/web/download")
-    assert download_page.status_code == 200
-    assert '<h1 class="sr-only">Download PDFs</h1>' in download_page.text
-    assert "nv download --file ./dois.txt --to ./downloads" not in download_page.text
-    assert "app.js" in download_page.text
-    assert "clipboard.js" not in download_page.text
+    assert client.get("/web/download").status_code == 404
     cli_page = client.get("/web/cli")
     assert cli_page.status_code == 200
     assert '<h1 class="sr-only">NetVault command-line interface</h1>' in cli_page.text
@@ -817,9 +812,18 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "primary pdf-action" in pdfs_with_query.text
     assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
     assert "data-no-pjax" in pdfs_with_query.text
-    assert "Correct DOI" in pdfs_with_query.text
-    assert "data-doi-correct" in pdfs_with_query.text
-    assert "data-doi-dialog" in pdfs_with_query.text
+    assert "Correct DOI" not in pdfs_with_query.text
+    assert "data-doi-correct" not in pdfs_with_query.text
+    assert "data-doi-dialog" not in pdfs_with_query.text
+    assert 'data-pdf-select-checkbox' in pdfs_with_query.text
+    assert 'name="pdf_ids"' in pdfs_with_query.text
+    assert 'data-pdf-select-toggle' in pdfs_with_query.text
+    assert 'aria-pressed="false"' in pdfs_with_query.text
+    assert "0 selected" in pdfs_with_query.text
+    assert 'data-pdf-selected-zip disabled' in pdfs_with_query.text
+    assert 'form="selected-pdf-zip-form"' in pdfs_with_query.text
+    assert 'action="/web/pdfs/download-all"' in pdfs_with_query.text
+    assert 'data-native-submit' in pdfs_with_query.text
     assert "doi-copy-button" in pdfs_with_query.text
     assert 'class="paper-id"' in pdfs_with_query.text
     assert "PDF ID " in pdfs_with_query.text
@@ -838,24 +842,22 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert font.status_code == 200
     assert font.headers["cache-control"] == "public, max-age=31536000, immutable"
 
-    lookup = client.post(
-        "/web/download",
-        data={"csrf_token": client.cookies["netvault_csrf"], "doi_text": "https://doi.org/10.1234/web.test"},
+    dashboard = client.get("/web")
+    assert "data-doi-batch-check" in dashboard.text
+    assert "data-doi-batch-download" in dashboard.text
+    assert "data-doi-batch-search" in dashboard.text
+    batch = client.post(
+        "/web/pdfs/batch",
+        json={"dois": ["10.1234/web.test", "10.1234/not-in-vault"]},
+        headers={"x-csrf-token": client.cookies["netvault_csrf"]},
     )
-    assert lookup.status_code == 200
-    assert "Download" in lookup.text
-    assert "Download All ZIP" in lookup.text
-    assert "results-header" in lookup.text
-    assert "data-native-submit" in lookup.text
-    assert "/web/pdfs/preview?pdf_id=" in lookup.text
-    assert "table-scroll download-results-scroll" in lookup.text
-    assert "results download-results" in lookup.text
-    assert "pdf-actions row-actions" in lookup.text
-    assert "primary pdf-action" in lookup.text
-    assert "/web/pdfs/download?pdf_id=" in lookup.text
-    assert "data-no-pjax" in lookup.text
-
-    pdf_id = int(lookup.text.split("/web/pdfs/download?pdf_id=", 1)[1].split('"', 1)[0])
+    assert batch.status_code == 200
+    assert batch.json()["count"] == 2
+    assert batch.json()["available_count"] == 1
+    assert batch.json()["storage_missing_count"] == 0
+    assert batch.json()["zip_ready"] is True
+    assert batch.json()["url"].startswith("/web/pdfs?batch=")
+    pdf_id = batch.json()["pdf_ids"][0]
     previewed = client.get(
         "/web/pdfs/preview",
         params={"pdf_id": pdf_id},
@@ -895,6 +897,62 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
         assert names == ["10.1234_web.test.pdf", "netvault-manifest.tsv"]
         assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
         assert b"10.1234/web.test" in archive.read("netvault-manifest.tsv")
+
+
+def test_search_selects_individual_pdf_ids_for_an_existing_zip_endpoint(client: TestClient) -> None:
+    headers = login_headers(client)
+    first = client.post(
+        "/pdfs/upload", headers=headers,
+        files={"file": ("first.pdf", PDF_BYTES, "application/pdf")},
+    )
+    second_bytes = PDF_BYTES.replace(b"web.test", b"web.second")
+    second = client.post(
+        "/pdfs/upload", headers=headers,
+        files={"file": ("second.pdf", second_bytes, "application/pdf")},
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    first_id = first.json()["pdf"]["id"]
+    second_id = second.json()["pdf"]["id"]
+
+    web_login(client)
+    page = client.get("/web/pdfs", params={"q": "Grace Hopper"})
+    assert page.status_code == 200
+    assert page.text.count("data-pdf-select-checkbox") == 2
+    for pdf_id in (first_id, second_id):
+        assert f'name="pdf_ids" value="{pdf_id}" form="selected-pdf-zip-form"' in page.text
+    assert 'data-pdf-selected-zip disabled' in page.text
+    assert 'data-pdf-select-toggle aria-pressed="false"' in page.text
+    assert 'name="csrf_token" value="' in page.text
+
+    # The browser submits just the checked, form-associated inputs. The server
+    # must use those IDs rather than zipping the entire search result.
+    csrf = client.cookies["netvault_csrf"]
+    only_second = client.post(
+        "/web/pdfs/download-all",
+        data={"csrf_token": csrf, "pdf_ids": [str(second_id)]},
+    )
+    assert only_second.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(only_second.content)) as archive:
+        assert archive.namelist() == ["10.1234_web.second.pdf", "netvault-manifest.tsv"]
+        assert archive.read("10.1234_web.second.pdf") == second_bytes
+        assert b"10.1234/web.test" not in archive.read("netvault-manifest.tsv")
+
+    both = client.post(
+        "/web/pdfs/download-all",
+        data={"csrf_token": csrf, "pdf_ids": [str(first_id), str(second_id)]},
+    )
+    assert both.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(both.content)) as archive:
+        assert set(archive.namelist()) == {
+            "10.1234_web.test.pdf", "10.1234_web.second.pdf", "netvault-manifest.tsv",
+        }
+    none = client.post("/web/pdfs/download-all", data={"csrf_token": csrf})
+    assert none.status_code == 400
+    bad_csrf = client.post(
+        "/web/pdfs/download-all", data={"csrf_token": "wrong", "pdf_ids": str(first_id)},
+    )
+    assert bad_csrf.status_code == 403
 
 
 def test_web_admin_can_preview_and_apply_doi_correction(client: TestClient) -> None:
@@ -1316,10 +1374,12 @@ def test_web_exact_doi_search_falls_back_to_related_identifier(client: TestClien
     assert 'class="paper-result"' in result.text
 
 
-def test_static_assets_are_long_cached(client: TestClient) -> None:
+def test_static_assets_revalidate_first_party_ui_and_long_cache_vendor(client: TestClient) -> None:
+    for path in ("/static/styles.css", "/static/app.js", "/static/theme.js"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "public, no-cache, must-revalidate"
     for path in (
-        "/static/styles.css",
-        "/static/app.js",
         "/static/vendor/fontawesome/css/fontawesome.min.css",
         "/static/vendor/fontawesome/css/solid.min.css",
         "/static/vendor/fontawesome/webfonts/fa-solid-900.woff2",
@@ -1327,6 +1387,16 @@ def test_static_assets_are_long_cached(client: TestClient) -> None:
         response = client.get(path)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_current_release_version_is_used_for_browser_asset_urls(client: TestClient) -> None:
+    from netvault_server import __version__
+
+    page = client.get("/web/login")
+    assert page.status_code == 200
+    assert f'/static/theme.js?v={__version__}"' in page.text
+    assert f'/static/styles.css?v={__version__}"' in page.text
+    assert f'/static/app.js?v={__version__}"' in page.text
 
 
 def test_root_package_is_cli_only() -> None:
