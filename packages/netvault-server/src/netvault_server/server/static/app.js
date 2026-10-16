@@ -853,7 +853,11 @@
     const feedback = qs("[data-journal-list-feedback]", form);
     const csrfToken = qs("input[name='csrf_token']", form)?.value || "";
     const nameInput = qs("[data-custom-list-name]", form);
-    if (!dialog || !endpoint || !textarea) return;
+    if (!dialog || !textarea) return;
+    if (!endpoint) {
+      if (feedback) feedback.textContent = "Unable to save: the journal list was not loaded.";
+      return;
+    }
     normalizeJournalListTextarea(textarea);
     const requestedNames = journalListNames(textarea);
     setFormBusy(form, true, "Saving...");
@@ -888,14 +892,30 @@
       pageCache.clear();
       closeJournalListEditor(dialog);
       const current = sameOriginUrl(window.location.href);
-      if (payload.deleted && current) current.searchParams.set("filter", "custom");
-      fetchPage(current ? current.href : window.location.href, {}, false);
+      await fetchPage(current ? current.href : window.location.href, {}, false);
+      const status = qs("[data-dashboard-preference-status]");
+      if (status) {
+        status.textContent = "Saved " + savedNames.length
+          + " journal" + (savedNames.length === 1 ? "" : "s") + " to "
+          + (payload.label || "the journal list") + ".";
+      }
     } catch (error) {
       if (feedback) feedback.textContent = error.message || "Could not save the journal list.";
     } finally {
       if (form.isConnected) setFormBusy(form, false, "Save list");
     }
   };
+
+  // The editor is replaced on PJAX navigation. Delegating form submission
+  // guarantees that Save list (and Enter from a field) performs the JSON POST,
+  // not the browser's default GET of the dashboard.
+  document.addEventListener("submit", (event) => {
+    const form = event.target.closest?.("[data-journal-list-form]");
+    if (!form) return;
+    event.preventDefault();
+    if (form.hasAttribute("aria-busy")) return;
+    void saveJournalListEditor(form);
+  });
 
   const exportJournalList = (button) => {
     const dialog = button.closest("[data-journal-list-dialog]");

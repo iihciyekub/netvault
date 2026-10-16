@@ -1259,6 +1259,71 @@ def test_journal_list_save_requires_current_revision_to_prevent_lost_edits(clien
         "SYSTEM", "COMPUTER ASSISTED LANGUAGE LEARNING",
     }
 
+
+def test_journal_list_add_and_remove_are_persisted_and_dashboard_refreshes(client: TestClient) -> None:
+    web_login(client)
+    headers = {"x-csrf-token": client.cookies["netvault_csrf"]}
+    created = client.post("/web/journal-filters", headers=headers, json={"name": "Intercultural"})
+    assert created.status_code == 200
+    key = created.json()["key"]
+
+    initial = ["SYSTEM", "CULTURAL STUDIES", "JOURNAL OF SOCIOLINGUISTICS"]
+    added = client.post(
+        f"/web/journal-filters/{key}",
+        headers=headers,
+        json={
+            "name": "Intercultural",
+            "journals": [*initial, "NEW JOURNAL WITH NO PDF"],
+            "expected_updated_at": created.json()["updated_at"],
+        },
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["count"] == 4
+    first_revision = added.json()["updated_at"]
+
+    # Reopening the editor must read the freshly committed list, not the
+    # previous cached 3-journal response.
+    reopened = client.get(f"/web/journal-filters/{key}", headers={"cache-control": "no-store"})
+    assert reopened.status_code == 200
+    assert reopened.json()["count"] == 4
+    assert first_revision == reopened.json()["updated_at"]
+    assert set(reopened.json()["journals"]) == {*initial, "NEW JOURNAL WITH NO PDF"}
+    assert "NEW JOURNAL WITH NO PDF" in dashboard_journal_names(
+        client.get("/web", params={"filter": key})
+    )
+
+    # Edit the textarea again, removing a saved row. Saving its new complete
+    # contents replaces the prior list instead of appending or ignoring edits.
+    remaining = ["CULTURAL STUDIES", "JOURNAL OF SOCIOLINGUISTICS", "NEW JOURNAL WITH NO PDF"]
+    removed = client.post(
+        f"/web/journal-filters/{key}",
+        headers=headers,
+        json={
+            "name": "Intercultural",
+            "journals": remaining,
+            "expected_updated_at": first_revision,
+        },
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["count"] == 3
+    assert set(removed.json()["journals"]) == set(remaining)
+    assert removed.json()["updated_at"] != first_revision
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        override = db.query(models.UserJournalFilter).filter_by(filter_key=key).one()
+        assert set(json.loads(override.journals_json)["journals"]) == set(remaining)
+    reopened = client.get(f"/web/journal-filters/{key}")
+    assert reopened.json()["count"] == 3
+    assert set(reopened.json()["journals"]) == set(remaining)
+    assert "SYSTEM" not in dashboard_journal_names(
+        client.get("/web", params={"filter": key})
+    )
+    assert "NEW JOURNAL WITH NO PDF" in dashboard_journal_names(
+        client.get("/web", params={"filter": key})
+    )
+
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:
     web_login(client)
     admin_page = client.get("/web/admin")

@@ -44,6 +44,9 @@ Only when Document Info has no DOI, a sibling EBSCO `cli-downloads.csv` supplies
   sessions and devices; search, journal page, sort and year scroll are remembered
   per browser and list. Saved lists always show all configured journals, with 0
   for journals without year-tagged PDFs. Export a list as text before major edits.
+  Edit journal names directly in the list editor (one per line) and choose
+  **Save list** to persist additions and removals; the dashboard refreshes
+  and confirms the saved count.
   Simultaneous edits in another tab/device are rejected until the current list
   is reopened, preventing accidental overwrites.
 - Click a populated heatmap cell to search its exact journal and year; keep those filters across pages and further keyword searches.

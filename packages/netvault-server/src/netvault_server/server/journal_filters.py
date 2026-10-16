@@ -1,6 +1,7 @@
 import json
 import re
 import secrets
+from datetime import timezone
 from functools import lru_cache
 from html import unescape
 from pathlib import Path
@@ -145,6 +146,18 @@ def _override_payload(override: Any) -> tuple[list[str], str | None]:
     return [], None
 
 
+def _override_revision(override: Any | None) -> str | None:
+    if override is None:
+        return None
+    # PostgreSQL returns an aware timestamptz; SQLite may return a naive
+    # datetime even for a UTC value. Keep the client revision stable across
+    # the initial POST response and subsequent GETs in either database.
+    stamp = override.updated_at
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc).isoformat()
+
+
 def effective_journal_names(
     filter_key: str,
     db: Session | None = None,
@@ -198,7 +211,7 @@ def journal_filter_state(db: Session, user_id: int, filter_key: str) -> dict[str
         "can_reset": override is not None and not definition.get("custom"),
         "custom": bool(definition.get("custom")),
         "can_delete": bool(definition.get("custom") and key != "custom"),
-        "updated_at": override.updated_at.isoformat() if override is not None else None,
+        "updated_at": _override_revision(override),
         **journal_filter_source(key),
     }
 
@@ -221,7 +234,7 @@ def save_user_journal_filter(
     journals = deduplicate_journal_names(names)
     override = get_user_filter_override(db, user_id, key)
     if check_revision:
-        current_revision = override.updated_at.isoformat() if override is not None else None
+        current_revision = _override_revision(override)
         if expected_updated_at != current_revision:
             raise ValueError("This journal list changed in another session. Reopen it before saving.")
     if override is None:

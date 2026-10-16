@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.74 — 2026-10-16
+
+- Fix the journal-list editor's Save list button: wire the delegated form submit event to the authenticated JSON POST, preventing the browser's default GET and ensuring additions/removals reach the database.
+- Show a confirmation with the saved journal count after the dashboard refresh; keep the editor open and report errors or optimistic-concurrency conflicts without discarding edits.
+- Normalize saved-list revision timestamps to UTC across PostgreSQL and SQLite, so consecutive saves and reopening the editor do not generate false conflicts.
+- Add client-side submit-event regressions for adding/removing journals, double-click protection, refresh and error feedback, plus a database-backed save/reopen/delete round-trip test.
+
 ## 0.7.73 — 2026-10-16
 
 - Harden dashboard preference migration for long-lived NetVault installations whose schema-version marker is ahead of the actual user columns. Idempotently reconcile the new preference field before loading account records, even if the migration version already matches.
