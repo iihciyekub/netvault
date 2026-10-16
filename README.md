@@ -278,11 +278,13 @@ transferring the PDF and **does not** register a file alias or replace the store
 document. With `--no-skip-existing-doi`, the server instead verifies the uploaded
 file before recording any new hash alias, as before. A manual DOI or local
 confirmation is not permission to register a new hash without server verification.
-Content-derived DOI hints only skip when the **single DOI printed on the first
-page** and the stored article's **complete heading title** corroborate each
-other. Ambiguous content and filename-guessed DOI hints still require server
-verification. Explicit `--csv` pairs preserve their existing user-trusted
-upload behavior.
+Ordinary uploads prepare and check up to **500 DOI hints per batch** rather
+than contacting the server for every 12 files. A SHA-256-bound download-index
+DOI or a content-derived DOI can skip only when the **single DOI printed on
+the first page** and the stored article's **complete heading title** corroborate
+each other. Ambiguous content, legacy automatically discovered CSV records
+and filename-guessed DOI hints still require server verification. Explicit
+`--csv` pairs preserve their existing user-trusted upload behavior.
 Later uploads from either CLI or web can skip accepted aliases during the
 initial hash check.
 
@@ -294,8 +296,10 @@ stale hashes fail.
 
 After finding no Document Info DOI, `nv upload` can use a sibling
 `pdf-download-index.json` version 1 record whose `sha256` matches the locally
-computed PDF digest. A valid record supplies a DOI hint; the server still verifies
-that hint against the PDF. A PDF with no usable record uses the normal cached or
+computed PDF digest. A valid record supplies a DOI hint; if that DOI is
+already stored, the CLI skips the upload **only when the first-page DOI and
+article title also agree**. Otherwise, the server still verifies the hint
+against the PDF. A PDF with no usable record uses the normal cached or
 PDF-derived DOI resolver. Automatic stale entries are skipped with a warning;
 an explicit `--index-file` rejects them. Neither indexes nor caches take priority
 over Document Info.
@@ -346,10 +350,15 @@ unless `--force` is passed.
 
 For faster duplicate-only runs, ordinary upload now skips PDF Document Info
 parsing when the server already has those exact SHA-256 bytes. Different bytes
-with a trusted embedded or user-confirmed DOI can be skipped using the batched
-DOI lookup, without sending another PDF. `--force` and `--write-doi` retain their
+with a trusted embedded/user-confirmed DOI or a locally corroborated
+download-index/content DOI can be skipped using the batched DOI lookup,
+without sending another PDF. `--force` and `--write-doi` retain their
 explicitly requested processing behavior. Use `--verbose` to distinguish DOI
-preparation, batch DOI prechecks, transfer time and server response latency.
+preparation, batch DOI prechecks, SHA lookup, transfer time and server response
+latency. Temporary 429/502/503/504 errors in the read-only lookup are retried
+a bounded number of times; persistent failures are reported, not treated as
+proof that a DOI is absent. If `nv upload` is interrupted, use
+`nv upload . --retry-failed --verbose` to reprocess failed/pending records.
 
 Ordinary upload resolution first accepts a unique Document Info DOI or stops on
 conflicting Document Info DOIs. Only when Document Info has no DOI do explicit

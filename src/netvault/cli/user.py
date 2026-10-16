@@ -80,7 +80,11 @@ IDENTITY_CACHE_VERSION = 1
 PDF_MAGIC = b"%PDF-"
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 DOWNLOAD_LOOKUP_BATCH_SIZE = 200
-UPLOAD_PREPARE_BATCH_SIZE = 12
+# The server /pdfs/exists endpoint accepts up to 500 DOI values per request.
+# Use large DOI preflight batches for ordinary uploads, but retain small
+# streaming batches for force/writeback workflows that must transfer files.
+UPLOAD_PREPARE_BATCH_SIZE = 500
+UPLOAD_STREAM_BATCH_SIZE = 12
 DEFAULT_UPLOAD_EXCLUDED_DIRS = {
     ".cache",
     ".git",
@@ -480,7 +484,9 @@ def get_existing_pdfs_by_sha256(
     chunk_size = 500
     try:
         for index in range(0, len(unique_hashes), chunk_size):
-            response = api_post("/pdfs/exists", json={"sha256": unique_hashes[index : index + chunk_size]})
+            response = query_existing_pdfs_batch(
+                sha256=unique_hashes[index : index + chunk_size]
+            )
             if server_version_callback and isinstance(response.get("server_version"), str):
                 server_version_callback(response["server_version"])
             existing_payload = response.get("existing", {})
@@ -510,10 +516,7 @@ def get_existing_pdfs_by_doi(dois: Iterable[str], progress_callback=None) -> dic
     chunk_size = 500
     try:
         for index in range(0, len(unique_dois), chunk_size):
-            response = api_post(
-                "/pdfs/exists",
-                json={"doi": unique_dois[index : index + chunk_size]},
-            )
+            response = query_existing_pdfs_batch(doi=unique_dois[index : index + chunk_size])
             payload = response.get("existing_doi", {})
             if isinstance(payload, dict):
                 existing.update(payload)
@@ -531,6 +534,25 @@ def get_existing_pdfs_by_doi(dois: Iterable[str], progress_callback=None) -> dic
             if progress_callback:
                 progress_callback(index)
         return existing
+
+
+def query_existing_pdfs_batch(**payload) -> dict:
+    """Retry only the read-only duplicate-lookup endpoint on transient failures.
+
+    All other API POST methods retain their own stricter retry policy. A
+    failed preflight must not be mistaken for an empty database result.
+    """
+    for attempt in range(3):
+        try:
+            return api_post("/pdfs/exists", json=payload)
+        except ApiError as exc:
+            if exc.status_code not in {429, 502, 503, 504} or attempt == 2:
+                raise
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == 2:
+                raise
+        sleep(0.5 * (2 ** attempt))
+    raise RuntimeError("Duplicate lookup failed after retries")
 
 
 def register_pdf_aliases(aliases: Iterable[tuple[str, str]]) -> dict[str, dict]:
@@ -1298,7 +1320,9 @@ def upload_command(
     uploaded = 0
     replaced = 0
     skipped = 0
+    skipped_by_sha = 0
     skipped_by_doi = 0
+    skipped_by_server = 0
     needs_review = 0
     review_skipped = 0
     failed: list[tuple[Path, str]] = []
@@ -1322,6 +1346,10 @@ def upload_command(
     stats = UploadStats()
     preparation_seconds = 0.0
     doi_precheck_seconds = 0.0
+    doi_precheck_batches = 0
+    doi_precheck_candidates = 0
+    hash_seconds = 0.0
+    sha_lookup_seconds = 0.0
     pdf_paths_by_sha: dict[str, list[Path]] = {}
     started = monotonic()
 
@@ -1375,6 +1403,8 @@ def upload_command(
 
         def update_counts():
             counts = [f"new {uploaded}"]
+            if skipped:
+                counts.append(f"already stored {skipped}")
             if needs_review or review_skipped:
                 counts.append(f"review {needs_review + review_skipped}")
             if len(failed) > needs_review:
@@ -1387,6 +1417,7 @@ def upload_command(
             nonlocal upload_server_version
             upload_server_version = version
 
+        hash_started = monotonic()
         for pdf_path in pdfs:
             writeback = None
             if write_doi:
@@ -1469,6 +1500,7 @@ def upload_command(
             finally:
                 progress.advance(task, 1)
 
+        hash_seconds = monotonic() - hash_started
         if cache_changed:
             save_hash_cache(hash_cache)
 
@@ -1493,11 +1525,13 @@ def upload_command(
             completed=0,
             description="Checking unique PDFs on server",
         )
+        sha_lookup_started = monotonic()
         existing_by_sha = get_existing_pdfs_by_sha256(
             pdf_paths_by_sha,
             progress_callback=lambda completed: progress.update(task, completed=completed),
             server_version_callback=remember_server_version,
         )
+        sha_lookup_seconds = monotonic() - sha_lookup_started
 
         new_pdfs: list[Path] = []
         embedded_by_path: dict[Path, DoiEvidence | None] = {}
@@ -1527,6 +1561,7 @@ def upload_command(
                     continue
                 latest_pdf = existing_pdf
                 skipped += 1
+                skipped_by_sha += 1
                 upload_report.record(pdf_path, "existing", sha256=sha256, pdf=existing_pdf)
                 for sibling in state_paths(pdf_path, sha256):
                     upload_state.record(sibling, sha256, upload_server, "existing", pdf=existing_pdf)
@@ -1548,10 +1583,10 @@ def upload_command(
         if initial_skips:
             console.print("Skipped: " + ", ".join(initial_skips))
         update_counts()
-        progress.reset(task, total=len(new_pdfs), completed=0, description="Processing uploads")
+        progress.reset(task, total=len(new_pdfs), completed=0, description="Checking / uploading PDFs")
 
         def record_outcomes(outcomes) -> None:
-            nonlocal latest_pdf, replaced, skipped, uploaded
+            nonlocal latest_pdf, replaced, skipped, uploaded, skipped_by_server
             for outcome in outcomes:
                 if outcome.error is not None:
                     if is_identity_rejection(outcome.error):
@@ -1573,6 +1608,7 @@ def upload_command(
                         replaced += 1
                     elif result["deduplicated"]:
                         skipped += 1
+                        skipped_by_server += 1
                     else:
                         uploaded += 1
                     status = "replaced" if result.get("replaced") else "existing" if result["deduplicated"] else "uploaded"
@@ -1590,11 +1626,17 @@ def upload_command(
                 update_counts()
 
         # Preserve input order for force replacements. Only the coordinator
-        # touches caches; a small preparation batch overlaps bounded uploads.
+        # touches caches. DOI prechecks operate in server-sized batches instead
+        # of a request per 12 PDFs; force/writeback preserves streaming overlap.
         pending_paths = new_pdfs
+        prepare_batch_size = (
+            UPLOAD_PREPARE_BATCH_SIZE
+            if skip_existing_doi and not (force or write_doi or csv_file is not None)
+            else min(UPLOAD_PREPARE_BATCH_SIZE, UPLOAD_STREAM_BATCH_SIZE)
+        )
         with UploadPipeline(upload_pdf, 1 if force else jobs, stats) as pipeline:
-            for offset in range(0, len(pending_paths), UPLOAD_PREPARE_BATCH_SIZE):
-                preparation_batch = pending_paths[offset : offset + UPLOAD_PREPARE_BATCH_SIZE]
+            for offset in range(0, len(pending_paths), prepare_batch_size):
+                preparation_batch = pending_paths[offset : offset + prepare_batch_size]
                 prepare_started = monotonic()
                 dois_by_path: dict[Path, str | None] = {}
                 doi_sources_by_path: dict[Path, str] = {}
@@ -1724,15 +1766,19 @@ def upload_command(
                             identity_writer.checkpoint()
                             identity_cache_pending = 0
                         update_counts()
-                # For a unique Document Info DOI or explicit user-confirmed DOI,
-                # checking the indexed server DOI is enough to *skip* upload.
-                # This deliberately does not register an alias, overwrite the
-                # canonical PDF, or trust a DOI guessed from page references.
+                # Do not send full PDF bytes for an existing DOI when evidence
+                # is authoritative, or the first-page DOI AND title independently
+                # match the stored document. Download-index/automatic CSV values
+                # are hints, not authoritative identities by themselves.
+                # This never registers an alias or replaces the canonical PDF.
                 # Preserve CSV-trusted uploads and --write-doi's explicit flow.
                 ready_paths = upload_candidates
                 preparation_seconds += monotonic() - prepare_started
                 if skip_existing_doi and not (force or write_doi or csv_file is not None):
-                    eligible_sources = {"pdf-metadata", "pdf-content", "explicit", "user"}
+                    eligible_sources = {
+                        "pdf-metadata", "pdf-content", "explicit", "user",
+                        "download-index",
+                    }
                     eligible_paths = [
                         path for path in ready_paths
                         if dois_by_path.get(path)
@@ -1740,6 +1786,8 @@ def upload_command(
                     ]
                     if eligible_paths:
                         precheck_started = monotonic()
+                        doi_precheck_batches += 1
+                        doi_precheck_candidates += len(eligible_paths)
                         by_doi = get_existing_pdfs_by_doi(
                             dois_by_path[path] for path in eligible_paths
                         )
@@ -1817,8 +1865,14 @@ def upload_command(
     parts.append(f"report: {upload_report.path}")
     if verbose:
         parts.extend([f"found paths: {len(pdfs)}", f"unique PDFs: {len(unique_pdf_paths)}",
+                      f"hashing/local checks: {hash_seconds:.1f}s; "
+                      f"SHA lookup: {sha_lookup_seconds:.1f}s",
                       f"DOI preparation: {preparation_seconds:.1f}s",
                       f"DOI precheck: {doi_precheck_seconds:.1f}s; "
+                      f"checked {doi_precheck_candidates} candidates in "
+                      f"{doi_precheck_batches} batches",
+                      f"quick skips: SHA {skipped_by_sha}, DOI {skipped_by_doi}; "
+                      f"server deduplication {skipped_by_server}",
                       f"trusted DOI skips: {skipped_by_doi}"])
     if verbose and stats.started is not None:
         parts.append(stats.display())

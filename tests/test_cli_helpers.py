@@ -2,6 +2,7 @@ from pathlib import Path
 import logging
 import hashlib
 import json
+import requests
 
 import pytest
 from pypdf import PdfWriter
@@ -954,6 +955,165 @@ def test_upload_skips_existing_embedded_doi_with_different_sha(
     assert seen_dois == [existing["doi"]]
     assert "already stored: 1 skipped" in result.output
     assert "trusted DOI skips: 1" in result.output
+
+
+def test_upload_checks_embedded_dois_in_one_server_sized_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    expected = {}
+    for index in range(25):
+        doi = f"10.1234/batch.{index}"
+        pdf = tmp_path / f"batch-{index}.pdf"
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=300)
+        writer.add_metadata({"/DOI": doi})
+        with pdf.open("wb") as handle:
+            writer.write(handle)
+        expected[doi] = {
+            "doi": doi, "sha256": "a" * 64,
+            "title": f"Verified paper {index}", "original_name": "stored.pdf",
+        }
+    prechecks = []
+
+    def check_dois(dois, **_kwargs):
+        batch = list(dois)
+        prechecks.append(batch)
+        return {doi: expected[doi] for doi in batch}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", check_dois)
+    monkeypatch.setattr(
+        user_cli, "upload_pdf",
+        lambda *a, **k: pytest.fail("a stored DOI must not transfer the PDF"),
+    )
+    result = CliRunner().invoke(
+        user_cli.app, ["upload", str(tmp_path), "--verbose", "--no-index"]
+    )
+    assert result.exit_code == 0, result.output
+    assert len(prechecks) == 1
+    assert set(prechecks[0]) == set(expected)
+    assert "uploaded: 0; already stored: 25 skipped" in result.output
+    assert "trusted DOI skips: 25" in result.output
+
+
+@pytest.mark.parametrize("failure", [
+    user_cli.ApiError(502, "temporary gateway error"),
+    user_cli.ApiError(503, "maintenance"),
+    user_cli.ApiError(429, "rate limit"),
+    requests.ConnectionError("connection reset"),
+    requests.Timeout("timeout"),
+])
+def test_duplicate_preflight_retries_transient_errors(monkeypatch, failure) -> None:
+    attempts = []
+    delays = []
+
+    def post(path, *, json):
+        attempts.append((path, json))
+        if len(attempts) < 3:
+            raise failure
+        return {"existing_doi": {"10.1234/example": {"doi": "10.1234/example"}}}
+
+    monkeypatch.setattr(user_cli, "api_post", post)
+    monkeypatch.setattr(user_cli, "sleep", delays.append)
+    result = user_cli.get_existing_pdfs_by_doi(["10.1234/example"])
+    assert result["10.1234/example"]["doi"] == "10.1234/example"
+    assert len(attempts) == 3
+    assert delays == [0.5, 1.0]
+
+
+def test_duplicate_preflight_does_not_mask_persistent_errors(monkeypatch) -> None:
+    attempts = []
+    monkeypatch.setattr(user_cli, "sleep", lambda seconds: None)
+
+    def fail(path, *, json):
+        attempts.append(json)
+        raise user_cli.ApiError(502, "gateway unavailable")
+
+    monkeypatch.setattr(user_cli, "api_post", fail)
+    with pytest.raises(user_cli.ApiError, match="gateway unavailable"):
+        user_cli.get_existing_pdfs_by_doi(["10.1234/example"])
+    assert len(attempts) == 3
+
+    attempts.clear()
+
+    def forbidden(path, *, json):
+        attempts.append(json)
+        raise user_cli.ApiError(403, "not authorized")
+
+    monkeypatch.setattr(user_cli, "api_post", forbidden)
+    with pytest.raises(user_cli.ApiError, match="not authorized"):
+        user_cli.get_existing_pdfs_by_doi(["10.1234/example"])
+    assert len(attempts) == 1
+
+
+def test_duplicate_preflight_groups_large_doi_sets_into_500(monkeypatch) -> None:
+    calls = []
+
+    def post(path, *, json):
+        assert path == "/pdfs/exists"
+        calls.append(json["doi"])
+        return {
+            "existing_doi": {
+                doi: {"doi": doi} for doi in json["doi"]
+            },
+        }
+
+    monkeypatch.setattr(user_cli, "api_post", post)
+    all_dois = [f"10.1234/group.{index}" for index in range(1101)]
+    found = user_cli.get_existing_pdfs_by_doi(all_dois + all_dois[:10])
+    assert len(found) == 1101
+    assert sorted(map(len, calls)) == [101, 500, 500]
+    assert set(doi for batch in calls for doi in batch) == set(all_dois)
+
+
+@pytest.mark.parametrize("heading_matches", [False, True])
+def test_download_index_doi_fast_skip_requires_first_page_corroboration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, heading_matches: bool
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    doi = "10.1234/from.index"
+    title = "This paper investigates effective language learning"
+    write_download_index(tmp_path / "pdf-download-index.json", pdf, doi)
+    existing = {
+        "doi": doi, "title": title, "sha256": "a" * 64,
+        "original_name": "stored.pdf",
+    }
+    prechecks, corroborations, uploads = [], [], []
+
+    def check_dois(dois, **_kwargs):
+        prechecks.append(list(dois))
+        return {doi: existing}
+
+    def check_heading(path, printed_doi, server_title):
+        corroborations.append((path, printed_doi, server_title))
+        return heading_matches
+
+    def upload_file(path, **kwargs):
+        uploads.append((path, kwargs))
+        return {"deduplicated": True, "pdf": existing}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", check_dois)
+    monkeypatch.setattr(user_cli, "verified_first_page_doi_and_title", check_heading)
+    monkeypatch.setattr(user_cli, "upload_pdf", upload_file)
+    monkeypatch.setattr(
+        user_cli, "extract_doi_evidence",
+        lambda *a, **k: pytest.fail("index DOI must not trigger a full PDF DOI scan"),
+    )
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--verbose"])
+    assert result.exit_code == 0, result.output
+    assert prechecks == [[doi]]
+    assert corroborations == [(pdf, doi, title)]
+    assert len(uploads) == (0 if heading_matches else 1)
+    assert f"trusted DOI skips: {int(heading_matches)}" in result.output
+    assert "uploaded: 0; already stored: 1 skipped" in result.output
 
 
 def test_upload_can_opt_out_of_doi_skip(

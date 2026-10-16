@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.71 — 2026-10-16
+
+- Speed up normal `nv upload` on large folders: batch up to 500 DOI candidates per indexed `/pdfs/exists` request, instead of 12 per preflight.
+- Include SHA-256-bound download-index DOI hints in batch preflight, but only skip distinct PDF bytes when their first-page DOI and complete article title corroborate the server record; keep legacy automatic CSV and ambiguous DOI hints on the verified upload path.
+- Retry transient failures of read-only duplicate-lookup requests without treating network outages as missing server records.
+- Distinguish already-stored files from new uploads in progress, and provide hashing, DOI lookup, precheck, and duplicate-resolution timings in verbose output.
+- Keep force replacement, metadata writeback, explicit CSV trust, and resumable failed uploads on their existing safety workflows.
+
 ## 0.7.70 — 2026-10-16
 
 - Remove the visible Correct DOI action from Search PDFs without changing the protected administrative correction API.

@@ -119,8 +119,10 @@
 当前优化：
 
 - **精确 SHA 已存在**：在读取 Document Info 之前跳过，减少对大型 PDF 的无谓解析；用户明确提供的 --doi / 手工确认 DOI 冲突仍会报错。
-- **不同 SHA、唯一可信内嵌 DOI 或用户手工确认 DOI 已存在**：最多 12 个一组批量 /pdfs/exists DOI 查重，直接跳过 PDF 文件传输。此时不写入文件别名，也不覆盖服务器现有 PDF。
-- **正文提取的 DOI**：只有第一页在参考文献之前仅发现这一 DOI、且服务器现存论文的完整标题在第一页开头得到明确印证时，才允许跳过传输。若只有引用中的 DOI、存在多个 DOI、标题不匹配或 PDF 不可读，则继续服务端核实，避免丢失论文。--force、--write-doi 和显式 --csv 保留原工作流；--no-skip-existing-doi 可禁用新快路。
+- **不同 SHA、唯一可信内嵌 DOI 或用户手工确认 DOI 已存在**：普通上传每批准备最多 500 个 DOI，向 /pdfs/exists 批量查重并跳过已有 PDF 的文件传输（旧版每批只有 12 个）。此时不写入文件别名，也不覆盖服务器现有 PDF。
+- **下载索引 / 正文提取的 DOI**：有效 SHA 绑定下载索引也纳入 DOI 集合预查，但只有第一页在参考文献之前仅发现这一 DOI、且服务器现存论文的完整标题在第一页开头得到明确印证时，才允许跳过传输。仅有索引匹配而没有 PDF 正文证明，不能当作同一论文；旧式自动发现的 CSV 记录、引用中的 DOI、多个 DOI、标题不匹配或 PDF 不可读时，都继续服务端核实。--force、--write-doi 和显式 --csv 保留原工作流；--no-skip-existing-doi 可禁用新快路。
+- **进度计数含义**：`Checking / uploading PDFs 469/702 | new 1 | already stored N` 指已处理的候选数，不是已上传文件数；`new` 才是新增记录。查看完成后的报告区分 existing、uploaded、failed。
+- **读操作可靠性**：SHA 和 DOI 的 `/pdfs/exists` 为只读操作，遇 429/502/503/504 或连接超时有限重试；若查重始终失败，则报错保留状态，不把网关故障当作“数据库没有 DOI”。详细阶段耗时和 SHA/DOI/服务端去重来源通过 `--verbose` 展示。
 - 如需要观察实际耗时，使用 nv upload PATH --verbose，看 DOI preparation、DOI precheck、发送、响应等待及 Server-Timing；网络及 Crossref 的性能需在实机判断，不能仅凭代码估算固定秒数。
 - 只靠 DOI 不等价于字节相同：同 DOI 可能有新版、更正版、不同 PDF 排版或错误元数据。如果想让服务器保留不同 PDF 的上传历史，使用 --no-skip-existing-doi；若想有意替换本体，使用受保护的 --force。
 
