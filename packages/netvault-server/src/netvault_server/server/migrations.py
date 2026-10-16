@@ -355,3 +355,9 @@ def run_migrations(engine: Engine) -> None:
                 text("UPDATE netvault_schema_version SET version = :version WHERE id = 1"),
                 {"version": version},
             )
+
+    # Some long-lived installations have schema version markers that were
+    # advanced by different historical deployment branches without matching
+    # column changes. Reconcile this additive, idempotent preference field
+    # independently of the stored migration version before startup loads User.
+    _add_user_dashboard_filter_key(engine)

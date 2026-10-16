@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.73 — 2026-10-16
+
+- Harden dashboard preference migration for long-lived NetVault installations whose schema-version marker is ahead of the actual user columns. Idempotently reconcile the new preference field before loading account records, even if the migration version already matches.
+- Add regression coverage for PostgreSQL-compatible schema drift and preserving existing saved journal lists.
+
 ## 0.7.72 — 2026-10-16
 
 - Preserve each user's last selected Dashboard journal list across refreshes, navigation and devices; retain UTD24 as a first-visit default rather than resetting on every visit.
