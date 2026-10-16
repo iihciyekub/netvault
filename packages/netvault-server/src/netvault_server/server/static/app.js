@@ -6,7 +6,7 @@
   const pageCache = new Map();
   const prefetching = new Set();
   const journalRowsCache = new WeakMap();
-  const journalSortStorageKey = "netvault:heatmap-sort:v1";
+  const journalSortStorageKey = "netvault:heatmap-sort:v2";
   const journalSortValues = new Set(["name-asc", "name-desc", "total-desc", "total-asc"]);
   const maxCachedPages = 10;
   const pageCacheTtlMs = 30000;
@@ -54,6 +54,34 @@
 
   const isWebPath = (url) => url.origin === window.location.origin && /\/web(?:\/|$)/.test(url.pathname);
   const isDownloadPath = (url) => /\/web\/pdfs\/download(?:\/|$)/.test(url.pathname);
+  const isDashboardRoot = (url) => url && /\/web\/?$/.test(url.pathname) && !url.searchParams.has("filter");
+  let dashboardPreferenceQueue = Promise.resolve();
+  let lastDashboardPreference = null;
+
+  const rememberDashboardFilter = (value) => {
+    const url = sameOriginUrl(value);
+    if (!url || !/\/web\/?$/.test(url.pathname) || !url.searchParams.has("filter")) return;
+    const filter = url.searchParams.get("filter");
+    const panel = qs(".heatmap-panel");
+    const token = qs("[data-journal-list-form] input[name='csrf_token']")?.value;
+    if (!token || !panel || panel.dataset.dashboardFilter !== filter || filter === lastDashboardPreference) return;
+    lastDashboardPreference = filter;
+    dashboardPreferenceQueue = dashboardPreferenceQueue.catch(() => {}).then(async () => {
+      const response = await fetch(panel.dataset.dashboardPreferenceUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch" },
+        body: new URLSearchParams({ filter, csrf_token: token }),
+      });
+      if (!response.ok) throw new Error("Could not remember the selected journal list.");
+      const status = qs("[data-dashboard-preference-status]");
+      if (status) status.textContent = "";
+    }).catch(() => {
+      lastDashboardPreference = null; // Allow a later navigation to retry.
+      const status = qs("[data-dashboard-preference-status]");
+      if (status) status.textContent = "Could not save the selected journal list. Please try again.";
+    });
+  };
 
   const setLoading = (loading) => {
     document.documentElement.classList.toggle("is-loading", loading);
@@ -149,6 +177,7 @@
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setLoading(false);
     initHeatmap(currentMain);
+    rememberDashboardFilter(url);
     currentMain.focus({ preventScroll: true });
   };
 
@@ -163,7 +192,11 @@
   };
 
   const fetchPage = async (url, options = {}, push = true) => {
-    const useCache = shouldCachePage(options);
+    const requested = sameOriginUrl(url);
+    if (isDashboardRoot(requested)) await dashboardPreferenceQueue;
+    // /web without an explicit filter depends on the per-user preference.
+    // Caching or prefetching it can resurrect an obsolete UTD24 page.
+    const useCache = shouldCachePage(options) && !isDashboardRoot(requested);
     const key = cacheKey(url);
     if (useCache && pageCache.has(key)) {
       const cached = pageCache.get(key);
@@ -198,7 +231,7 @@
 
   const prefetchPage = async (href) => {
     const url = sameOriginUrl(href);
-    if (!url || !isWebPath(url) || isDownloadPath(url)) return;
+    if (!url || !isWebPath(url) || isDownloadPath(url) || isDashboardRoot(url)) return;
     const key = url.href;
     if (pageCache.has(key) || prefetching.has(key)) return;
     prefetching.add(key);
@@ -669,11 +702,11 @@
   const journalListPayloadPending = new Map();
   const journalListCacheTtlMs = 30000;
 
-  const loadJournalListPayload = (endpoint) => {
+  const loadJournalListPayload = (endpoint, fresh = false) => {
     const entry = journalListPayloadCache.get(endpoint);
-    if (entry && Date.now() - entry.storedAt < journalListCacheTtlMs)
+    if (!fresh && entry && Date.now() - entry.storedAt < journalListCacheTtlMs)
       return Promise.resolve(entry.payload);
-    if (journalListPayloadPending.has(endpoint))
+    if (!fresh && journalListPayloadPending.has(endpoint))
       return journalListPayloadPending.get(endpoint);
     const pending = (async () => {
       const response = await fetch(endpoint, {
@@ -734,6 +767,7 @@
       normalizeJournalListTextarea(textarea);
     }
     if (keyInput) keyInput.value = payload.key || "";
+    dialog.dataset.revision = payload.updated_at || "";
     if (source) {
       source.hidden = !payload.source_url;
       source.href = payload.source_url || "#";
@@ -762,7 +796,7 @@
     try {
       // Avoid opening an empty modal, loading text, and then resizing it.
       // Nearby hover/focus prefetch and the short-lived snapshot speed up repeats.
-      const payload = await loadJournalListPayload(endpoint);
+      const payload = await loadJournalListPayload(endpoint, true);
       if (sequence !== journalListOpenSequence || !dialog.isConnected || !tab.isConnected)
         return;
       dialog.dataset.endpoint = endpoint;
@@ -821,6 +855,7 @@
     const nameInput = qs("[data-custom-list-name]", form);
     if (!dialog || !endpoint || !textarea) return;
     normalizeJournalListTextarea(textarea);
+    const requestedNames = journalListNames(textarea);
     setFormBusy(form, true, "Saving...");
     try {
       const response = await fetch(endpoint, {
@@ -832,13 +867,24 @@
           "X-Requested-With": "fetch",
         },
         body: JSON.stringify({
-          journals: journalListNames(textarea),
+          journals: requestedNames,
           name: nameInput && !nameInput.closest("[hidden]") ? nameInput.value.trim() : undefined,
+          expected_updated_at: dialog.dataset.revision || null,
         }),
       });
       if (!response.ok) throw new Error(await journalListError(response));
       const payload = await response.json();
+      const savedNames = Array.isArray(payload.journals) ? payload.journals : [];
+      const received = new Set(savedNames.map((name) => normalizedJournalText(name)));
+      dialog.dataset.revision = payload.updated_at || "";
       journalListPayloadCache.delete(endpoint);
+      if (savedNames.length !== requestedNames.length
+          || requestedNames.some((name) => !received.has(normalizedJournalText(name)))) {
+        if (feedback) feedback.textContent =
+          "The server retained " + savedNames.length + " of " + requestedNames.length
+          + " journal names. Review your list or export a backup before closing.";
+        return;
+      }
       pageCache.clear();
       closeJournalListEditor(dialog);
       const current = sameOriginUrl(window.location.href);
@@ -849,6 +895,27 @@
     } finally {
       if (form.isConnected) setFormBusy(form, false, "Save list");
     }
+  };
+
+  const exportJournalList = (button) => {
+    const dialog = button.closest("[data-journal-list-dialog]");
+    const textarea = qs("[data-journal-list-textarea]", dialog);
+    if (!textarea) return;
+    const names = journalListNames(textarea);
+    const title = qs("[data-custom-list-name]", dialog)?.value
+      || qs("[data-journal-list-title]", dialog)?.textContent || "journal-list";
+    const safeName = title.trim().replace(/[^a-z0-9_-]+/gi, "-").slice(0, 60) || "journal-list";
+    const lineBreak = String.fromCharCode(10);
+    const blob = new Blob([names.join(lineBreak) + (names.length ? lineBreak : "")], {type: "text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "netvault-" + safeName + ".txt";
+    link.style.display = "none";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const createCustomJournalList = async (button) => {
@@ -901,7 +968,7 @@
       pageCache.clear();
       closeJournalListEditor(dialog);
       const current = sameOriginUrl(window.location.href);
-      if (payload.deleted && current) current.searchParams.set("filter", "custom");
+      if (payload.deleted && current) current.searchParams.set("filter", "all");
       fetchPage(current ? current.href : window.location.href, {}, false);
     } catch (error) {
       if (feedback) feedback.textContent = error.message || "Could not reset the journal list.";
@@ -947,6 +1014,10 @@
     const elements = [];
     const label = document.createElement("div");
     label.className = "heat-journal";
+    if (row.total === 0) {
+      label.classList.add("journal-no-pdfs");
+      label.title = "No year-tagged PDFs currently match this journal.";
+    }
     label.tabIndex = 0;
     label.setAttribute("aria-haspopup", "menu");
     label.dataset.journalRow = String(row.id);
@@ -1114,12 +1185,49 @@
   });
 
   const sortJournalRows = (select) => {
-    applyJournalFilters(select.closest(".heatmap-panel"));
+    const panel = select.closest(".heatmap-panel");
+    applyJournalFilters(panel);
+    saveJournalView(panel);
+  };
+
+  const journalViewStorageKey = (panel) => {
+    const userId = document.body?.dataset.userId || "";
+    const filter = panel?.dataset.dashboardFilter || "";
+    return userId && filter ? "netvault:dashboard-view:v1:" + userId + ":" + filter : null;
+  };
+  const loadJournalView = (panel) => {
+    const key = journalViewStorageKey(panel);
+    if (!key) return {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || "{}");
+      return saved && typeof saved === "object" ? saved : {};
+    } catch {
+      return {};
+    }
+  };
+  const saveJournalView = (panel) => {
+    const key = journalViewStorageKey(panel);
+    if (!key || !panel?.isConnected) return;
+    const search = qs("[data-journal-filter]", panel)?.value || "";
+    const page = Number(panel.dataset.journalPage || 1);
+    const scroll = qs("[data-heatmap-years-viewport]", panel);
+    const previous = loadJournalView(panel);
+    try {
+      localStorage.setItem(key, JSON.stringify({
+        search: search.slice(0, 300),
+        page: Number.isInteger(page) && page > 0 ? Math.min(page, 10000) : 1,
+        yearScrollLeft: scroll?.dataset.userYearScroll === "true"
+          ? Math.max(0, Math.round(scroll.scrollLeft))
+          : previous.yearScrollLeft,
+      }));
+    } catch { /* Browsers without storage can still use the current page. */ }
   };
 
   const loadJournalSort = () => {
     try {
-      const value = window.localStorage.getItem(journalSortStorageKey) || "";
+      const key = journalSortStorageKey + ":" + (document.body?.dataset.userId || "");
+      const value = window.localStorage.getItem(key)
+        || window.localStorage.getItem("netvault:heatmap-sort:v1") || "";
       return journalSortValues.has(value) ? value : "total-desc";
     } catch {
       return "total-desc";
@@ -1129,7 +1237,8 @@
   const saveJournalSort = (value) => {
     if (!journalSortValues.has(value)) return;
     try {
-      window.localStorage.setItem(journalSortStorageKey, value);
+      const key = journalSortStorageKey + ":" + (document.body?.dataset.userId || "");
+      window.localStorage.setItem(key, value);
     } catch {
       // Sorting still works for this page when storage is unavailable.
     }
@@ -1280,7 +1389,13 @@
         };
         requestAnimationFrame(() => {
           resizeScrollbarRails();
-          alignLatest();
+          const savedLeft = Number(panel.dataset.savedYearScroll);
+          if (panel.dataset.savedYearScroll !== undefined && Number.isFinite(savedLeft) && savedLeft >= 0) {
+            scroll.dataset.userYearScroll = "true";
+            scroll.scrollLeft = Math.min(savedLeft, Math.max(0, scroll.scrollWidth - scroll.clientWidth));
+          } else {
+            alignLatest();
+          }
           syncScrollbarPositions();
         });
         const observer = new ResizeObserver(() => {
@@ -1290,9 +1405,14 @@
           syncScrollbarPositions();
         });
         observer.observe(scroll);
+        let scrollSaveTimer = null;
         scroll.addEventListener("scroll", () => {
           syncFixedRows();
           syncScrollbarPositions();
+          if (scroll.dataset.userYearScroll === "true") {
+            window.clearTimeout(scrollSaveTimer);
+            scrollSaveTimer = window.setTimeout(() => saveJournalView(panel), 200);
+          }
         }, { passive: true });
         if (horizontal) horizontal.addEventListener("scroll", () => {
           if (Math.abs(horizontal.scrollLeft - scroll.scrollLeft) < 1) return;
@@ -1333,12 +1453,14 @@
     panel.dataset.journalPage = String(Math.max(1, requestedPage));
     closeJournalMenu();
     applyJournalFilters(panel);
+    saveJournalView(panel);
     const scroll = qs("[data-heatmap-years-viewport]", panel);
     if (scroll) scroll.scrollTop = 0;
   };
 
   const scheduleJournalFilter = (input) => {
     input.closest(".heatmap-panel").dataset.journalPage = "1";
+    saveJournalView(input.closest(".heatmap-panel"));
     window.clearTimeout(journalFilterTimer);
     if (input.dataset.composing === "true") return;
     journalFilterTimer = window.setTimeout(() => applyJournalFilters(input.closest(".heatmap-panel")), 200);
@@ -1349,6 +1471,7 @@
     window.clearTimeout(journalFilterTimer);
     if (input.dataset.composing === "true") return;
     applyJournalFilters(input.closest(".heatmap-panel"));
+    saveJournalView(input.closest(".heatmap-panel"));
   };
 
   const closeJournalMenu = (restoreFocus = false) => {
@@ -1690,6 +1813,7 @@
     input.dataset.saveRevision = revision;
     input.closest(".heatmap-panel").dataset.journalPage = "1";
     applyJournalFilters(input.closest(".heatmap-panel"));
+    saveJournalView(input.closest(".heatmap-panel"));
     journalLimitTimer = window.setTimeout(() => saveJournalLimit(input, revision), 600);
   };
 
@@ -1700,11 +1824,19 @@
     input.dataset.saveRevision = revision;
     input.closest(".heatmap-panel").dataset.journalPage = "1";
     applyJournalFilters(input.closest(".heatmap-panel"));
+    saveJournalView(input.closest(".heatmap-panel"));
     saveJournalLimit(input, revision);
   };
 
   const initHeatmap = (root = document) => {
     qsa(".heatmap-panel", root).forEach((panel) => {
+      const view = loadJournalView(panel);
+      const search = qs("[data-journal-filter]", panel);
+      if (search && typeof view.search === "string") search.value = view.search.slice(0, 300);
+      if (Number.isInteger(view.page) && view.page > 0 && view.page <= 10000)
+        panel.dataset.journalPage = String(view.page);
+      if (Number.isFinite(view.yearScrollLeft) && view.yearScrollLeft >= 0)
+        panel.dataset.savedYearScroll = String(view.yearScrollLeft);
       const sortSelect = qs("[data-journal-sort]", panel);
       if (sortSelect) {
         sortSelect.value = loadJournalSort();
@@ -2408,6 +2540,12 @@
       return;
     }
 
+    const listExport = event.target.closest("[data-journal-list-export]");
+    if (listExport) {
+      exportJournalList(listExport);
+      return;
+    }
+
     const customListCreate = event.target.closest("[data-custom-list-create]");
     if (customListCreate) {
       createCustomJournalList(customListCreate);
@@ -2619,4 +2757,5 @@
 
   rememberPage(window.location.href, snapshotPage());
   initHeatmap();
+  rememberDashboardFilter(window.location.href);
 })();

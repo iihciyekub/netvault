@@ -40,6 +40,12 @@ Only when Document Info has no DOI, a sibling EBSCO `cli-downloads.csv` supplies
 - Local filesystem PDF object storage under `storage/objects`.
 - Authenticated web dashboard, PDF upload/search, and Batch DOI lookup with availability counts and ZIP download.
 - Per-user editable UTD24, FT50, ABS, and Custom journal dashboard filters.
+  The selected list and display limit are remembered on the account across
+  sessions and devices; search, journal page, sort and year scroll are remembered
+  per browser and list. Saved lists always show all configured journals, with 0
+  for journals without year-tagged PDFs. Export a list as text before major edits.
+  Simultaneous edits in another tab/device are rejected until the current list
+  is reopened, preventing accidental overwrites.
 - Click a populated heatmap cell to search its exact journal and year; keep those filters across pages and further keyword searches.
 - Local hash-based DOI identification, safe file renaming, duplicate collection, and CSV reports.
 

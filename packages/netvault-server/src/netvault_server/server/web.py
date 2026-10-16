@@ -19,6 +19,7 @@ from netvault_server.server.config import get_settings
 from netvault_server.server.database import get_db
 from netvault_server.server.download_audit import record_completed_downloads
 from netvault_server.server.journal_filters import (
+    available_dashboard_filter,
     create_user_journal_filter,
     delete_user_journal_filter,
     is_custom_filter_key,
@@ -321,7 +322,7 @@ def dashboard_revision(request: Request, db: Session = Depends(get_db)) -> Any:
 @router.get("/web", response_class=HTMLResponse, include_in_schema=False)
 def dashboard(
     request: Request,
-    filter: str = "utd24",
+    filter: str | None = None,
     pin: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:
@@ -329,7 +330,9 @@ def dashboard(
     if isinstance(user, RedirectResponse):
         return user
     pins = [name.strip() for name in pin[:10] if name.strip() and len(name.strip()) <= 255]
-    filter_key = normalize_filter_key(filter)
+    filter_key = available_dashboard_filter(
+        db, user.id, user.dashboard_filter_key if filter is None else filter,
+    )
     journal_limit = user.dashboard_journal_limit
     stats = get_dashboard_stats(
         db,
@@ -363,6 +366,26 @@ def dashboard(
             **stats,
         },
     )
+
+
+@router.post("/web/preferences/dashboard-filter", include_in_schema=False)
+def update_dashboard_filter(
+    request: Request,
+    filter_key: str = Form(..., alias="filter"),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    validate_csrf(request, csrf_token_value)
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    key = normalize_filter_key(filter_key)
+    if key != filter_key.strip().lower() or available_dashboard_filter(db, user.id, key) != key:
+        raise HTTPException(status_code=400, detail="This journal list is unavailable")
+    if user.dashboard_filter_key != key:
+        user.dashboard_filter_key = key
+        db.commit()
+    return {"filter": key}
 
 
 @router.post("/web/preferences/all-journal-limit", include_in_schema=False)
@@ -458,9 +481,14 @@ def web_save_journal_filter(
             filter_key,
             journals,
             name if isinstance(name, str) else None,
+            expected_updated_at=payload.get("expected_updated_at"),
+            check_revision="expected_updated_at" in payload,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+        conflict = "changed in another session" in str(exc)
+        raise HTTPException(
+            status_code=409 if conflict else status.HTTP_400_BAD_REQUEST, detail=str(exc),
+        ) from None
     from netvault_server.server.stats import invalidate_stats_cache
 
     invalidate_stats_cache()

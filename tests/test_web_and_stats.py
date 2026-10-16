@@ -423,7 +423,10 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert utd_summary.json()["active_pdfs"] == 1
     assert utd_summary.json()["total_size"] == 100
     utd_heatmap = client.get("/stats/by-journal-year", params={"filter": "utd24"}, headers=headers)
-    assert [row["journal"] for row in utd_heatmap.json()["rows"]] == ["THE JOURNAL OF FINANCE"]
+    utd_rows = utd_heatmap.json()["rows"]
+    assert len(utd_rows) == 24
+    assert next(row for row in utd_rows if row["journal"] == "THE JOURNAL OF FINANCE")["total"] == 1
+    assert any(row["total"] == 0 for row in utd_rows)
 
     abs4star_summary = client.get("/stats/summary", params={"filter": "4*"}, headers=headers)
     assert abs4star_summary.status_code == 200
@@ -1158,6 +1161,104 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
         assert [(row.user.username, row.filter_key) for row in overrides] == [("admin", "custom")]
 
 
+def test_dashboard_remembers_selected_list_without_get_prefetch_side_effects(client: TestClient) -> None:
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    created = client.post(
+        "/web/journal-filters",
+        headers={"x-csrf-token": csrf},
+        json={"name": "Intercultural"},
+    )
+    assert created.status_code == 200
+    key = created.json()["key"]
+    names = [
+        "COMPUTER ASSISTED LANGUAGE LEARNING",
+        "SYSTEM",
+        "JOURNAL WITH NO PDF UPLOADED YET",
+    ]
+    saved = client.post(
+        f"/web/journal-filters/{key}",
+        headers={"x-csrf-token": csrf},
+        json={"name": "Intercultural", "journals": names},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["count"] == 3
+
+    # A dashboard with an explicit filter is safe to prefetch. GET never
+    # changes the preferred filter, whereas the CSRF-protected POST does.
+    explicit = client.get("/web", params={"filter": key})
+    assert explicit.status_code == 200
+    assert f'data-dashboard-filter="{key}"' in explicit.text
+    assert sorted(dashboard_journal_names(explicit)) == sorted(names)
+    assert "netvault-list" not in explicit.text
+    assert 'data-journal-list-export' in explicit.text
+    assert 'data-user-id="1"' in explicit.text
+    assert 'data-dashboard-preference-status' in explicit.text
+    assert 'data-dashboard-preference-url="/web/preferences/dashboard-filter"' in explicit.text
+    assert re.search(r'class="active"\s+href="/web\?filter=utd24"', client.get("/web").text)
+
+    unauthorized = client.post("/web/preferences/dashboard-filter", data={"filter": key})
+    assert unauthorized.status_code == 403
+    updated = client.post(
+        "/web/preferences/dashboard-filter", data={"filter": key, "csrf_token": csrf},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["filter"] == key
+    root = client.get("/web")
+    assert f'data-dashboard-filter="{key}"' in root.text
+    assert 'class="filter-menu active"' in root.text
+    assert sorted(dashboard_journal_names(root)) == sorted(names)
+
+    # Hover prefetches, explicit URL links and a fresh login must not reset
+    # the server-side preference back to UTD24.
+    client.get("/web", params={"filter": "ft50"}, headers={"x-requested-with": "fetch"})
+    assert f'data-dashboard-filter="{key}"' in client.get("/web").text
+    client.cookies.clear()
+    web_login(client)
+    assert f'data-dashboard-filter="{key}"' in client.get("/web").text
+
+    no_such_list = client.post(
+        "/web/preferences/dashboard-filter",
+        data={"filter": "custom_abcdef123456", "csrf_token": client.cookies["netvault_csrf"]},
+    )
+    assert no_such_list.status_code == 400
+    client.delete(f"/web/journal-filters/{key}", headers={"x-csrf-token": client.cookies["netvault_csrf"]})
+    assert 'data-dashboard-filter="all"' in client.get("/web").text
+
+
+def test_journal_list_save_requires_current_revision_to_prevent_lost_edits(client: TestClient) -> None:
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    state = client.get("/web/journal-filters/custom").json()
+    assert state["updated_at"] is None
+    first = client.post(
+        "/web/journal-filters/custom",
+        headers={"x-csrf-token": csrf},
+        json={
+            "journals": ["SYSTEM", "COMPUTER ASSISTED LANGUAGE LEARNING"],
+            "name": "Intercultural",
+            "expected_updated_at": None,
+        },
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["count"] == 2
+    assert isinstance(first.json()["updated_at"], str)
+    stale = client.post(
+        "/web/journal-filters/custom",
+        headers={"x-csrf-token": csrf},
+        json={
+            "journals": ["OVERWRITTEN JOURNAL"], "name": "Overwritten",
+            "expected_updated_at": None,
+        },
+    )
+    assert stale.status_code == 409
+    assert "changed in another session" in stale.json()["detail"]
+    unchanged = client.get("/web/journal-filters/custom").json()
+    assert unchanged["count"] == 2
+    assert set(unchanged["journals"]) == {
+        "SYSTEM", "COMPUTER ASSISTED LANGUAGE LEARNING",
+    }
+
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:
     web_login(client)
     admin_page = client.get("/web/admin")
@@ -1210,7 +1311,7 @@ def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> Non
     )
     assert login.status_code == 200
     user_home = client.get("/web")
-    assert "Admin" not in user_home.text
+    assert 'href="/web/admin"' not in user_home.text
     assert client.get("/web/admin").status_code == 403
 
 

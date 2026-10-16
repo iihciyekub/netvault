@@ -52,6 +52,8 @@ const frames = [];
 let resize;
 const context = {
   qs: selector => elements[selector] || null,
+  saveJournalView: () => {},
+  window: {clearTimeout: () => {}, setTimeout: () => 1},
   requestAnimationFrame: cb => frames.push(cb),
   ResizeObserver: class {constructor(cb) {resize = cb;} observe(node) {
     assert.equal(node, scroll);

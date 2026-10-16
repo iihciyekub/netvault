@@ -179,6 +179,18 @@ def _add_user_dashboard_journal_limit(engine: Engine) -> None:
             )
 
 
+def _add_user_dashboard_filter_key(engine: Engine) -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    if "dashboard_filter_key" not in {column["name"] for column in inspector.get_columns("users")}:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "ALTER TABLE users ADD COLUMN dashboard_filter_key "
+                "VARCHAR(32) NOT NULL DEFAULT 'utd24'"
+            ))
+
+
 def _add_last_login_at(engine: Engine) -> None:
     inspector = inspect(engine)
     if "users" not in inspector.get_table_names():
@@ -313,6 +325,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _add_last_login_at,
     _add_journal_identity,
     _align_identity_schema,
+    _add_user_dashboard_filter_key,
 )
 
 

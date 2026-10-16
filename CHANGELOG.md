@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.7.72 — 2026-10-16
+
+- Preserve each user's last selected Dashboard journal list across refreshes, navigation and devices; retain UTD24 as a first-visit default rather than resetting on every visit.
+- Display **every** saved journal in filtered heatmaps, including journals without year-tagged PDFs, with zero counts rather than silently omitting them.
+- Remember Dashboard search text, pagination, sort order and year-scroll position per user/list; retain the existing database-persisted journal display limit and theme settings.
+- Add one-click text export for journal lists, always fetch a fresh list revision for editing, and reject outdated saves from another browser/tab rather than silently overwriting changes.
+- Save the preferred filter only on actual user navigation via an authenticated CSRF-protected POST, not on Dashboard prefetch or read-only GET requests.
+- Extend migration and browser/backend regressions for journal list completeness, selection persistence, editing concurrency and URL-prefix-aware preference requests.
+
 ## 0.7.71 — 2026-10-16
 
 - Speed up normal `nv upload` on large folders: batch up to 500 DOI candidates per indexed `/pdfs/exists` request, instead of 12 per preflight.

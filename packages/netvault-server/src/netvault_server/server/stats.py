@@ -12,6 +12,7 @@ from netvault_server.server.database import get_db
 from netvault_server.server.deps import get_current_user
 from netvault_server.server.journal_filters import (
     allowed_journals_for_filter,
+    effective_journal_names,
     normalize_filter_key,
     normalize_journal_name,
     user_filter_options,
@@ -167,6 +168,7 @@ def _format_journal_year(
     all_rows: list[Any],
     limit: int,
     include_journals: list[str] | None = None,
+    configured_journals: list[str] | None = None,
 ) -> dict[str, Any]:
     def canonical_journal(name: str) -> str:
         from netvault_server.server.journal_identity import journal_display_name
@@ -186,6 +188,16 @@ def _format_journal_year(
     for journal_name in totals:
         if normalize_journal_name(journal_name) in included_keys and journal_name not in top_journals:
             top_journals.append(journal_name)
+    # A saved journal list is a catalog selection, not just a query result.
+    # Preserve all configured names, including journals without a PDF/year yet.
+    # Compare normalized keys to avoid duplicate rows for aliases/case variants.
+    represented_keys = {normalize_journal_name(name) for name in top_journals}
+    for name in configured_journals or []:
+        label = clean_label(name)
+        key = normalize_journal_name(label or "")
+        if label and key and key not in represented_keys:
+            top_journals.append(label)
+            represented_keys.add(key)
     if not top_journals:
         return {"years": [], "max_count": 0, "rows": []}
     rows = [row for row in all_rows if canonical_journal(row.journal) in top_journals]
@@ -294,7 +306,8 @@ def get_by_journal_year(
         .group_by(journal, Pdf.published_year)
         .order_by(journal.asc(), Pdf.published_year.asc())
     ).all()
-    return _format_journal_year(all_rows, limit, include_journals)
+    configured = effective_journal_names(filter_key, db, user_id) if filter_key != "all" else None
+    return _format_journal_year(all_rows, limit, include_journals, configured)
 
 
 def get_all_journal_names(

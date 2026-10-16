@@ -47,6 +47,7 @@
       </div>
     </details>
   </div>
+  <span class="dashboard-preference-status" data-dashboard-preference-status role="status" aria-live="polite"></span>
   <div class="summary-tags" aria-label="Vault summary">
     <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ vault_summary.active_pdfs|number }}</span>
     <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ vault_summary.total_size|bytes }}</span>
@@ -67,7 +68,8 @@
             <strong>Journal list help</strong>
             <p>Enter one journal per line. Names become uppercase and sort A–Z after editing.</p>
             <p>Matching ignores case, punctuation, “The”, and “&amp;” versus “and”.</p>
-            <p>Changes are private to your account and sync across devices. Saving a default list creates an editable copy; an empty list matches no journals.</p>
+            <p>Changes are private to your account and sync across devices. A saved list shows all journal names, including journals without any PDFs (0). Saving a default list creates an editable copy; an empty list matches no journals.</p>
+            <p>Export a text backup before major changes. If someone else edited this list, saving will ask you to reload rather than overwrite their changes.</p>
           </div>
         </div>
         <button type="button" class="dialog-close" data-journal-list-close aria-label="Close journal list editor"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
@@ -111,6 +113,7 @@
     <p class="journal-list-feedback" data-journal-list-feedback aria-live="polite"></p>
     <div class="journal-list-actions">
       <button type="button" class="ghost" data-journal-list-reset hidden><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span data-journal-list-reset-label>Reset default</span></button>
+      <button type="button" class="ghost" data-journal-list-export><i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i><span>Export .txt</span></button>
       <span></span>
       <button type="button" class="ghost" data-journal-list-close>Cancel</button>
       <button type="submit" class="primary"><i class="fa-solid fa-check" aria-hidden="true"></i><span data-button-label>Save list</span></button>
@@ -118,7 +121,7 @@
   </form>
 </dialog>
 
-<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
+<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-filter="{{ journal_filter }}" data-dashboard-preference-url="{{ path_for('/web/preferences/dashboard-filter') }}" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">

@@ -123,6 +123,14 @@ def get_user_filter_override(
     )
 
 
+def available_dashboard_filter(db: Session, user_id: int, filter_key: str | None) -> str:
+    """Do not expose a deleted or another user's custom journal filter."""
+    key = normalize_filter_key(filter_key)
+    if is_custom_filter_key(key) and key != "custom" and get_user_filter_override(db, user_id, key) is None:
+        return "all"
+    return key
+
+
 def _override_payload(override: Any) -> tuple[list[str], str | None]:
     try:
         payload = json.loads(override.journals_json)
@@ -190,6 +198,7 @@ def journal_filter_state(db: Session, user_id: int, filter_key: str) -> dict[str
         "can_reset": override is not None and not definition.get("custom"),
         "custom": bool(definition.get("custom")),
         "can_delete": bool(definition.get("custom") and key != "custom"),
+        "updated_at": override.updated_at.isoformat() if override is not None else None,
         **journal_filter_source(key),
     }
 
@@ -200,6 +209,8 @@ def save_user_journal_filter(
     filter_key: str,
     names: list[str],
     name: str | None = None,
+    expected_updated_at: str | None = None,
+    check_revision: bool = False,
 ) -> dict[str, Any]:
     from netvault_server.server.models import UserJournalFilter, utc_now
 
@@ -209,6 +220,10 @@ def save_user_journal_filter(
         raise ValueError("This journal filter is not editable")
     journals = deduplicate_journal_names(names)
     override = get_user_filter_override(db, user_id, key)
+    if check_revision:
+        current_revision = override.updated_at.isoformat() if override is not None else None
+        if expected_updated_at != current_revision:
+            raise ValueError("This journal list changed in another session. Reopen it before saving.")
     if override is None:
         override = UserJournalFilter(user_id=user_id, filter_key=key, journals_json="[]")
         db.add(override)
@@ -263,6 +278,11 @@ def delete_user_journal_filter(db: Session, user_id: int, filter_key: str) -> di
     if override is None:
         raise ValueError("Custom list not found")
     db.delete(override)
+    from netvault_server.server.models import User
+
+    user = db.get(User, user_id)
+    if user is not None and user.dashboard_filter_key == key:
+        user.dashboard_filter_key = "all"
     db.commit()
     return {"deleted": True, "key": key}
 

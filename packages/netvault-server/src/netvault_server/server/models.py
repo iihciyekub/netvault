@@ -26,6 +26,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     dashboard_journal_limit: Mapped[int] = mapped_column(Integer, default=20, server_default="20", nullable=False)
+    dashboard_filter_key: Mapped[str] = mapped_column(String(32), default="utd24", server_default="utd24", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

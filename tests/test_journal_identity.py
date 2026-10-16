@@ -83,4 +83,4 @@ def test_metadata_refresh_aliases_filters_and_conflicting_identifiers(tmp_path):
         assert db.get(Pdf, 1).journal_raw_title == "Management Sciences"
         assert db.scalar(select(JournalAlias.canonical_name).where(
             JournalAlias.alias_name == "MANAGEMENT SCIENCES")) == "MANAGEMENT SCIENCE"
-        assert db.scalar(text("SELECT version FROM netvault_schema_version")) == 10
+        assert db.scalar(text("SELECT version FROM netvault_schema_version")) == 11

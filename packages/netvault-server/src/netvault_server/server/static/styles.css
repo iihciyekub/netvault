@@ -587,16 +587,23 @@ h2 {
 
 .journal-list-actions {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   align-items: center;
   gap: 8px;
   padding-top: 2px;
 }
 
 .journal-list-actions [data-journal-list-reset] { grid-column: 1; }
-.journal-list-actions > span { grid-column: 2; }
-.journal-list-actions [data-journal-list-close] { grid-column: 3; }
-.journal-list-actions [type="submit"] { grid-column: 4; }
+.journal-list-actions [data-journal-list-export] { grid-column: 2; }
+.journal-list-actions > span { grid-column: 3; }
+.journal-list-actions [data-journal-list-close] { grid-column: 4; }
+.journal-list-actions [type="submit"] { grid-column: 5; }
+
+.dashboard-preference-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.dashboard-preference-status:empty { display: none; }
 
 .summary-tags {
   display: flex;
@@ -2183,6 +2190,9 @@ ul {
     display: none;
   }
   .journal-list-actions [data-journal-list-reset] {
+    grid-column: 1 / -1;
+  }
+  .journal-list-actions [data-journal-list-export] {
     grid-column: 1 / -1;
   }
   .journal-list-actions [data-journal-list-close] {
