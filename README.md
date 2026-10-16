@@ -49,6 +49,14 @@ Only when Document Info has no DOI, a sibling EBSCO `cli-downloads.csv` supplies
   and confirms the saved count.
   Simultaneous edits in another tab/device are rejected until the current list
   is reopened, preventing accidental overwrites.
+- Right-click a journal in the Dashboard to view its rankings with Chinese
+  dataset labels or choose **Fetch current list rankings**. The batch runs
+  asynchronously on the server and displays its progress in a Dashboard banner.
+  Successful ranking results are cached in PostgreSQL for all signed-in users,
+  survive a server restart, and are reused without calling easyScholar again.
+  The popup Re-fetch action updates one journal; **Re-fetch list rankings**
+  in the banner rechecks the entire selected list and persists new results.
+  Provider errors leave previously saved ranking data intact.
 - Click a populated heatmap cell to search its exact journal and year; keep those filters across pages and further keyword searches.
 - Local hash-based DOI identification, safe file renaming, duplicate collection, and CSV reports.
 

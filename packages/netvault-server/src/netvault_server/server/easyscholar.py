@@ -147,29 +147,32 @@ def lookup(name: str, refresh: bool = False) -> dict:
         cached = _cache.get(cache_key)
         if not refresh and cached and time.time() - cached["queried_at"] < 86400:
             return dict(cached, cached=True)
-        params = urlencode(dict(secretKey=key, publicationName=name))
-        request = Request("https://www.easyscholar.cc/open/getPublicationRank?" + params,
-                          headers={"Accept": "application/json", "User-Agent": "NetVault"})
-        try:
-            with urlopen(request, timeout=15) as response:
-                payload = json.load(response)
-        except HTTPError as exc:
-            raise ValueError(f"easyScholar returned HTTP {exc.code}. Please try again later.") from None
-        except (URLError, OSError):
-            raise ValueError("Unable to reach easyScholar. Please try again later.") from None
-        except (ValueError, UnicodeError):
-            raise ValueError("Invalid response from easyScholar.") from None
-        if not isinstance(payload, dict):
-            raise ValueError("Invalid response from easyScholar.")
-        if str(payload.get("code")) != "200":
-            raise ValueError("easyScholar could not complete the lookup. Please try again later.")
-        data = payload.get("data") or {}
-        try:
-            rows = rank_rows(data)
-        except (AttributeError, TypeError, ValueError):
-            raise ValueError("Invalid rank data from easyScholar.") from None
-        result = dict(journal_name=name, rows=rows, queried_at=time.time(), cached=False)
+    # Do not keep a process-wide lock while waiting up to 15 seconds on the
+    # provider; a background list job must not block individual journal reads.
+    params = urlencode(dict(secretKey=key, publicationName=name))
+    request = Request("https://www.easyscholar.cc/open/getPublicationRank?" + params,
+                      headers={"Accept": "application/json", "User-Agent": "NetVault"})
+    try:
+        with urlopen(request, timeout=15) as response:
+            payload = json.load(response)
+    except HTTPError as exc:
+        raise ValueError(f"easyScholar returned HTTP {exc.code}. Please try again later.") from None
+    except (URLError, OSError):
+        raise ValueError("Unable to reach easyScholar. Please try again later.") from None
+    except (ValueError, UnicodeError):
+        raise ValueError("Invalid response from easyScholar.") from None
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid response from easyScholar.")
+    if str(payload.get("code")) != "200":
+        raise ValueError("easyScholar could not complete the lookup. Please try again later.")
+    data = payload.get("data") or {}
+    try:
+        rows = rank_rows(data)
+    except (AttributeError, TypeError, ValueError):
+        raise ValueError("Invalid rank data from easyScholar.") from None
+    result = dict(journal_name=name, rows=rows, queried_at=time.time(), cached=False)
+    with _lock:
         if len(_cache) >= 200:
             _cache.pop(next(iter(_cache)))
         _cache[cache_key] = result
-        return dict(result)
+    return dict(result)

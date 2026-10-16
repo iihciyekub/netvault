@@ -29,10 +29,24 @@ def test_web_ui_source_contains_no_chinese_text() -> None:
     ui_files.extend([server_root / "static" / "app.js", server_root / "static" / "styles.css"])
     chinese = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
+    # The dataset taxonomy explicitly requested for journal rank results is
+    # Chinese data, not interface UI copy. Keep all other UI instructions
+    # English-only and do not disable this language regression check.
+    def visible_ui_copy(path: Path) -> str:
+        content = path.read_text(encoding="utf-8")
+        if path.name == "app.js":
+            content = re.sub(
+                r"  const rankDatasetLabels = new Map\(Object\.entries\(\{.*?"
+                r"  const rankDatasetOrder = new Map\(\);",
+                "  const rankDatasetOrder = new Map();",
+                content, flags=re.DOTALL,
+            )
+        return content
+
     violations = [
         str(path.relative_to(server_root))
         for path in ui_files
-        if chinese.search(path.read_text(encoding="utf-8"))
+        if chinese.search(visible_ui_copy(path))
     ]
     assert violations == [], f"Web UI text must be English-only: {violations}"
 
@@ -1632,7 +1646,8 @@ def test_journal_rank_requires_login_and_returns_normalized_data(client, monkeyp
     def fail(*args, **kwargs):
         raise ValueError('Unable to reach easyScholar. Please try again later.')
     monkeypatch.setattr(ranks, 'lookup', fail)
-    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 502
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 200
+    assert client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'}).status_code == 502
 
 
 def test_easyscholar_official_custom_cache_and_redacted_failure(monkeypatch):
@@ -1662,6 +1677,250 @@ def test_easyscholar_official_custom_cache_and_redacted_failure(monkeypatch):
         ranks.lookup('Nature', refresh=True)
     assert ranks.BUNDLED_API_KEY not in str(error.value)
 
+
+def test_journal_ranks_are_globally_persisted_and_manual_refresh_replaces_them(
+    client, monkeypatch,
+):
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 401
+    web_login(client)
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    rank_store = importlib.import_module('netvault_server.server.journal_ranks')
+    models = importlib.import_module('netvault_server.server.models')
+    database = importlib.import_module('netvault_server.server.database')
+    calls = []
+
+    def lookup(name, refresh=False):
+        calls.append((name, refresh))
+        return {'journal_name': name, 'queried_at': 1792000000 + len(calls),
+                'rows': [{'key': 'sciUp', 'name': '中科院升级版分区-中科院',
+                          'rank': '3区' if not refresh else '2区',
+                          'source': 'Official datasets', 'selected': True}]}
+
+    monkeypatch.setattr(provider, 'lookup', lookup)
+    first = client.get('/web/journal-rank', params={'name': 'Nature'})
+    assert first.status_code == 200
+    assert first.json()['rows'][0]['rank'] == '3区'
+    assert first.json()['cached'] is False
+    assert client.get('/web/journal-rank', params={'name': ' nature '}).json()['cached'] is True
+    assert calls == [('Nature', False)]
+
+    refreshed = client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'})
+    assert refreshed.status_code == 200
+    assert refreshed.json()['rows'][0]['rank'] == '2区'
+    assert calls == [('Nature', False), ('Nature', True)]
+    with database.SessionLocal() as db:
+        persisted = db.get(models.JournalRankCache, 'nature')
+        assert json.loads(persisted.rows_json)[0]['rank'] == '2区'
+        assert persisted.queried_at == 1792000002
+        assert rank_store.cached_rank(db, 'NATURE')['rows'][0]['rank'] == '2区'
+
+    def provider_error(*args, **kwargs):
+        raise ValueError('Provider temporarily unavailable.')
+    monkeypatch.setattr(provider, 'lookup', provider_error)
+    assert client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'}).status_code == 502
+    saved = client.get('/web/journal-rank', params={'name': 'Nature'}).json()
+    assert saved['cached'] is True
+    assert saved['rows'][0]['rank'] == '2区'
+
+
+def test_background_rank_batch_progress_retry_and_restart_resume(client, monkeypatch):
+    web_login(client)
+    csrf = client.cookies['netvault_csrf']
+    headers = {'x-csrf-token': csrf}
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    ranks = importlib.import_module('netvault_server.server.journal_ranks')
+    models = importlib.import_module('netvault_server.server.models')
+    database = importlib.import_module('netvault_server.server.database')
+    announced = []
+    monkeypatch.setattr(ranks, 'wake_worker', lambda: announced.append(True))
+    monkeypatch.setattr(ranks.time, 'sleep', lambda seconds: None)
+
+    new_list = client.post('/web/journal-filters', headers=headers, json={'name': 'Intercultural'})
+    assert new_list.status_code == 200
+    key = new_list.json()['key']
+    names = ['SYSTEM', 'CULTURAL STUDIES', 'FOREIGN LANGUAGE ANNALS']
+    assert client.post(f'/web/journal-filters/{key}', headers=headers, json={
+        'name': 'Intercultural', 'journals': names,
+        'expected_updated_at': new_list.json()['updated_at'],
+    }).status_code == 200
+    endpoint = '/web/journal-rank-batches'
+    assert client.post(endpoint, json={'filter': key}).status_code == 403
+    first = client.post(endpoint, headers=headers, json={'filter': key})
+    assert first.status_code == 202, first.text
+    job_id = first.json()['id']
+    assert first.json()['status'] == 'queued'
+    assert first.json()['total'] == 3
+    assert first.json()['processed'] == 0
+    second = client.post(endpoint, headers=headers, json={'filter': key})
+    assert second.status_code == 202
+    assert second.json()['id'] == job_id, 'Repeat clicks must not queue the same list twice'
+    assert announced == [True, True]
+
+    counter = []
+    def lookup(name, refresh=False):
+        counter.append((name, refresh))
+        if name == 'SYSTEM' and not refresh:
+            raise ValueError('Temporary provider problem.')
+        return {'journal_name': name, 'queried_at': 1792000000 + len(counter),
+                'rows': [{'key': 'sci', 'name': 'SCI分区-JCR', 'rank': 'Q1' if not refresh else 'Q2',
+                          'source': 'Official datasets', 'selected': True}]}
+    monkeypatch.setattr(provider, 'lookup', lookup)
+    assert ranks._claim_job() == job_id
+    ranks.process_batch(job_id)
+    status_payload = client.get(endpoint + '/latest', params={'filter': key}).json()['job']
+    assert status_payload['status'] == 'partial'
+    assert status_payload['processed'] == 3
+    assert status_payload['failed'] == 1
+    assert status_payload['fetched'] == 2
+
+    # A manual retry bypasses the server cache and persists replacement ranks.
+    retry = client.post(endpoint, headers=headers, json={'filter': key, 'refresh': True})
+    assert retry.status_code == 202
+    assert retry.json()['refresh'] is True
+    assert ranks._claim_job() == retry.json()['id']
+    ranks.process_batch(retry.json()['id'])
+    done = client.get(endpoint + '/latest', params={'filter': key}).json()['job']
+    assert done['status'] == 'completed'
+    assert done['fetched'] == 3
+    assert done['failed'] == 0
+    with database.SessionLocal() as db:
+        assert db.query(models.JournalRankCache).count() == 3
+        assert all(json.loads(row.rows_json)[0]['rank'] == 'Q2'
+                   for row in db.query(models.JournalRankCache))
+
+    # Simulate a restart in the middle of another task. The committed offset
+    # survives and only the remaining journal is processed.
+    another = client.post(endpoint, headers=headers, json={'filter': key, 'refresh': True}).json()
+    with database.SessionLocal() as db:
+        pending = db.get(models.JournalRankBatchJob, another['id'])
+        pending.status = 'running'
+        pending.processed = 2
+        db.commit()
+    ranks.recover_ranking_batches()
+    with database.SessionLocal() as db:
+        pending = db.get(models.JournalRankBatchJob, another['id'])
+        assert pending.status == 'queued'
+        assert pending.processed == 2
+    before = len(counter)
+    assert ranks._claim_job() == another['id']
+    ranks.process_batch(another['id'])
+    assert len(counter) == before + 1
+    assert client.get(endpoint + '/latest', params={'filter': key}).json()['job']['status'] == 'completed'
+
+
+def test_any_authenticated_user_can_start_shared_rank_batch(client, monkeypatch):
+    web_login(client)
+    ranks = importlib.import_module('netvault_server.server.journal_ranks')
+    database = importlib.import_module('netvault_server.server.database')
+    models = importlib.import_module('netvault_server.server.models')
+    security = importlib.import_module('netvault_server.server.security')
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    monkeypatch.setattr(ranks, 'wake_worker', lambda: None)
+    lookups = []
+    def fake_lookup(name, refresh=False):
+        lookups.append((name, refresh))
+        return {'journal_name': name, 'queried_at': 1792000001,
+                'rows': [{'key': 'sci', 'name': 'SCI分区-JCR',
+                          'rank': 'Q1', 'source': 'Official datasets'}]}
+    monkeypatch.setattr(provider, 'lookup', fake_lookup)
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 200
+    with database.SessionLocal() as db:
+        db.add(models.User(username='rankreader', password_hash=security.hash_password('ranks-pass')))
+        db.commit()
+    client.cookies.clear()
+    login_page = client.get('/web/login')
+    assert login_page.status_code == 200
+    csrf = client.cookies['netvault_csrf']
+    logged_in = client.post('/web/login', data={
+        'username': 'rankreader', 'password': 'ranks-pass', 'csrf_token': csrf,
+    })
+    assert logged_in.status_code in (200, 303)
+    csrf = client.cookies['netvault_csrf']
+    # Ranking data is shared globally, not tied to the admin who fetched it.
+    cached = client.get('/web/journal-rank', params={'name': 'NATURE'})
+    assert cached.status_code == 200
+    assert cached.json()['cached'] is True
+    assert cached.json()['rows'][0]['rank'] == 'Q1'
+    assert lookups == [('Nature', False)]
+    endpoint = '/web/journal-rank-batches'
+    assert client.post(endpoint, json={'filter': 'utd24'}, headers={'x-csrf-token': csrf}).status_code == 202
+    assert client.get(endpoint + '/latest', params={'filter': 'utd24'}).json()['job']['total'] == 24
+    assert client.post(endpoint, json={'filter': 'all'}, headers={'x-csrf-token': csrf}).status_code == 400
+    assert client.post(endpoint, json={'filter': 'custom_abcdef123456'},
+                       headers={'x-csrf-token': csrf}).status_code == 400
+
+
+def test_rank_batch_identifies_list_contents_not_only_user_filter_name(client, monkeypatch):
+    web_login(client)
+    ranks = importlib.import_module('netvault_server.server.journal_ranks')
+    filters = importlib.import_module('netvault_server.server.journal_filters')
+    database = importlib.import_module('netvault_server.server.database')
+    models = importlib.import_module('netvault_server.server.models')
+    security = importlib.import_module('netvault_server.server.security')
+    monkeypatch.setattr(ranks, 'wake_worker', lambda: None)
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username='admin').one()
+        other = models.User(username='different', password_hash=security.hash_password('password'))
+        db.add(other)
+        db.commit()
+        filters.save_user_journal_filter(db, admin.id, 'utd24', ['SYSTEM'])
+        admin_job = ranks.enqueue_batch(db, admin.id, 'utd24')
+        other_job = ranks.enqueue_batch(db, other.id, 'utd24')
+        assert admin_job['total'] == 1
+        assert other_job['total'] == 24
+        assert admin_job['id'] != other_job['id']
+        assert ranks.latest_batch(db, admin.id, 'utd24')['id'] == admin_job['id']
+        assert ranks.latest_batch(db, other.id, 'utd24')['id'] == other_job['id']
+
+
+def test_ranking_batch_returns_immediately_while_worker_is_waiting(client, monkeypatch):
+    import threading
+    import time
+
+    web_login(client)
+    token = client.cookies['netvault_csrf']
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    started, release = threading.Event(), threading.Event()
+    def slow_lookup(name, refresh=False):
+        started.set()
+        assert release.wait(timeout=8), 'Test worker was not released'
+        return {'journal_name': name, 'queried_at': time.time(),
+                'rows': [{'key': 'sci', 'name': 'SCI分区-JCR',
+                          'rank': 'Q1', 'source': 'Official datasets'}]}
+    monkeypatch.setattr(provider, 'lookup', slow_lookup)
+    try:
+        start = time.monotonic()
+        response = client.post(
+            '/web/journal-rank-batches',
+            headers={'x-csrf-token': token},
+            json={'filter': 'custom'},
+        )
+        # An empty custom list must fail explicitly without scheduling work.
+        assert response.status_code == 400
+        created = client.post('/web/journal-filters', headers={'x-csrf-token': token},
+                              json={'name': 'Worker test'})
+        key = created.json()['key']
+        stored = client.post(f'/web/journal-filters/{key}', headers={'x-csrf-token': token},
+                             json={'name': 'Worker test', 'journals': ['SYSTEM'],
+                                   'expected_updated_at': created.json()['updated_at']})
+        assert stored.status_code == 200
+        start = time.monotonic()
+        response = client.post('/web/journal-rank-batches',
+                               headers={'x-csrf-token': token}, json={'filter': key})
+        assert response.status_code == 202
+        assert time.monotonic() - start < 1.5
+        assert started.wait(timeout=3)
+        assert client.get('/web/journal-rank-batches/latest',
+                          params={'filter': key}).json()['job']['status'] == 'running'
+    finally:
+        release.set()
+    for _ in range(60):
+        status_data = client.get('/web/journal-rank-batches/latest', params={'filter': key}).json()
+        if status_data['job']['status'] == 'completed':
+            break
+        time.sleep(0.05)
+    assert status_data['job']['status'] == 'completed'
+    assert status_data['job']['fetched'] == 1
 
 
 def test_dashboard_defaults_to_utd24_and_all_remains_explicit(client):

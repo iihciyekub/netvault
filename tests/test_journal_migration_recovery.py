@@ -33,7 +33,7 @@ def test_dashboard_preference_column_repairs_schema_version_drift():
             )) == "utd24"
             assert connection.scalar(text(
                 "SELECT version FROM netvault_schema_version WHERE id=1"
-            )) == 11
+            )) == 12
             assert connection.scalar(text(
                 "SELECT journals_json FROM user_journal_filters WHERE id=1"
             )) == '{"name":"Intercultural","journals":["SYSTEM","LANGUAGE CULTURE AND CURRICULUM"]}'

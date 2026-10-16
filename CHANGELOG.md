@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.75 — 2026-10-16
+
+- Restore the existing Chinese easyScholar dataset labels in the journal ranking panel, including previously browser-cached responses. Group headings now match the Chinese ranking taxonomy instead of overriding the server mapping with English labels.
+- Persist successful per-journal ranking results globally in PostgreSQL so any authenticated user can reuse them after browser or server restarts. Normal opens read the shared cache; the per-journal Re-fetch action explicitly refreshes and replaces it.
+- Add **Fetch current list rankings** to the journal context menu. It queues a server-side background job for the selected journal list, with resumable progress, safe concurrent-job deduplication, shared per-journal caching, and status polling across page reloads.
+- Add **Re-fetch list rankings** after the batch finishes to deliberately refresh every journal, preserve previously cached data when the provider fails, and report failed counts without blocking the UI.
+- Cover nonblocking execution, cache persistence across users, duplicate requests, restart recovery, manual refresh, permission checks and the Chinese label/frontend actions in new tests.
+
 ## 0.7.74 — 2026-10-16
 
 - Fix the journal-list editor's Save list button: wire the delegated form submit event to the authenticated JSON POST, preventing the browser's default GET and ensuring additions/removals reach the database.

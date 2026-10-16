@@ -56,6 +56,11 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+class JournalRankBatchRequest(BaseModel):
+    filter: str = Field(min_length=1, max_length=32)
+    refresh: bool = False
+
+
 def format_bytes(size: int) -> str:
     value = float(size)
     units = ["B", "KB", "MB", "GB", "TB"]
@@ -304,11 +309,47 @@ def journal_rank(request: Request, name: str = Query(min_length=1, max_length=30
     user = require_web_user(request, db)
     if isinstance(user, RedirectResponse):
         raise HTTPException(status_code=401, detail="Login required")
-    from netvault_server.server.easyscholar import lookup
+    from netvault_server.server.journal_ranks import lookup_rank
     try:
-        return lookup(name, refresh=refresh)
+        return lookup_rank(db, name, refresh=refresh)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
+@router.post("/web/journal-rank-batches", status_code=202)
+def create_journal_rank_batch(
+    request: Request,
+    payload: JournalRankBatchRequest,
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    validate_csrf(request, request.headers.get("X-CSRF-Token", ""))
+    from netvault_server.server.journal_ranks import enqueue_batch
+
+    try:
+        return enqueue_batch(db, user.id, payload.filter, refresh=payload.refresh)
+    except ValueError as exc:
+        code = 429 if "already running" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from None
+
+
+@router.get("/web/journal-rank-batches/latest")
+def latest_journal_rank_batch(
+    request: Request,
+    filter_key: str = Query(alias="filter", min_length=1, max_length=32),
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    from netvault_server.server.journal_ranks import latest_batch
+
+    try:
+        return {"job": latest_batch(db, user.id, filter_key)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.get("/web/dashboard-revision", include_in_schema=False)

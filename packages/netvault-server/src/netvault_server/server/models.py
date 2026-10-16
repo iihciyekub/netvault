@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, event
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, event, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netvault_server.server.database import Base
@@ -48,6 +48,43 @@ class UserJournalFilter(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="journal_filters")
+
+
+class JournalRankCache(Base):
+    """Shared, persisted easyScholar rankings, independent of the requesting user."""
+    __tablename__ = "journal_rank_cache"
+
+    journal_key: Mapped[str] = mapped_column(String(300), primary_key=True)
+    journal_name: Mapped[str] = mapped_column(Text, nullable=False)
+    rows_json: Mapped[str] = mapped_column(Text, nullable=False)
+    queried_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class JournalRankBatchJob(Base):
+    """Resumable background task: a snapshot of a journal list, not user-owned rank data."""
+    __tablename__ = "journal_rank_batch_jobs"
+    __table_args__ = (Index(
+        "uq_journal_rank_batch_active_snapshot", "snapshot_hash", unique=True,
+        postgresql_where=text("status IN ('queued', 'running')"),
+        sqlite_where=text("status IN ('queued', 'running')"),
+    ),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    filter_key: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    names_json: Mapped[str] = mapped_column(Text, nullable=False)
+    force_refresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(20), index=True, nullable=False, default="queued")
+    total: Mapped[int] = mapped_column(Integer, nullable=False)
+    processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fetched: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
 class Pdf(Base):

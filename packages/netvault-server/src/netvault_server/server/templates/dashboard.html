@@ -121,8 +121,12 @@
   </form>
 </dialog>
 
-<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-filter="{{ journal_filter }}" data-dashboard-preference-url="{{ path_for('/web/preferences/dashboard-filter') }}" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
+<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-filter="{{ journal_filter }}" data-dashboard-preference-url="{{ path_for('/web/preferences/dashboard-filter') }}" data-rank-batch-url="{{ path_for('/web/journal-rank-batches') }}" data-rank-batch-status-url="{{ path_for('/web/journal-rank-batches/latest') }}" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
+    <div class="rank-batch-banner" data-rank-batch-banner hidden>
+      <span data-rank-batch-message role="status" aria-live="polite"></span>
+      <button type="button" class="ghost" data-rank-batch-retry hidden>Re-fetch list rankings</button>
+    </div>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">
       <button type="button" class="doi-batch-inline-button" data-doi-batch-open
@@ -275,6 +279,7 @@
   <button type="button" role="menuitem" data-journal-copy><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy journal name</span></button>
   <a href="https://www.webofscience.com/" data-journal-wos-link role="menuitem" target="_blank" rel="noopener noreferrer" data-no-pjax><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>Open in Web of Science</span></a>
   <button type="button" role="menuitem" data-journal-rank><i class="fa-solid fa-ranking-star" aria-hidden="true"></i><span>Journal rankings</span></button>
+  <button type="button" role="menuitem" data-journal-rank-batch><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Fetch current list rankings</span></button>
 </div>
 <section class="journal-rank-panel" data-rank-panel role="dialog" aria-labelledby="rank-title" aria-label="Journal rankings" hidden>
   <header data-rank-drag>

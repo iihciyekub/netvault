@@ -97,6 +97,9 @@ def initialize_app() -> None:
                     )
                 )
                 db.commit()
+    from netvault_server.server.journal_ranks import recover_ranking_batches
+
+    recover_ranking_batches()
 
 
 @asynccontextmanager

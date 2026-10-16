@@ -1529,7 +1529,9 @@
   let rankDrag = null;
   const rankPositionStorageKey = "netvault:rank-position:v1";
   const rankCacheStorageKey = "netvault:journal-ranks:v1";
-  const rankCacheTtlMs = 24 * 60 * 60 * 1000;
+  // PostgreSQL is the durable cache. Revalidate browser results periodically
+  // so another user's manual re-fetch becomes visible without a full day wait.
+  const rankCacheTtlMs = 60 * 1000;
   const rankCache = new Map();
   const rankPending = new Map();
   let rankPosition = null;
@@ -1557,6 +1559,10 @@
     while (rankCache.size > 100) rankCache.delete(rankCache.keys().next().value);
     try { localStorage.setItem(rankCacheStorageKey, JSON.stringify([...rankCache])); } catch { /* Keep the memory cache. */ }
   };
+  const invalidateRankCache = () => {
+    rankCache.clear();
+    try { localStorage.removeItem(rankCacheStorageKey); } catch { /* Optional browser storage. */ }
+  };
   const clampRankPanel = (panel, x, y) => {
     const top = Math.max(8, Math.min(y, innerHeight - 160));
     panel.style.maxHeight = `${Math.max(0, innerHeight - top - 8)}px`;
@@ -1569,61 +1575,61 @@
     try { localStorage.setItem(rankPositionStorageKey, JSON.stringify(rankPosition)); } catch { /* Keep the position for this page. */ }
     rankDrag = null;
   };
-  // These dataset names are UI labels, so keep them in English.
-  // Normalize lookup keys for previously cached ranking responses as well.
+  // Display the existing easyScholar dataset's Chinese labels, including for
+  // older browser cache entries whose server-provided names were overridden.
   const rankDatasetLabels = new Map(Object.entries({
-    swufe: "Southwestern University of Finance and Economics",
-    cufe: "Central University of Finance and Economics",
-    uibe: "University of International Business and Economics",
-    sdufe: "Shandong University of Finance and Economics",
-    xdu: "Xidian University",
-    swjtu: "Southwest Jiaotong University",
-    ruc: "Renmin University of China",
-    xmu: "Xiamen University",
-    sjtu: "Shanghai Jiao Tong University",
-    fdu: "Fudan University",
-    hhu: "Hohai University",
-    pku: "Peking University Core Journals",
-    scu: "Sichuan University",
-    sciUpTop: "CAS Upgraded Top Quartile",
-    xrWarn: "Xinrui Academic Warning List",
-    cqu: "Chongqing University",
-    nju: "Nanjing University",
-    xju: "Xinjiang University",
-    cug: "China University of Geosciences",
-    ccf: "China Computer Federation",
-    cju: "Yangtze University (not China Jiliang University)",
-    zju: "Zhejiang University",
-    zhongguokejihexin: "Chinese Science and Technology Core Journals",
+    swufe: "西南财经大学",
+    cufe: "中央财经大学",
+    uibe: "对外经济贸易大学",
+    sdufe: "山东财经大学",
+    xdu: "西安电子科技大学",
+    swjtu: "西南交通大学",
+    ruc: "中国人民大学",
+    xmu: "厦门大学",
+    sjtu: "上海交通大学",
+    fdu: "复旦大学",
+    hhu: "河海大学",
+    pku: "北大核心",
+    scu: "四川大学",
+    sciUpTop: "中科院升级版Top分区",
+    xrWarn: "新锐学术预警",
+    cqu: "重庆大学",
+    nju: "南京大学",
+    xju: "新疆大学",
+    cug: "中国地质大学",
+    ccf: "中国计算机学会",
+    cju: "长江大学（不是计量大学）",
+    zju: "浙江大学",
+    zhongguokejihexin: "中国科技核心期刊",
     fms: "FMS",
     utd24: "UTD24",
-    eii: "Engineering Index (EI)",
-    cssci: "CSSCI (Nanjing University Core Journals)",
-    sciUpSmall: "CAS Upgraded Subject Quartile",
-    cpu: "China Pharmaceutical University",
-    xrTop: "Xinrui Academic Top Tier",
-    sciif: "SCI Impact Factor (JCR)",
-    sci: "SCI Quartile (JCR)",
-    ssci: "SSCI Quartile (JCR)",
-    jci: "JCI (JCR)",
-    sciif5: "SCI Five-Year Impact Factor (JCR)",
-    sciwarn: "CAS Warning List",
-    sciBase: "CAS Basic Quartile",
-    sciUp: "CAS Upgraded Quartile",
-    ajg: "ABS Academic Journal Guide",
+    eii: "EI检索",
+    cssci: "南大核心",
+    sciUpSmall: "中科院升级版小类分区",
+    cpu: "中国药科大学",
+    xrTop: "新锐学术Top分区",
+    sciif: "SCI影响因子-JCR",
+    sci: "SCI分区-JCR",
+    ssci: "SSCI分区-JCR",
+    jci: "JCI指数-JCR",
+    sciif5: "SCI五年影响因子-JCR",
+    sciwarn: "中科院预警",
+    sciBase: "SCI基础版分区-中科院",
+    sciUp: "SCI升级版分区-中科院",
+    ajg: "ABS学术期刊指南",
     ft50: "FT50",
-    cscd: "Chinese Science Citation Database (CSCD)",
+    cscd: "中国科学引文数据库",
     ahci: "A&HCI",
-    esi: "ESI Subject Classification",
-    xr: "Xinrui Academic",
-    xrSmall: "Xinrui Academic Subject Quartile",
+    esi: "ESI学科分类",
+    xr: "新锐学术",
+    xrSmall: "新锐学术小类分区",
   }).map(([code, label]) => [code.toLowerCase(), label]));
   const rankDisplayGroups = [
-    { title: "Journal Rankings and Core Indexes", codes: ["utd24", "ft50", "ajg", "cssci", "pku", "fms", "zhongguokejihexin", "cscd", "ccf", "eii", "ahci", "esi"] },
-    { title: "CAS Quartiles", codes: ["sciUp", "sciUpTop", "sciUpSmall", "sciBase", "sciwarn"] },
-    { title: "JCR Metrics and Quartiles", codes: ["sci", "ssci", "sciif", "sciif5", "jci"] },
-    { title: "Xinrui Academic", codes: ["xr", "xrTop", "xrSmall", "xrWarn"] },
-    { title: "Other Universities and Institutions", codes: [] },
+    { title: "期刊榜单与核心目录", codes: ["utd24", "ft50", "ajg", "cssci", "pku", "fms", "zhongguokejihexin", "cscd", "ccf", "eii", "ahci", "esi"] },
+    { title: "中科院分区", codes: ["sciUp", "sciUpTop", "sciUpSmall", "sciBase", "sciwarn"] },
+    { title: "JCR指标与分区", codes: ["sci", "ssci", "sciif", "sciif5", "jci"] },
+    { title: "新锐学术", codes: ["xr", "xrTop", "xrSmall", "xrWarn"] },
+    { title: "其他高校与机构", codes: [] },
   ];
   const rankDatasetOrder = new Map();
   rankDisplayGroups.forEach((group, category) => group.codes.forEach((code, order) =>
@@ -1746,6 +1752,93 @@
       renderRanks();
     }
   });
+  let rankBatchTimer = null;
+  let lastCompletedRankJob = null;
+  const setRankBatchMessage = (panel, message, retry = false) => {
+    const banner = qs("[data-rank-batch-banner]", panel);
+    if (!banner) return;
+    banner.hidden = false;
+    qs("[data-rank-batch-message]", banner).textContent = message;
+    qs("[data-rank-batch-retry]", banner).hidden = !retry;
+  };
+  const showRankBatchProgress = (panel, job) => {
+    if (!panel?.isConnected || !job) return;
+    const done = job.status !== "queued" && job.status !== "running";
+    const progress = job.processed + "/" + job.total + " journals ("
+      + job.fetched + " fetched, " + job.cached + " cached, "
+      + job.failed + " failed)";
+    const message = done
+      ? "Ranking check " + (job.status === "completed" ? "completed" : "finished with errors")
+        + ": " + progress + (job.last_error ? ". Last error: " + job.last_error : "")
+      : "Checking list rankings in the background: " + progress;
+    setRankBatchMessage(panel, message, done);
+    if (done && lastCompletedRankJob !== job.id) {
+      invalidateRankCache();
+      lastCompletedRankJob = job.id;
+    }
+  };
+  const pollRankBatch = async (panel) => {
+    window.clearTimeout(rankBatchTimer);
+    if (!panel?.isConnected || panel.dataset.dashboardFilter === "all") return;
+    const filter = panel.dataset.dashboardFilter;
+    try {
+      const url = new URL(panel.dataset.rankBatchStatusUrl, location.origin);
+      url.searchParams.set("filter", filter);
+      const response = await fetch(url, {credentials: "same-origin", cache: "no-store"});
+      if (!response.ok) throw new Error("Unable to check list ranking progress.");
+      const {job} = await response.json();
+      if (!panel.isConnected || panel.dataset.dashboardFilter !== filter) return;
+      if (job) {
+        showRankBatchProgress(panel, job);
+        if (job.status === "queued" || job.status === "running")
+          rankBatchTimer = window.setTimeout(() => pollRankBatch(panel), 2000);
+      }
+    } catch (error) {
+      if (panel.isConnected) {
+        setRankBatchMessage(panel, error.message + " Retrying status check...");
+        rankBatchTimer = window.setTimeout(() => pollRankBatch(panel), 5000);
+      }
+    }
+  };
+  const startRankBatch = async (refresh = false) => {
+    const panel = qs(".heatmap-panel");
+    if (!panel) return;
+    closeJournalMenu();
+    const filter = panel.dataset.dashboardFilter || "";
+    if (!filter || filter === "all") {
+      setRankBatchMessage(panel, "Select a journal list before fetching rankings.");
+      return;
+    }
+    const token = qs("[data-journal-list-form] input[name='csrf_token']")?.value || "";
+    if (!token) {
+      setRankBatchMessage(panel, "Please sign in again before requesting rankings.");
+      return;
+    }
+    setRankBatchMessage(panel, "Starting background journal ranking check...");
+    try {
+      const response = await fetch(panel.dataset.rankBatchUrl, {
+        method: "POST", credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRF-Token": token},
+        body: JSON.stringify({filter, refresh}),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Unable to start the ranking check.");
+      if (!panel.isConnected) return;
+      showRankBatchProgress(panel, data);
+      void pollRankBatch(panel);
+    } catch (error) {
+      if (panel.isConnected) setRankBatchMessage(panel, error.message, true);
+    }
+  };
+  document.addEventListener("click", event => {
+    if (event.target.closest("[data-journal-rank-batch]")) {
+      void startRankBatch(false);
+      return;
+    }
+    if (event.target.closest("[data-rank-batch-retry]")) {
+      void startRankBatch(true);
+    }
+  });
   document.addEventListener("pointerdown", event => {
     const header = event.target.closest("[data-rank-drag]");
     if (!header || event.target.closest("button") || event.button !== 0) return;
@@ -1850,6 +1943,7 @@
 
   const initHeatmap = (root = document) => {
     qsa(".heatmap-panel", root).forEach((panel) => {
+      if (panel.dataset.rankBatchStatusUrl) void pollRankBatch(panel);
       const view = loadJournalView(panel);
       const search = qs("[data-journal-filter]", panel);
       if (search && typeof view.search === "string") search.value = view.search.slice(0, 300);

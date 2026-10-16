@@ -191,6 +191,28 @@ def _add_user_dashboard_filter_key(engine: Engine) -> None:
             ))
 
 
+def _add_shared_journal_rank_cache(engine: Engine) -> None:
+    """Idempotent journal rank data and resumable-job storage."""
+    from netvault_server.server.models import JournalRankBatchJob, JournalRankCache
+
+    for table in (JournalRankCache.__table__, JournalRankBatchJob.__table__):
+        table.create(bind=engine, checkfirst=True)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_journal_rank_batch_jobs_filter_key "
+            "ON journal_rank_batch_jobs (filter_key)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_journal_rank_batch_jobs_status "
+            "ON journal_rank_batch_jobs (status)"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_journal_rank_batch_active_snapshot "
+            "ON journal_rank_batch_jobs (snapshot_hash) "
+            "WHERE status IN ('queued', 'running')"
+        ))
+
+
 def _add_last_login_at(engine: Engine) -> None:
     inspector = inspect(engine)
     if "users" not in inspector.get_table_names():
@@ -326,6 +348,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     _add_journal_identity,
     _align_identity_schema,
     _add_user_dashboard_filter_key,
+    _add_shared_journal_rank_cache,
 )
 
 
@@ -361,3 +384,4 @@ def run_migrations(engine: Engine) -> None:
     # column changes. Reconcile this additive, idempotent preference field
     # independently of the stored migration version before startup loads User.
     _add_user_dashboard_filter_key(engine)
+    _add_shared_journal_rank_cache(engine)
