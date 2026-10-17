@@ -55,6 +55,24 @@ def cached_rank(db: Session, name: str) -> dict | None:
     }
 
 
+def cached_ranks(db: Session, names: list[str]) -> list[dict]:
+    """Read shared ranking results for visible journals in one query."""
+    keys = list(dict.fromkeys(journal_key(name) for name in names))
+    if not keys:
+        return []
+    rows = db.scalars(select(JournalRankCache).where(JournalRankCache.journal_key.in_(keys))).all()
+    return [
+        {
+            "journal_name": row.journal_name,
+            "rows": json.loads(row.rows_json),
+            "queried_at": row.queried_at,
+            "cached": True,
+            "cache_scope": "server",
+        }
+        for row in rows
+    ]
+
+
 def lookup_rank(db: Session, name: str, refresh: bool = False) -> dict:
     key = journal_key(name)
     if not refresh:

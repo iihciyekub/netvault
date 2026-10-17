@@ -273,6 +273,80 @@ def request_stop(signum, _frame):
     log(f"SIGNAL {signum}; draining active PDFs without submitting more")
 
 
+def run_approved(args):
+    """Strictly process the exact admin-reviewed IDs and hashes, never other PDFs."""
+    from audit_pdf_maintenance import write_report
+
+    source = args.approved_candidates
+    if source.is_symlink() or source.stat().st_size > 4096:
+        raise ValueError("Invalid approved candidate manifest")
+    candidate_data = json.loads(source.read_text(encoding="utf-8"))
+    candidates = candidate_data.get("candidates")
+    if not isinstance(candidates, list) or len(candidates) != args.limit or not 1 <= len(candidates) <= 10:
+        raise ValueError("Expected 1..10 approved compression candidates")
+    if args.jobs != 1 or not args.pilot or args.result_output is None:
+        raise ValueError("Approved compression requires --pilot --jobs 1 --result-output")
+    ids = set()
+    for candidate in candidates:
+        ident, sha = candidate.get("id"), candidate.get("sha256")
+        if (type(ident) is not int or ident <= 0 or ident in ids
+                or not isinstance(sha, str) or len(sha) != 64
+                or any(char not in "0123456789abcdef" for char in sha)):
+            raise ValueError("Invalid or duplicate approved PDF fingerprint")
+        ids.add(ident)
+
+    TMP.mkdir(parents=True, exist_ok=True)
+    with LOCK.open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with connect_db() as db:
+            rows = []
+            # Preflight every identity before the first write; process() also
+            # re-verifies SHA, size, DOI, path, and the row under lock.
+            for candidate in candidates:
+                with db.cursor() as cursor:
+                    cursor.execute(
+                        "select id,doi,sha256,size,storage_path from pdfs "
+                        "where id=%s and sha256=%s and is_deleted=false "
+                        "and (pdfcraft_processed_sha256 IS DISTINCT FROM sha256 "
+                        "or pdfcraft_ppi IS DISTINCT FROM %s "
+                        "or pdfcraft_quality IS DISTINCT FROM %s)",
+                        (candidate["id"], candidate["sha256"], PPI, QUALITY),
+                    )
+                    row = cursor.fetchone()
+                if row is None:
+                    raise ValueError(f"Approved PDF {candidate['id']} changed since audit")
+                rows.append(row)
+
+        results = {
+            "mode": "approved_compression", "total": len(rows), "attempted": 0, "replaced": 0,
+            "unchanged": 0, "failed": 0, "saved_bytes": 0, "items": [],
+        }
+        progress = getattr(args, "progress_output", None)
+        if progress:
+            write_report(progress, {key: value for key, value in results.items() if key != "items"})
+        try:
+            for row in rows:
+                if _stop_requested.is_set():
+                    raise RuntimeError("Compression interrupted before completing the approved batch")
+                result, error = process_one(row, pilot=True)
+                results["attempted"] += 1
+                if error:
+                    results["failed"] += 1
+                    results["items"].append({"id": row[0], "status": "failed", "error": error[:200]})
+                    log(f"SKIP approved id={row[0]} {error[:160]}")
+                else:
+                    results[result["status"]] += 1
+                    results["saved_bytes"] += result["old"] - result["new"]
+                    results["items"].append({"id": row[0], "status": result["status"],
+                                             "saved_bytes": result["old"] - result["new"]})
+                    log(f"OK approved id={row[0]} status={result['status']} saved={result['old'] - result['new']}")
+                if progress:
+                    write_report(progress, {key: value for key, value in results.items() if key != "items"})
+        finally:
+            write_report(args.result_output, results)
+        return 1 if results["failed"] else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group(required=True)
@@ -280,11 +354,25 @@ def main():
     modes.add_argument("--all", action="store_true")
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--jobs", type=int, default=4, help="Concurrent PDF workers (1-8)")
+    parser.add_argument("--approved-candidates", type=Path,
+                        help="Explicit admin-reviewed IDs and SHA-256 fingerprints (pilot only)")
+    parser.add_argument("--result-output", type=Path,
+                        help="Per-job JSON report for an approved compression batch")
+    parser.add_argument("--progress-output", type=Path,
+                        help="Bounded per-batch progress report for the host admin worker")
     args = parser.parse_args()
     if not 1 <= args.jobs <= 8:
         parser.error("--jobs must be between 1 and 8")
+    if bool(args.approved_candidates) != bool(args.result_output):
+        parser.error("--approved-candidates and --result-output must be used together")
+    if args.approved_candidates and not args.pilot:
+        parser.error("Approved candidate processing requires --pilot")
+    if args.progress_output and not args.approved_candidates:
+        parser.error("--progress-output requires --approved-candidates")
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
+    if args.approved_candidates:
+        return run_approved(args)
     TMP.mkdir(parents=True, exist_ok=True)
     with LOCK.open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

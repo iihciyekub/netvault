@@ -1,5 +1,6 @@
 from pathlib import Path
 from html.parser import HTMLParser
+import hashlib
 import logging
 import secrets
 from typing import Any
@@ -30,12 +31,13 @@ from netvault_server.server.journal_filters import (
 )
 from netvault_server.server.doi_correction import correct_pdf_doi as correct_pdf_doi_service
 from netvault_server.server.main_helpers import process_upload
-from netvault_server.server.models import Pdf, User, UserRole
+from netvault_server.server.models import MaintenanceJob, Pdf, User, UserRole
 from netvault_server.server.pdf_service import (existing_pdfs, search_pdfs_query,
     search_pdfs_by_dois_query, resolve_pdf_file, send_pdf_file, doi_correction_history,
     read_pdf_document_info)
 from netvault_server.server.bulk_doi_search import create_doi_batch, get_doi_batch
 from netvault_server.server import accounts
+from netvault_server.server import maintenance
 from netvault_server.server.schemas import PasswordResetRequest, UserCreateRequest, Sha256ExistsRequest
 from pydantic import BaseModel, Field, ValidationError
 from netvault_server.server.security import (
@@ -54,6 +56,22 @@ CSRF_COOKIE = "netvault_csrf"
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 router = APIRouter()
 logger = logging.getLogger(__name__)
+MAINTENANCE_SCRIPT_HASH = hashlib.sha256(
+    (Path(__file__).parent / "static" / "admin-maintenance.js").read_bytes()
+).hexdigest()[:12]
+I18N_SCRIPT_HASH = hashlib.sha256(
+    (Path(__file__).parent / "static" / "i18n.js").read_bytes()
+).hexdigest()[:12]
+CSS_ASSET_HASH = hashlib.sha256(
+    (Path(__file__).parent / "static" / "styles.css").read_bytes()
+).hexdigest()[:12]
+APP_SCRIPT_HASH = hashlib.sha256(
+    (Path(__file__).parent / "static" / "app.js").read_bytes()
+).hexdigest()[:12]
+
+
+class JournalRankCacheReadRequest(BaseModel):
+    names: list[str] = Field(min_length=1, max_length=60)
 
 
 class JournalRankBatchRequest(BaseModel):
@@ -194,6 +212,9 @@ def render(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse
         "path_for": external_path,
         "asset_version": __version__,
         "app_version": __version__,
+        "i18n_script_hash": I18N_SCRIPT_HASH,
+        "css_asset_hash": CSS_ASSET_HASH,
+        "app_script_hash": APP_SCRIPT_HASH,
         "upload_limits": get_settings(),
     }
     response = templates.TemplateResponse(request, name, context)
@@ -241,14 +262,49 @@ def admin_context(
     user: User,
     db: Session,
     *,
+    section: str = "overview",
+    page: int = 1,
     error: str | None = None,
     message: str | None = None,
 ) -> HTMLResponse:
-    users = db.scalars(select(User).order_by(User.username.asc())).all()
+    if section not in ("overview", "maintenance", "jobs", "users"):
+        raise HTTPException(404, "Unknown admin page.")
+    users = db.scalars(select(User).order_by(User.username.asc())).all() if section == "users" else []
+    total = maintenance.job_count(db) if section == "jobs" else 0
+    pages = max(1, (total + 19) // 20)
+    page = min(max(page, 1), pages)
+    jobs = (
+        maintenance.recent_jobs(db, limit=20, offset=(page - 1) * 20)
+        if section == "jobs"
+        else maintenance.recent_jobs(db, limit=6) if section == "overview" else []
+    )
+    recent = maintenance.recent_jobs(db, limit=5) if section in ("overview", "jobs") else []
+    active = next((job for job in recent if job["status"] in ("queued", "running")), None)
+    if section == "overview":
+        health = maintenance.overview(db)
+    elif section in ("maintenance", "jobs"):
+        worker, online = maintenance.worker_state()
+        health = {
+            "worker_online": online,
+            "last_backup": worker.get("backup_created_utc") if online else None,
+        }
+    else:
+        health = {}
+    live = bool(db.scalar(select(MaintenanceJob.id).where(
+        MaintenanceJob.status.in_(("queued", "running")),
+    ).limit(1)))
     return render(
         request,
         "admin.html",
-        {"user": user, "users": users, "error": error, "message": message, "roles": list(UserRole)},
+        {
+            "user": user, "users": users, "error": error, "message": message,
+            "roles": list(UserRole), "maintenance": health,
+            "maintenance_jobs": jobs,
+            "maintenance_script_hash": MAINTENANCE_SCRIPT_HASH,
+            "maintenance_revision": maintenance.jobs_revision(recent),
+            "admin_section": section, "admin_has_running": live,
+            "active_job": active, "jobs_page": page, "jobs_pages": pages,
+        },
     )
 
 
@@ -314,6 +370,23 @@ def journal_rank(request: Request, name: str = Query(min_length=1, max_length=30
         return lookup_rank(db, name, refresh=refresh)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
+@router.post("/web/journal-ranks/cached")
+def journal_ranks_cached(
+    request: Request,
+    payload: JournalRankCacheReadRequest,
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    validate_csrf(request, request.headers.get("X-CSRF-Token", ""))
+    from netvault_server.server.journal_ranks import cached_ranks
+    try:
+        return {"ranks": cached_ranks(db, payload.names)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.post("/web/journal-rank-batches", status_code=202)
@@ -467,13 +540,20 @@ def web_create_journal_filter(
     name = payload.get("name")
     if not isinstance(name, str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide a list name")
+    category = payload.get("category", "")
+    kind = payload.get("kind", "")
+    journals = payload.get("journals", [])
+    if (not isinstance(category, str) or not isinstance(kind, str)
+            or not isinstance(journals, list) or len(journals) > 2_000
+            or any(not isinstance(item, str) or len(item.strip()) > 255 for item in journals)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid list category, type or journals")
     try:
-        result = create_user_journal_filter(db, user.id, name)
+        result = create_user_journal_filter(db, user.id, name, category, kind, journals)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
-    from netvault_server.server.stats import invalidate_stats_cache
+    from netvault_server.server.stats import refresh_user_journal_filter_cache
 
-    invalidate_stats_cache()
+    refresh_user_journal_filter_cache(db, user.id)
     return result
 
 
@@ -524,15 +604,17 @@ def web_save_journal_filter(
             name if isinstance(name, str) else None,
             expected_updated_at=payload.get("expected_updated_at"),
             check_revision="expected_updated_at" in payload,
+            category=payload.get("category") if isinstance(payload.get("category"), str) else None,
+            kind=payload.get("kind") if isinstance(payload.get("kind"), str) else None,
         )
     except ValueError as exc:
         conflict = "changed in another session" in str(exc)
         raise HTTPException(
             status_code=409 if conflict else status.HTTP_400_BAD_REQUEST, detail=str(exc),
         ) from None
-    from netvault_server.server.stats import invalidate_stats_cache
+    from netvault_server.server.stats import refresh_user_journal_filter_cache
 
-    invalidate_stats_cache()
+    refresh_user_journal_filter_cache(db, user.id, filter_key)
     return result
 
 
@@ -553,9 +635,9 @@ def web_reset_journal_filter(
             result = reset_user_journal_filter(db, user.id, filter_key)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
-    from netvault_server.server.stats import invalidate_stats_cache
+    from netvault_server.server.stats import refresh_user_journal_filter_cache
 
-    invalidate_stats_cache()
+    refresh_user_journal_filter_cache(db, user.id, filter_key)
     return result
 
 
@@ -760,11 +842,172 @@ def cli_page(request: Request, db: Session = Depends(get_db)) -> Any:
 
 
 @router.get("/web/admin", response_class=HTMLResponse, include_in_schema=False)
-def admin_page(request: Request, db: Session = Depends(get_db)) -> Any:
+def admin_page(request: Request, notice: str = "", db: Session = Depends(get_db)) -> Any:
     user = require_web_admin(request, db)
     if isinstance(user, RedirectResponse):
         return user
-    return admin_context(request, user, db)
+    return admin_context(
+        request, user, db, section="overview",
+        message=(
+            "Maintenance task queued." if notice == "queued"
+            else "Stop requested. The host will finish in-flight PDF work and exit."
+            if notice == "stopping" else None
+        ),
+    )
+
+
+@router.get("/web/admin/maintenance", response_class=HTMLResponse, include_in_schema=False)
+def admin_maintenance_page(request: Request, db: Session = Depends(get_db)) -> Any:
+    user = require_web_admin(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    return admin_context(request, user, db, section="maintenance")
+
+
+@router.get("/web/admin/jobs", response_class=HTMLResponse, include_in_schema=False)
+def admin_jobs_page(
+    request: Request, page: int = Query(1, ge=1), notice: str = "",
+    db: Session = Depends(get_db),
+) -> Any:
+    user = require_web_admin(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    message = (
+        "Maintenance task queued." if notice == "queued"
+        else "Stop requested. The host will finish in-flight PDF work and exit."
+        if notice == "stopping" else None
+    )
+    return admin_context(request, user, db, section="jobs", page=page, message=message)
+
+
+@router.get("/web/admin/users", response_class=HTMLResponse, include_in_schema=False)
+def admin_users_page(request: Request, db: Session = Depends(get_db)) -> Any:
+    user = require_web_admin(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    return admin_context(request, user, db, section="users")
+
+
+@router.get("/web/admin/maintenance/state", include_in_schema=False)
+def admin_maintenance_state(request: Request, db: Session = Depends(get_db)) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    jobs = maintenance.recent_jobs(db, limit=5)
+    return {
+        "revision": maintenance.jobs_revision(jobs),
+        "running": any(job["status"] in ("queued", "running") for job in jobs),
+        "worker_online": maintenance.worker_is_online(),
+    }
+
+
+@router.get("/web/admin/maintenance/jobs/{job_id}/report", include_in_schema=False)
+def admin_maintenance_report(
+    request: Request, job_id: str, db: Session = Depends(get_db),
+) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    from netvault_server.server.models import MaintenanceJob
+    job = db.get(MaintenanceJob, job_id)
+    if job is None:
+        raise HTTPException(404, "Maintenance job not found.")
+    try:
+        report = maintenance.load_report(job)
+    except (ValueError, OSError):
+        report = None
+    if report is None:
+        raise HTTPException(404, "Verified maintenance report unavailable.")
+    return JSONResponse(report)
+
+
+@router.get("/web/admin/maintenance/jobs/{job_id}/log", include_in_schema=False)
+def admin_full_library_log(
+    request: Request, job_id: str, db: Session = Depends(get_db),
+) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        raise HTTPException(status_code=401, detail="Login required")
+    from netvault_server.server.models import MaintenanceJob
+    job = db.get(MaintenanceJob, job_id)
+    if job is None or job.kind != "full_compression":
+        raise HTTPException(404, "Full-library maintenance job not found.")
+    return JSONResponse({
+        "job_id": job.id,
+        "status": job.status,
+        "lines": maintenance.sanitized_full_log(job.id),
+        "note": "Sanitized recent log only. Detailed errors remain on the host.",
+    }, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/web/admin/maintenance/start", include_in_schema=False)
+def admin_start_maintenance(
+    request: Request,
+    kind: str = Form(""),
+    limit: int = Form(10),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    validate_csrf(request, csrf_token_value)
+    maintenance.enqueue_preview(db, admin.id, kind, limit)
+    return redirect("/web/admin/jobs?notice=queued")
+
+
+@router.post("/web/admin/maintenance/full", include_in_schema=False)
+def admin_full_library_maintenance(
+    request: Request,
+    confirmation: str = Form(""),
+    acknowledge_no_backup: bool = Form(False),
+    jobs: int = Form(3),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    validate_csrf(request, csrf_token_value)
+    maintenance.enqueue_full_library(
+        db, admin.id, confirmation=confirmation,
+        acknowledge_no_backup=acknowledge_no_backup, jobs=jobs,
+    )
+    return redirect("/web/admin/jobs?notice=queued")
+
+
+@router.post("/web/admin/maintenance/jobs/{job_id}/stop", include_in_schema=False)
+def admin_stop_full_maintenance(
+    request: Request,
+    job_id: str,
+    confirmation: str = Form(""),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    validate_csrf(request, csrf_token_value)
+    maintenance.stop_full_library(db, job_id, confirmation=confirmation)
+    return redirect("/web/admin/jobs?notice=stopping")
+
+
+@router.post("/web/admin/maintenance/jobs/{source_id}/approve", include_in_schema=False)
+def admin_approve_maintenance(
+    request: Request,
+    source_id: str,
+    operation: str = Form(""),
+    confirmation: str = Form(""),
+    limit: int = Form(2),
+    csrf_token_value: str = Form("", alias="csrf_token"),
+    db: Session = Depends(get_db),
+) -> Any:
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+    validate_csrf(request, csrf_token_value)
+    maintenance.approve(db, admin.id, source_id, operation, confirmation, limit=limit)
+    return redirect("/web/admin/jobs?notice=queued")
 
 
 @router.post("/web/admin/users/create", response_class=HTMLResponse, include_in_schema=False)
@@ -784,10 +1027,10 @@ def admin_create_user(
         payload = UserCreateRequest(username=username, password=password, role=role)
         user = accounts.create_user(db, payload)
     except ValidationError as exc:
-        return admin_context(request, admin, db, error=accounts.form_validation_message(exc))
+        return admin_context(request, admin, db, section="users", error=accounts.form_validation_message(exc))
     except HTTPException as exc:
-        return admin_context(request, admin, db, error=exc.detail)
-    return admin_context(request, admin, db, message=f"Created {user.username} ({user.role.value}).")
+        return admin_context(request, admin, db, section="users", error=exc.detail)
+    return admin_context(request, admin, db, section="users", message=f"Created {user.username} ({user.role.value}).")
 
 
 @router.post("/web/admin/users/reset-password", response_class=HTMLResponse, include_in_schema=False)
@@ -805,10 +1048,10 @@ def admin_reset_password(
     try:
         target = accounts.reset_password(db, username, PasswordResetRequest(password=password))
     except ValidationError as exc:
-        return admin_context(request, admin, db, error=accounts.form_validation_message(exc))
+        return admin_context(request, admin, db, section="users", error=accounts.form_validation_message(exc))
     except HTTPException as exc:
-        return admin_context(request, admin, db, error=exc.detail)
-    return admin_context(request, admin, db, message=f"Updated password for {target.username}.")
+        return admin_context(request, admin, db, section="users", error=exc.detail)
+    return admin_context(request, admin, db, section="users", message=f"Updated password for {target.username}.")
 
 
 @router.post("/web/admin/users/set-active", response_class=HTMLResponse, include_in_schema=False)
@@ -826,9 +1069,9 @@ def admin_set_user_active(
     try:
         target = accounts.set_active(db, username, active, admin)
     except HTTPException as exc:
-        return admin_context(request, admin, db, error=exc.detail)
+        return admin_context(request, admin, db, section="users", error=exc.detail)
     verb = "Activated" if active else "Deactivated"
-    return admin_context(request, admin, db, message=f"{verb} {target.username}.")
+    return admin_context(request, admin, db, section="users", message=f"{verb} {target.username}.")
 
 
 @router.get("/web/upload", response_class=HTMLResponse, include_in_schema=False)

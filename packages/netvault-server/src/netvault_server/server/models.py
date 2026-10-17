@@ -87,6 +87,39 @@ class JournalRankBatchJob(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
 
+class MaintenanceJob(Base):
+    """Durable admin-only host-run maintenance work and approval audit trail."""
+
+    __tablename__ = "maintenance_jobs"
+    __table_args__ = (
+        Index(
+            "uq_maintenance_active_job", "singleton_key", unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+        UniqueConstraint("source_job_id", name="uq_maintenance_source_approval"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), index=True, nullable=False, default="queued")
+    singleton_key: Mapped[str] = mapped_column(String(24), nullable=False, default="maintenance")
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    source_job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    options_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    result_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_by: Mapped[User] = relationship()
+
+
 class Pdf(Base):
     __tablename__ = "pdfs"
 
@@ -110,6 +143,10 @@ class Pdf(Base):
     crossref_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    pdfcraft_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pdfcraft_processed_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pdfcraft_ppi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pdfcraft_quality: Mapped[int | None] = mapped_column(Integer, nullable=True)
     uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)

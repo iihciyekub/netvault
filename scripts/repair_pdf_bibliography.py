@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from typing import Callable
 
 from pypdf import PdfReader
 from sqlalchemy import create_engine, func, or_, select
@@ -223,6 +224,8 @@ def apply_if_unchanged(session: Session, original: dict, proposal: dict, metadat
 def run(
     engine, *, root: Path = ROOT, limit: int = 20, min_age_hours: int = 2,
     include_partial: bool = False, apply: bool = False,
+    approved_proposals: list[dict] | None = None,
+    progress: Callable[[dict], None] | None = None,
 ) -> dict:
     if not 1 <= limit <= 100 or min_age_hours < 0:
         raise ValueError("Limit must be 1..100 and minimum age must be nonnegative")
@@ -231,8 +234,38 @@ def run(
             session, limit=limit, hours=min_age_hours, include_partial=include_partial
         )
     proposals = []
+    approved = {}
+    if approved_proposals is not None:
+        for item in approved_proposals:
+            if item.get("decision") == "verified" and isinstance(item.get("fill_only"), dict):
+                if item["id"] in approved:
+                    raise ValueError("Duplicate approved metadata identity.")
+                approved[item["id"]] = item
+        rows = [row for row in rows if row["id"] in approved]
+        if {row["id"] for row in rows} != set(approved):
+            raise ValueError("Approved metadata candidates have changed; run a new preview.")
+
+    def report_progress() -> None:
+        if progress:
+            progress({
+                "mode": "metadata_apply" if apply else "metadata_preview",
+                "total": len(rows), "processed": len(proposals),
+                "verified": sum(p["decision"] == "verified" for p in proposals),
+                "applied": sum(p.get("apply_result", "").startswith("applied:") for p in proposals),
+            })
+
+    report_progress()
     for row in rows:
         proposal, metadata = propose(row, root)
+        if approved_proposals is not None:
+            previous = approved[row["id"]]
+            if (row["sha256"] != previous.get("sha256")
+                    or row["doi"] != previous.get("doi")
+                    or proposal.get("decision") != "verified"
+                    or proposal.get("fill_only") != previous.get("fill_only")):
+                proposal["decision"] = "review"
+                proposal["reason"] = "Source changed or proposal differs from approved preview"
+                metadata = None
         if apply and proposal["decision"] == "verified" and metadata is not None:
             try:
                 with Session(engine) as session:
@@ -242,6 +275,7 @@ def run(
             except Exception as exc:
                 proposal["apply_result"] = f"failed: {type(exc).__name__}: {str(exc)[:180]}"
         proposals.append(proposal)
+        report_progress()
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "mode": "apply" if apply else "preview",
@@ -263,7 +297,26 @@ def main() -> int:
                         help="Apply only verified, fill-only proposals; never run from cron.")
     parser.add_argument("--confirm-apply", action="store_true")
     parser.add_argument("--backup-manifest", type=Path)
+    parser.add_argument("--approved-proposals", type=Path,
+                        help="Bind --apply to verified identities and fill-only fields in a saved preview.")
+    parser.add_argument("--progress-output", type=Path,
+                        help="Host-worker JSON counters (no DOI or document metadata)")
     args = parser.parse_args()
+    if args.approved_proposals and not args.apply:
+        parser.error("--approved-proposals requires --apply")
+    approved_proposals = None
+    if args.approved_proposals:
+        try:
+            if args.approved_proposals.is_symlink() or args.approved_proposals.stat().st_size > 2_000_000:
+                raise ValueError("Missing or oversized approval report")
+            approval = json.loads(args.approved_proposals.read_text(encoding="utf-8"))
+            if approval.get("mode") != "preview" or not isinstance(approval.get("proposals"), list):
+                raise ValueError("Expected a metadata preview report")
+            approved_proposals = approval["proposals"]
+            if len(approved_proposals) > 10:
+                raise ValueError("Too many reviewed proposals")
+        except (ValueError, KeyError, OSError) as exc:
+            parser.error(f"invalid approved proposals: {exc}")
     if args.apply:
         if not args.confirm_apply or args.backup_manifest is None:
             parser.error("--apply requires --confirm-apply and --backup-manifest")
@@ -278,6 +331,9 @@ def main() -> int:
                 engine, root=args.storage_root, limit=args.limit,
                 min_age_hours=args.min_age_hours,
                 include_partial=args.include_partial, apply=args.apply,
+                approved_proposals=approved_proposals,
+                progress=(lambda snapshot: write_report(args.progress_output, snapshot))
+                if args.progress_output else None,
             )
         finally:
             engine.dispose()

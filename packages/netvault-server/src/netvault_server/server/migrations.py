@@ -213,6 +213,48 @@ def _add_shared_journal_rank_cache(engine: Engine) -> None:
         ))
 
 
+def _add_maintenance_jobs(engine: Engine) -> None:
+    """Additive maintenance queue; survives upgrades from diverged schema versions."""
+    from netvault_server.server.models import MaintenanceJob
+
+    MaintenanceJob.__table__.create(bind=engine, checkfirst=True)
+    existing = {column["name"] for column in inspect(engine).get_columns("maintenance_jobs")}
+    with engine.begin() as connection:
+        if "cancel_requested" not in existing:
+            connection.execute(text(
+                "ALTER TABLE maintenance_jobs ADD COLUMN cancel_requested BOOLEAN "
+                "NOT NULL DEFAULT FALSE"
+            ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_maintenance_jobs_status "
+            "ON maintenance_jobs (status)"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_maintenance_active_job "
+            "ON maintenance_jobs (singleton_key) "
+            "WHERE status IN ('queued', 'running')"
+        ))
+
+
+def _add_pdfcraft_tracking_columns(engine: Engine) -> None:
+    """Expose existing host PDFCraft processing markers to the web dashboard."""
+    inspector = inspect(engine)
+    if "pdfs" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("pdfs")}
+    dialect = engine.dialect.name
+    types = (
+        ("pdfcraft_processed_at", "TIMESTAMP WITH TIME ZONE" if dialect == "postgresql" else "TIMESTAMP"),
+        ("pdfcraft_processed_sha256", "VARCHAR(64)"),
+        ("pdfcraft_ppi", "INTEGER"),
+        ("pdfcraft_quality", "INTEGER"),
+    )
+    with engine.begin() as connection:
+        for column, sql_type in types:
+            if column not in existing:
+                connection.execute(text(f"ALTER TABLE pdfs ADD COLUMN {column} {sql_type}"))
+
+
 def _add_last_login_at(engine: Engine) -> None:
     inspector = inspect(engine)
     if "users" not in inspector.get_table_names():
@@ -385,3 +427,5 @@ def run_migrations(engine: Engine) -> None:
     # independently of the stored migration version before startup loads User.
     _add_user_dashboard_filter_key(engine)
     _add_shared_journal_rank_cache(engine)
+    _add_maintenance_jobs(engine)
+    _add_pdfcraft_tracking_columns(engine)

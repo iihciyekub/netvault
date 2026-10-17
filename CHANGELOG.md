@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.7.77 — 2026-10-17
+
+- Merge the VPS NetVault functionality with the GitHub 0.7.76 release without replacing remote history.
+- Consolidate the journal navigator, custom-list categories/types, PostgreSQL rank-cache prefetch and persistent ranking sidebar.
+- Add English, Simplified Chinese and Traditional Chinese interface translations with a shared catalog and generated browser bundle.
+- Integrate the administrator maintenance queue, approved PDF processing, PDFCraft state tracking and safer host-worker scripts.
+- Reconcile database migrations and journal-list cache refresh behavior; retain existing ranking, heatmap, and CLI functionality.
+- Use 0.7.77 consistently for CLI, server, web assets, package lockfiles and release metadata.
+
 ## 0.7.76 — 2026-10-16
 
 - Move the list-wide ranking status into the existing Dashboard search toolbar as a compact `Ranks x/y` indicator, with full progress available on hover and an icon-only re-fetch control. Remove the separate full-width banner so it no longer pushes the heatmap downward.

@@ -53,6 +53,29 @@ def invalidate_stats_cache() -> None:
     _dashboard_revision = uuid4().hex
 
 
+def refresh_user_journal_filter_cache(
+    db: Session, user_id: int, changed_filter: str | None = None,
+) -> None:
+    """Update only one user's list labels; keep expensive PDF aggregations.
+
+    Creating or renaming a private list does not change the full library.
+    Invalidate only a saved/deleted filter's own journal counts, while
+    refreshing sidebar options for the user's other cached dashboards.
+    """
+    global _dashboard_revision
+    options = user_filter_options(db, user_id)
+    for (cached_user, cached_filter), (_deadline, stats) in list(_dashboard_cache.items()):
+        if cached_user != user_id:
+            continue
+        if changed_filter is not None and cached_filter == changed_filter:
+            del _dashboard_cache[(cached_user, cached_filter)]
+            continue
+        stats["journal_filters"] = options[0]
+        stats["abs_journal_filters"] = options[1]
+        stats["custom_journal_filters"] = options[2]
+    _dashboard_revision = uuid4().hex
+
+
 def get_dashboard_revision() -> str:
     return _dashboard_revision
 

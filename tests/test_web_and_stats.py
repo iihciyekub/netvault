@@ -29,11 +29,14 @@ def test_web_ui_source_contains_no_chinese_text() -> None:
     ui_files.extend([server_root / "static" / "app.js", server_root / "static" / "styles.css"])
     chinese = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
-    # The dataset taxonomy explicitly requested for journal rank results is
-    # Chinese data, not interface UI copy. Keep all other UI instructions
-    # English-only and do not disable this language regression check.
+    # Canonical UI markup and feature scripts remain English. The trilingual
+    # glossary is managed separately. Only the native labels inside the
+    # language chooser (and the pre-existing journal rank taxonomy data) are
+    # allowed in normal English-authored templates/scripts.
     def visible_ui_copy(path: Path) -> str:
         content = path.read_text(encoding="utf-8")
+        if path.name == "base.html":
+            content = content.replace("简体中文", "").replace("繁體中文", "")
         if path.name == "app.js":
             content = re.sub(
                 r"  const rankDatasetLabels = new Map\(Object\.entries\(\{.*?"
@@ -48,7 +51,7 @@ def test_web_ui_source_contains_no_chinese_text() -> None:
         for path in ui_files
         if chinese.search(visible_ui_copy(path))
     ]
-    assert violations == [], f"Web UI text must be English-only: {violations}"
+    assert violations == [], f"Canonical web UI copy must use the translation catalog: {violations}"
 
 
 def test_dashboard_number_format_uses_thousands_separators() -> None:
@@ -544,12 +547,15 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert "data-journal-limit-status" in limit_form
     assert '<i class="fa-solid fa-eye" aria-hidden="true"></i>' in limit_form
     assert "<span>Show</span>" not in limit_form
-    assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
+    assert normal.text.index('class="heatmap-filter-field"') < normal.text.index(
         'class="heatmap-limit-form"'
-    )
+    ) < normal.text.index('aria-label="Heatmap legend"')
+    assert '<div class="dashboard-toolbar">' not in normal.text
+    assert 'class="dashboard-admin-console"' not in normal.text
     assert 'id="journal-heatmap-sort" data-journal-sort aria-label="Sort journals" hidden>' in normal.text
     assert 'data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>' in normal.text
-    assert 'data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name">Journal</button>' in normal.text
+    assert 'data-journal-sort-toggle="name" data-journal-library-sort' in normal.text
+    assert 'data-journal-library-items' in normal.text
     assert '<option value="name-asc">Journal A–Z</option>' in normal.text
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
@@ -581,8 +587,8 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert 'class="heatmap-limit-form"' in filtered.text
     assert 'name="active_filter" value="utd24"' in filtered.text
     assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in filtered.text
-    assert '<div class="summary-tags" aria-label="Vault summary">' in filtered.text
-    assert '<span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>231</span>' in filtered.text
+    assert '<div class="summary-tags" aria-label="Vault summary">' not in filtered.text
+    assert 'class="dashboard-admin-console"' not in filtered.text
     assert '<span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>21</span>' in filtered.text
     filtered_update = client.post(
         "/web/preferences/all-journal-limit",
@@ -724,8 +730,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h1 class="sr-only">NetVault Help</h1>' in info_page.text
     assert "Version" in info_page.text
     assert f"NetVault v{__version__}" in info_page.text
-    assert f"app.js?v={__version__}\"" in info_page.text
-    assert f"styles.css?v={__version__}\"" in info_page.text
+    for asset in ("app.js", "styles.css"):
+        assert re.search(
+            rf"{re.escape(asset)}\?v={re.escape(__version__)}&amp;h=[0-9a-f]{{12}}\"",
+            info_page.text,
+        ), asset
     assert client.get("/openapi.json").json()["info"]["version"] == __version__
     assert 'id="platform-overview-title"' in info_page.text
     assert "> Platform Overview</h2>" in info_page.text
@@ -790,7 +799,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'data-journal-list-add' in dashboard.text
     assert 'placeholder="Choose a journal name..."' in dashboard.text
     assert 'id="journal-list-options"' in dashboard.text
-    assert 'placeholder="Search name or initials (e.g. NRL, IJIR)..."' in dashboard.text
+    assert 'placeholder="Search journals..."' in dashboard.text
     assert "Search a journal name or initials, such as IJIR." in dashboard.text
     assert "Open in Web of Science" in dashboard.text
     assert "data-journal-context-menu" in dashboard.text
@@ -1220,7 +1229,8 @@ def test_dashboard_remembers_selected_list_without_get_prefetch_side_effects(cli
     assert updated.json()["filter"] == key
     root = client.get("/web")
     assert f'data-dashboard-filter="{key}"' in root.text
-    assert 'class="filter-menu active"' in root.text
+    assert 'class="journal-list-group active"' in root.text
+    assert 'data-journal-list-group="custom" open' in root.text
     assert sorted(dashboard_journal_names(root)) == sorted(names)
 
     # Hover prefetches, explicit URL links and a fresh login must not reset
@@ -1238,6 +1248,130 @@ def test_dashboard_remembers_selected_list_without_get_prefetch_side_effects(cli
     assert no_such_list.status_code == 400
     client.delete(f"/web/journal-filters/{key}", headers={"x-csrf-token": client.cookies["netvault_csrf"]})
     assert 'data-dashboard-filter="all"' in client.get("/web").text
+
+
+def test_left_journal_list_picker_can_create_switch_and_delete_only_custom_lists(
+    client: TestClient,
+) -> None:
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    headers = {"x-csrf-token": csrf}
+
+    initial = client.get("/web").text
+    assert '<section class="journal-library-collections" aria-label="Journal lists">' in initial
+    assert 'data-journal-library-menu-toggle' not in initial
+    assert '<details class="filter-menu' not in initial
+    assert 'data-journal-list-group="abs" open' in initial
+    assert 'data-journal-list-group="custom" open' in initial
+    assert '<span>ABS</span>' in initial
+    assert '<span>My lists</span>' in initial
+    assert '<div class="journal-library-collections-head">Lists</div>' not in initial
+    assert 'data-journal-create-form' in initial
+    assert initial.index('data-custom-list-create') > initial.index('class="journal-library-footer"')
+    assert 'data-journal-library-items' in initial
+    assert 'data-custom-list-create' in initial
+    assert 'data-journal-custom-delete' not in initial
+    assert initial.index('<div class="filter-tabs"') > initial.index('<aside class="journal-library"')
+    title = re.search(r'<h2 data-journal-library-title title="([^"]+)">([^<]+)</h2>', initial)
+    assert title is not None and title.group(1) == title.group(2)
+    assert 'data-rank-workspace data-rank-layout="docked"' in initial
+
+    created = client.post(
+        "/web/journal-filters", headers=headers,
+        json={"name": "Intercultural work"},
+    )
+    assert created.status_code == 200, created.text
+    key = created.json()["key"]
+    assert key.startswith("custom_")
+    saved = client.post(
+        f"/web/journal-filters/{key}", headers=headers,
+        json={"name": "Intercultural work", "journals": ["SOCIAL SEMIOTICS"]},
+    )
+    assert saved.status_code == 200, saved.text
+    selected = client.get("/web", params={"filter": key})
+    assert selected.status_code == 200, selected.text
+    assert 'data-journal-library-title title="Intercultural work">Intercultural work</h2>' in selected.text
+    assert f'data-list-key="{key}"' in selected.text
+    assert f'data-endpoint="/web/journal-filters/{key}"' in selected.text
+    assert 'data-journal-custom-delete' in selected.text
+    assert 'href="/web?filter=all"' in selected.text
+    assert 'href="/web?filter=utd24"' in selected.text
+    assert 'href="/web?filter=ft50"' in selected.text
+
+    assert client.delete(f"/web/journal-filters/{key}").status_code == 403
+    deleted = client.delete(f"/web/journal-filters/{key}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted"] is True
+    updated = client.get("/web", params={"filter": "all"})
+    assert updated.status_code == 200
+    assert f'data-list-key="{key}"' not in updated.text
+    assert 'data-journal-library-title title="All">All</h2>' in updated.text
+
+
+def test_creating_categorized_list_keeps_dashboard_stats_cached_and_can_edit_metadata(
+    client: TestClient,
+) -> None:
+    from netvault_server.server import stats
+
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    headers = {"x-csrf-token": csrf}
+    page = client.get("/web", params={"filter": "all"})
+    assert page.status_code == 200
+    cached = {
+        key: value[1] for key, value in stats._dashboard_cache.items()
+        if key[1] == "all"
+    }
+    assert cached
+
+    invalid = client.post("/web/journal-filters", headers=headers, json={
+        "name": "Invalid", "category": "A" * 41, "kind": "Theme",
+    })
+    assert invalid.status_code == 400
+
+    created = client.post("/web/journal-filters", headers=headers, json={
+        "name": "Languages & Cultures", "category": "Education",
+        "kind": "Research area",
+        "journals": ["LANGUAGE AWARENESS", "LANGUAGE AWARENESS", "SOCIAL SEMIOTICS"],
+    })
+    assert created.status_code == 200, created.text
+    payload = created.json()
+    assert payload["category"] == "Education"
+    assert payload["kind"] == "Research area"
+    assert payload["journals"] == ["LANGUAGE AWARENESS", "SOCIAL SEMIOTICS"]
+    key = payload["key"]
+    for cached_key, cached_stats in cached.items():
+        assert stats._dashboard_cache[cached_key][1] is cached_stats
+        assert any(item["key"] == key for item in cached_stats["custom_journal_filters"])
+
+    refreshed = client.get("/web", params={"filter": "all"})
+    assert refreshed.status_code == 200
+    assert 'data-journal-custom-category="Education"' in refreshed.text
+    assert 'data-list-kind="Research area"' in refreshed.text
+    assert refreshed.text.index('data-journal-custom-category="Education"') > refreshed.text.index(
+        'data-journal-list-group="custom"'
+    )
+
+    edited = client.post(f"/web/journal-filters/{key}", headers=headers, json={
+        "name": "Language journal set", "journals": payload["journals"],
+        "category": "Applied linguistics", "kind": "Topic",
+        "expected_updated_at": payload["updated_at"],
+    })
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["category"] == "Applied linguistics"
+    assert edited.json()["kind"] == "Topic"
+    state = client.get(f"/web/journal-filters/{key}")
+    assert state.json()["category"] == "Applied linguistics"
+    assert state.json()["kind"] == "Topic"
+    without_meta = client.post(f"/web/journal-filters/{key}", headers=headers, json={
+        "name": "Language journal set", "journals": ["SOCIAL SEMIOTICS"],
+    })
+    assert without_meta.status_code == 200
+    assert without_meta.json()["category"] == "Applied linguistics"
+    assert without_meta.json()["kind"] == "Topic"
+    assert client.delete(f"/web/journal-filters/{key}", headers=headers).json()["deleted"] is True
+    assert all(item["key"] != key for stats_record in (item[1] for item in stats._dashboard_cache.values())
+               for item in stats_record["custom_journal_filters"])
 
 
 def test_journal_list_save_requires_current_revision_to_prevent_lost_edits(client: TestClient) -> None:
@@ -1340,7 +1474,7 @@ def test_journal_list_add_and_remove_are_persisted_and_dashboard_refreshes(clien
 
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:
     web_login(client)
-    admin_page = client.get("/web/admin")
+    admin_page = client.get("/web/admin/users")
     assert admin_page.status_code == 200
     assert "Create User" in admin_page.text
     assert "Reset Password" in admin_page.text
@@ -1575,8 +1709,11 @@ def test_current_release_version_is_used_for_browser_asset_urls(client: TestClie
     page = client.get("/web/login")
     assert page.status_code == 200
     assert f'/static/theme.js?v={__version__}"' in page.text
-    assert f'/static/styles.css?v={__version__}"' in page.text
-    assert f'/static/app.js?v={__version__}"' in page.text
+    for asset in ("styles.css", "app.js", "i18n.js"):
+        assert re.search(
+            rf'/static/{re.escape(asset)}\?v={re.escape(__version__)}&amp;h=[0-9a-f]{{12}}"',
+            page.text,
+        ), asset
 
 
 def test_root_package_is_cli_only() -> None:
@@ -1721,6 +1858,64 @@ def test_journal_ranks_are_globally_persisted_and_manual_refresh_replaces_them(
     saved = client.get('/web/journal-rank', params={'name': 'Nature'}).json()
     assert saved['cached'] is True
     assert saved['rows'][0]['rank'] == '2区'
+
+
+def test_shared_postgresql_rank_cache_is_reused_by_another_user_without_provider(
+    client, monkeypatch,
+):
+    endpoint = '/web/journal-ranks/cached'
+    assert client.post(endpoint, json={'names': ['Nature']}).status_code == 401
+    web_login(client)
+    csrf = client.cookies['netvault_csrf']
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    database = importlib.import_module('netvault_server.server.database')
+    accounts = importlib.import_module('netvault_server.server.accounts')
+    schemas = importlib.import_module('netvault_server.server.schemas')
+    calls = []
+
+    def lookup(name, refresh=False):
+        calls.append((name, refresh))
+        return {
+            'journal_name': name, 'queried_at': 1792000000,
+            'rows': [{
+                'key': 'sciUpTop', 'name': '中科院升级版Top分区', 'rank': '1区 TOP',
+                'source': 'Official datasets', 'selected': True,
+            }],
+        }
+
+    monkeypatch.setattr(provider, 'lookup', lookup)
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 200
+    assert calls == [('Nature', False)]
+    assert client.post(endpoint, json={'names': ['Nature']}).status_code == 403
+    with database.SessionLocal() as db:
+        accounts.create_user(
+            db, schemas.UserCreateRequest(
+                username='viewer', password='viewer-pass', role='user',
+            ),
+        )
+    logout = client.post('/web/logout', data={'csrf_token': csrf})
+    assert logout.status_code == 200
+    login_page = client.get('/web/login')
+    csrf = login_page.cookies['netvault_csrf']
+    login = client.post('/web/login', data={
+        'username': 'viewer', 'password': 'viewer-pass', 'csrf_token': csrf,
+    })
+    assert login.status_code == 200
+    response = client.post(
+        endpoint, headers={'X-CSRF-Token': client.cookies['netvault_csrf']},
+        json={'names': ['NATURE', 'Nature', 'Unqueried Journal']},
+    )
+    assert response.status_code == 200, response.text
+    assert len(response.json()['ranks']) == 1
+    assert response.json()['ranks'][0]['rows'][0]['rank'] == '1区 TOP'
+    assert response.json()['ranks'][0]['cache_scope'] == 'server'
+    assert calls == [('Nature', False)], 'A second user must not query the provider'
+    assert client.get('/web/journal-rank', params={'name': 'nature'}).json()['cached']
+    assert calls == [('Nature', False)]
+    assert client.post(endpoint, headers={'X-CSRF-Token': client.cookies['netvault_csrf']},
+                       json={'names': ['bad\u0000name']}).status_code == 400
+    assert client.post(endpoint, headers={'X-CSRF-Token': client.cookies['netvault_csrf']},
+                       json={'names': ['Nature'] * 61}).status_code == 422
 
 
 def test_background_rank_batch_progress_retry_and_restart_resume(client, monkeypatch):

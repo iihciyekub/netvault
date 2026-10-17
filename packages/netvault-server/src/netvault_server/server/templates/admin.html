@@ -2,9 +2,307 @@
 {% block title %}Admin - NetVault{% endblock %}
 {% block heading %}NetVault administration{% endblock %}
 {% block content %}
-{% if error %}<div class="alert">{{ error }}</div>{% endif %}
-{% if message %}<div class="alert success">{{ message }}</div>{% endif %}
+<div class="admin-console-shell">
+  <aside class="admin-console-rail" aria-label="Admin navigation">
+    <div class="admin-console-brand"><span class="admin-console-brand-mark">N</span><span><strong>NetVault</strong><small>Admin Console</small></span></div>
+    <div class="admin-console-nav-label">WORKSPACE</div>
+    <nav class="admin-console-nav" aria-label="Admin sections">
+      <a href="{{ path_for('/web/admin') }}" data-no-pjax class="{{ 'active' if admin_section == 'overview' else '' }}" {% if admin_section == 'overview' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-chart-simple" aria-hidden="true"></i><span>Overview</span>
+      </a>
+      <a href="{{ path_for('/web/admin/maintenance') }}" data-no-pjax class="{{ 'active' if admin_section == 'maintenance' else '' }}" {% if admin_section == 'maintenance' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i><span>Maintenance</span>
+      </a>
+      <a href="{{ path_for('/web/admin/jobs') }}" data-no-pjax class="{{ 'active' if admin_section == 'jobs' else '' }}" {% if admin_section == 'jobs' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-list-check" aria-hidden="true"></i><span>Task history</span>{% if admin_has_running %}<span class="admin-console-running-dot" aria-label="Active maintenance task"></span>{% endif %}
+      </a>
+      <a href="{{ path_for('/web/admin/users') }}" data-no-pjax class="{{ 'active' if admin_section == 'users' else '' }}" {% if admin_section == 'users' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-users" aria-hidden="true"></i><span>People</span>
+      </a>
+    </nav>
+    <p class="admin-console-rail-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> Administrator access only</p>
+  </aside>
+  <div class="admin-console-main">
+    <header class="admin-console-page-head">
+      <p class="admin-console-breadcrumb">Workspace <i class="fa-solid fa-chevron-right" aria-hidden="true"></i> Admin Console</p>
+      <div class="admin-console-heading-row">
+        <div>
+          <h2>{{ {'overview': 'Overview', 'maintenance': 'Maintenance', 'jobs': 'Task history', 'users': 'People'}[admin_section] }}</h2>
+          <p>{{ {'overview': 'Document storage, PostgreSQL health and current activity.', 'maintenance': 'Verify documents and manage library optimization.', 'jobs': 'Execution status, progress and reports.', 'users': 'Create accounts, assign roles and manage access.'}[admin_section] }}</p>
+        </div>
+        {% if admin_section == 'overview' %}
+        <a class="admin-console-page-action" href="{{ path_for('/web/admin/maintenance') }}" data-no-pjax><i class="fa-solid fa-play" aria-hidden="true"></i> Run maintenance</a>
+        {% elif admin_section == 'maintenance' %}
+        <a class="admin-console-page-link" href="{{ path_for('/web/admin/jobs') }}" data-no-pjax>View tasks <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+        {% elif admin_section == 'jobs' %}
+        <a class="admin-console-page-link" href="{{ path_for('/web/admin/maintenance') }}" data-no-pjax>New task <i class="fa-solid fa-plus" aria-hidden="true"></i></a>
+        {% endif %}
+      </div>
+    </header>
+    {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+    {% if message %}<div class="alert success" role="status">{{ message }}</div>{% endif %}
 
+{% if admin_section == 'overview' %}
+<div class="maintenance-console" data-maintenance-console
+     data-state-url="{{ path_for('/web/admin/maintenance/state') }}"
+     data-maintenance-revision="{{ maintenance_revision }}"
+     data-worker-online="{{ 'true' if maintenance.worker_online else 'false' }}">
+  <section class="admin-console-active-card" aria-label="Current maintenance activity">
+    <div class="admin-console-card-top"><span>Current activity</span>{% if active_job %}<span class="maintenance-badge status-{{ active_job.status }}">{{ 'Stopping' if active_job.cancel_requested and active_job.status == 'running' else active_job.status | title }}</span>{% endif %}</div>
+    {% if active_job %}
+      <h3>{{ active_job.kind | replace('_', ' ') | title }}</h3>
+      {% set current_count = active_job.summary.get('attempted', active_job.summary.get('processed', 0)) %}
+      {% set target_count = active_job.summary.get('total', 0) %}
+      {% if target_count > 0 %}
+        <div class="admin-console-progress-line"><strong>{{ current_count | number }} <span>/ {{ target_count | number }}</span></strong><span>{{ (([current_count, target_count] | min) * 100 / target_count) | round(1) }}% processed</span></div>
+        <progress value="{{ [current_count, target_count] | min }}" max="{{ target_count }}" aria-label="Active maintenance progress"></progress>
+      {% else %}<p>Waiting for the host worker to report progress.</p>{% endif %}
+      {% if active_job.kind == 'full_compression' %}
+        <div class="admin-console-progress-meta"><span>{{ active_job.summary.get('replaced', 0) | number }} optimized</span><span>{{ active_job.summary.get('doi_written', 0) | number }} DOI embedded</span><span>{{ active_job.summary.get('failed', 0) | number }} failed</span><span>{{ active_job.summary.get('saved_bytes', 0) | bytes }} saved</span></div>
+      {% endif %}
+      <a class="admin-console-inline-link" href="{{ path_for('/web/admin/jobs') }}#job-{{ active_job.id }}" data-no-pjax>View task details <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+    {% else %}
+      <h3>No active tasks</h3>
+      <p>Maintenance tasks are not currently queued or running.</p>
+      <a class="admin-console-inline-link" href="{{ path_for('/web/admin/maintenance') }}" data-no-pjax>Open maintenance <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+    {% endif %}
+  </section>
+  <div class="admin-console-section-head"><h3>Library statistics</h3><span>Live PostgreSQL and storage data</span></div>
+
+  <div class="maintenance-status-line" role="status">
+    <span class="maintenance-dot {{ 'online' if maintenance.worker_online else 'offline' }}"></span>
+    Host worker: <strong>{{ 'Online' if maintenance.worker_online else 'Offline / not configured' }}</strong>
+    <span class="maintenance-separator" aria-hidden="true">·</span>
+    Snapshot: <strong>{{ maintenance.last_backup if maintenance.last_backup else 'Unavailable' }}</strong>
+    <span class="maintenance-note">(timestamp only; backup verified before write jobs)</span>
+  </div>
+
+  <div class="metrics maintenance-metrics" aria-label="Maintenance database overview">
+    <article><span>Active documents</span><strong>{{ maintenance.documents | number }}</strong></article>
+    <article><span>PDF storage</span><strong>{{ maintenance.pdf_bytes | bytes }}</strong></article>
+    <article><span>PostgreSQL size</span><strong>{{ maintenance.database_bytes | bytes if maintenance.database_bytes is not none else 'N/A' }}</strong></article>
+    <article><span>Optimized PDFs</span><strong>{{ maintenance.processed | number }}</strong></article>
+    <article><span>Pending optimization</span><strong>{{ maintenance.pending_compression | number }}</strong></article>
+    <article><span>Metadata to review</span><strong>{{ maintenance.missing_metadata | number }}</strong></article>
+    <article><span>Available disk space</span><strong>{{ maintenance.disk_free_bytes | bytes if maintenance.disk_free_bytes is not none else 'N/A' }}</strong></article>
+    <article><span>Processing recipe</span><strong class="maintenance-recipe">150 PPI / Q75</strong></article>
+  </div>
+
+  <div class="admin-console-section-head"><h3>Recent tasks</h3><a href="{{ path_for('/web/admin/jobs') }}" data-no-pjax>All tasks</a></div>
+  <div class="admin-console-recent-list">
+  {% for job in maintenance_jobs %}
+    <a class="admin-console-recent-item" href="{{ path_for('/web/admin/jobs') }}#job-{{ job.id }}" data-no-pjax>
+      <span class="admin-console-recent-icon"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span>
+      <span class="admin-console-recent-info"><strong>{{ job.kind | replace('_', ' ') | title }}</strong><small>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }} UTC · {{ job.username }}</small></span>
+      <span class="maintenance-badge status-{{ job.status }}">{{ job.status | title }}</span>
+    </a>
+  {% else %}
+    <p class="admin-console-empty">No maintenance tasks yet.</p>
+  {% endfor %}
+  </div>
+</div>
+{% elif admin_section == 'maintenance' %}
+<div class="maintenance-console">
+  <div class="maintenance-status-line" role="status">
+    <span class="maintenance-dot {{ 'online' if maintenance.worker_online else 'offline' }}"></span>
+    Host worker: <strong>{{ 'Online' if maintenance.worker_online else 'Offline / not configured' }}</strong>
+    <span class="maintenance-separator" aria-hidden="true">·</span>
+    Snapshot: <strong>{{ maintenance.last_backup if maintenance.last_backup else 'Unavailable' }}</strong>
+  </div>
+
+  <h2 class="maintenance-subheading" id="maintenance-actions">Maintenance Actions</h2>
+  <div class="maintenance-action-grid">
+    <form method="post" action="{{ path_for('/web/admin/maintenance/full') }}" class="form maintenance-action maintenance-action-full">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="maintenance-full-header">
+        <div class="maintenance-icon"><i class="fa-solid fa-database" aria-hidden="true"></i></div>
+        <div>
+          <h3>Full Library Optimization + DOI Writeback</h3>
+          <p class="maintenance-full-kicker">ALL ELIGIBLE PDFS · PDFCRAFT 150 PPI / Q75</p>
+        </div>
+      </div>
+      <p>Run the same full-library PDFCraft sweep used on the host: process every PDF not yet marked as optimized, write verified DOI into the compressed PDF when possible, and update PostgreSQL SHA-256, file size and storage path. Previously optimized PDFs are skipped. This does not invent DOI identities or automatically fill Crossref bibliography fields.</p>
+      <code class="maintenance-command">.venv/bin/python scripts/compress_pdfs_parallel.py --all --jobs 3</code>
+      <div class="maintenance-full-controls">
+        <label>Parallel PDF workers
+          <select name="jobs">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3 (recommended)</option>
+            <option value="4">4</option>
+          </select>
+        </label>
+        <label>Type RUN FULL LIBRARY to confirm
+          <input name="confirmation" autocomplete="off" placeholder="RUN FULL LIBRARY" required>
+        </label>
+      </div>
+      <label class="maintenance-danger-ack">
+        <input name="acknowledge_no_backup" type="checkbox" value="true" required>
+        <span>I understand this changes production PDFs and PostgreSQL, removes old PDF objects after verified replacement, and creates no backup.</span>
+      </label>
+      <button class="primary maintenance-full-button" type="submit" {% if not maintenance.worker_online %}disabled{% endif %}><i class="fa-solid fa-play" aria-hidden="true"></i> <span data-button-label>Start Full Library Optimization + DOI</span></button>
+    </form>
+
+    <form method="post" action="{{ path_for('/web/admin/maintenance/start') }}" class="form maintenance-action">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="kind" value="audit">
+      <div class="maintenance-icon"><i class="fa-solid fa-clipboard-check" aria-hidden="true"></i></div>
+      <h3>Document Health Audit</h3>
+      <p>Read-only PostgreSQL scan of pending optimization, missing bibliography and DOI health. No PDF bytes or records are changed.</p>
+      <label>Maximum preview rows
+        <select name="limit"><option value="25">25</option><option value="50">50</option><option value="100" selected>100</option></select>
+      </label>
+      <button class="primary" type="submit" {% if not maintenance.worker_online %}disabled{% endif %}><span data-button-label>Run Read-Only Audit</span></button>
+    </form>
+
+    <form method="post" action="{{ path_for('/web/admin/maintenance/start') }}" class="form maintenance-action">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="kind" value="metadata_preview">
+      <div class="maintenance-icon"><i class="fa-solid fa-file-circle-check" aria-hidden="true"></i></div>
+      <h3>Bibliography Verification</h3>
+      <p>Use DOI registry data and PDF title evidence to propose missing metadata. Only verified fill-only proposals can be approved.</p>
+      <label>Maximum documents
+        <select name="limit"><option value="2">2</option><option value="5">5</option><option value="10" selected>10</option></select>
+      </label>
+      <button class="primary" type="submit" {% if not maintenance.worker_online %}disabled{% endif %}><span data-button-label>Preview Metadata Changes</span></button>
+    </form>
+  </div>
+
+  <div class="maintenance-policy" role="note">
+    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+    Limited write approvals require a recent verified backup and reviewed document IDs/hashes. The separate full-library command above intentionally creates no backup, and may irreversibly replace source PDFs. Both paths require explicit administrator confirmation. No destructive cleanup or free-form SQL is available here.
+  </div>
+  {% if not maintenance.last_backup %}
+  <p class="maintenance-backup-warning" role="status">Limited-batch write approvals require a complete verified backup. The full-library operation is a separate, explicitly acknowledged no-backup workflow.</p>
+  {% endif %}
+
+</div>
+{% elif admin_section == 'jobs' %}
+<div class="maintenance-console" data-maintenance-console
+     data-state-url="{{ path_for('/web/admin/maintenance/state') }}"
+     data-maintenance-revision="{{ maintenance_revision }}"
+     data-worker-online="{{ 'true' if maintenance.worker_online else 'false' }}">
+  {% if active_job %}
+  <section class="admin-console-active-card admin-console-jobs-active" aria-label="Current maintenance activity">
+    <div class="admin-console-card-top">
+      <span>Active task</span><span class="maintenance-badge status-{{ active_job.status }}">{{ 'Stopping' if active_job.cancel_requested else active_job.status | title }}</span>
+    </div>
+    <h3>{{ active_job.kind | replace('_', ' ') | title }}</h3>
+    {% set current_count = active_job.summary.get('attempted', active_job.summary.get('processed', 0)) %}
+    {% set target_count = active_job.summary.get('total', 0) %}
+    {% if target_count > 0 %}
+      <div class="admin-console-progress-line"><strong>{{ current_count | number }} <span>/ {{ target_count | number }}</span></strong><span>{{ (([current_count, target_count] | min) * 100 / target_count) | round(1) }}% processed</span></div>
+      <progress value="{{ [current_count, target_count] | min }}" max="{{ target_count }}" aria-label="Active maintenance progress"></progress>
+    {% else %}<p>Waiting for the host worker to report progress.</p>{% endif %}
+    {% if active_job.kind == 'full_compression' %}
+      <div class="admin-console-progress-meta"><span>{{ active_job.summary.get('replaced', 0) | number }} optimized</span><span>{{ active_job.summary.get('doi_written', 0) | number }} DOI embedded</span><span>{{ active_job.summary.get('failed', 0) | number }} failed</span><span>{{ active_job.summary.get('saved_bytes', 0) | bytes }} saved</span></div>
+    {% endif %}
+  </section>
+  {% endif %}
+  <div class="maintenance-heading maintenance-jobs-heading" id="maintenance-jobs">
+    <div><h2>Task History &amp; Review</h2><p>Jobs survive browser closure and server restarts. The host executes one task at a time.</p></div>
+  </div>
+  <div class="table-scroll">
+    <table class="results maintenance-table">
+      <thead><tr><th>Created (UTC)</th><th>Task</th><th>Admin</th><th>Status</th><th>Result</th><th>Review / Report</th></tr></thead>
+      <tbody>
+      {% for job in maintenance_jobs %}
+      <tr id="job-{{ job.id }}">
+        <td class="maintenance-nowrap">{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td><strong>{{ job.kind | replace('_', ' ') | title }}</strong><br><small class="maintenance-id">{{ job.id[:12] }}</small></td>
+        <td>{{ job.username }}</td>
+        <td><span class="maintenance-badge status-{{ job.status }}">{{ 'Stopping' if job.cancel_requested and job.status == 'running' else job.status | title }}</span></td>
+        <td>
+          {% if job.summary %}
+            {% if job.kind == 'audit' %}
+              {{ job.summary.get('needs_compression', 0) | number }} to optimize; {{ job.summary.get('needs_bibliography', 0) | number }} to review
+            {% elif job.kind in ['metadata_preview', 'metadata_apply'] %}
+              {% if job.status == 'running' and job.summary.get('total', 0) > 0 %}
+                <div class="maintenance-progress">
+                  <progress value="{{ job.summary.get('processed', 0) }}" max="{{ job.summary['total'] }}" aria-label="Metadata verification progress"></progress>
+                  {{ job.summary.get('processed', 0) }}/{{ job.summary['total'] }} verified or reviewed
+                </div>
+              {% endif %}
+              {{ job.summary.get('verified', 0) }} verified; {{ job.summary.get('applied', 0) }} applied
+            {% elif job.kind == 'full_compression' %}
+              {% if job.status == 'running' and job.summary.get('total', 0) > 0 %}
+                <div class="maintenance-progress">
+                  <progress value="{{ [job.summary.get('attempted', 0), job.summary['total']] | min }}" max="{{ job.summary['total'] }}" aria-label="Full-library optimization progress"></progress>
+                  {{ job.summary.get('attempted', 0) | number }}/{{ job.summary['total'] | number }} eligible PDFs attempted
+                </div>
+              {% endif %}
+              {{ job.summary.get('replaced', 0) | number }} optimized;
+              {{ job.summary.get('doi_written', 0) | number }} DOI embedded;
+              {{ job.summary.get('failed', 0) | number }} failed;
+              {{ job.summary.get('saved_bytes', 0) | bytes }} saved
+            {% else %}
+              {% if job.status == 'running' and job.summary.get('total', 0) > 0 %}
+                <div class="maintenance-progress">
+                  <progress value="{{ job.summary.get('attempted', 0) }}" max="{{ job.summary['total'] }}" aria-label="Compression progress"></progress>
+                  {{ job.summary.get('attempted', 0) }}/{{ job.summary['total'] }} processed
+                </div>
+              {% endif %}
+              {{ job.summary.get('replaced', 0) }} optimized; {{ job.summary.get('saved_bytes', 0) | bytes }} saved
+            {% endif %}
+          {% elif job.error %}<span class="maintenance-error">{{ job.error }}</span>
+          {% else %}<span class="maintenance-muted">Waiting for worker</span>{% endif %}
+        </td>
+        <td>
+          {% if job.kind == 'full_compression' %}
+            <a class="maintenance-report-link" href="{{ path_for('/web/admin/maintenance/jobs/' ~ job.id ~ '/log') }}" target="_blank" rel="noopener">Recent Log</a>
+            {% if job.status in ['queued', 'running'] and not job.cancel_requested %}
+              <form method="post" class="maintenance-approval" action="{{ path_for('/web/admin/maintenance/jobs/' ~ job.id ~ '/stop') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>Type STOP FULL RUN to stop
+                  <input name="confirmation" placeholder="STOP FULL RUN" autocomplete="off" required>
+                </label>
+                <button type="submit" class="ghost">Stop Full Run</button>
+              </form>
+            {% endif %}
+          {% endif %}
+          {% if job.has_report %}
+            <a class="maintenance-report-link" href="{{ path_for('/web/admin/maintenance/jobs/' ~ job.id ~ '/report') }}" target="_blank" rel="noopener">Report <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+          {% endif %}
+          {% if job.reviewable and job.kind == 'metadata_preview' and job.summary.get('verified', 0) > 0 %}
+            <form method="post" class="maintenance-approval" action="{{ path_for('/web/admin/maintenance/jobs/' ~ job.id ~ '/approve') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="operation" value="metadata_apply">
+              <label>Type APPLY METADATA to authorize
+                <input name="confirmation" placeholder="APPLY METADATA" autocomplete="off" required>
+              </label>
+              <button type="submit" class="ghost" {% if not maintenance.worker_online or not maintenance.last_backup %}disabled{% endif %}>Apply Verified Fields</button>
+            </form>
+          {% elif job.reviewable and job.kind == 'audit' and job.summary.get('candidates', 0) > 0 %}
+            <form method="post" class="maintenance-approval" action="{{ path_for('/web/admin/maintenance/jobs/' ~ job.id ~ '/approve') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="operation" value="compression">
+              <label>Approved PDF batch
+                <input name="limit" type="number" min="1" max="{{ [10, job.summary.get('candidates', 0)] | min }}" value="{{ [2, job.summary.get('candidates', 0)] | min }}" required>
+              </label>
+              <label>Type COMPRESS PDFS to authorize
+                <input name="confirmation" placeholder="COMPRESS PDFS" autocomplete="off" required>
+              </label>
+              <button type="submit" class="ghost" {% if not maintenance.worker_online or not maintenance.last_backup %}disabled{% endif %}>Start Approved Compression</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="maintenance-muted">No maintenance tasks yet. Start with a read-only audit.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if jobs_pages > 1 %}
+  <nav class="admin-console-pagination" aria-label="Task history pages">
+    {% if jobs_page > 1 %}<a href="{{ path_for('/web/admin/jobs') }}?page={{ jobs_page - 1 }}" data-no-pjax>Previous</a>{% else %}<span>Previous</span>{% endif %}
+    <span>Page {{ jobs_page }} of {{ jobs_pages }}</span>
+    {% if jobs_page < jobs_pages %}<a href="{{ path_for('/web/admin/jobs') }}?page={{ jobs_page + 1 }}" data-no-pjax>Next</a>{% else %}<span>Next</span>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+
+{% elif admin_section == 'users' %}
 <section class="admin-grid">
   <form method="post" action="{{ path_for('/web/admin/users/create') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -36,6 +334,10 @@
   </form>
 </section>
 
+<div class="admin-console-section-head admin-console-people-list-head">
+  <h3>Team accounts</h3>
+  <span>{{ users|length }} accounts</span>
+</div>
 <div class="table-scroll">
   <table class="results admin-table">
     <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Created</th><th>Last login (UTC)</th><th></th></tr></thead>
@@ -62,4 +364,12 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if admin_section in ['overview', 'jobs'] %}
+<script src="{{ path_for('/static/admin-maintenance.js') }}?v={{ asset_version }}&amp;h={{ maintenance_script_hash }}" defer></script>
+{% endif %}
 {% endblock %}

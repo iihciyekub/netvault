@@ -144,7 +144,7 @@ def audit(
             cur.execute(
                 f"""SELECT {columns} FROM pdfs
                     WHERE is_deleted = false AND uploaded_at < NOW() - %s::interval
-                      AND (pdfcraft_processed_sha256 IS DISTINCT FROM %s
+                      AND (pdfcraft_processed_sha256 IS DISTINCT FROM sha256
                            OR pdfcraft_ppi IS DISTINCT FROM %s
                            OR pdfcraft_quality IS DISTINCT FROM %s)
                     ORDER BY uploaded_at DESC, id DESC LIMIT %s""",

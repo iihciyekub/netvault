@@ -67,7 +67,7 @@ const fields = new Map([
   ["[data-button-label]", saveLabel],
   ["[data-dashboard-preference-status]", savedStatus],
 ]);
-const qs = (selector) => fields.get(selector) || null;
+const qs = (selector) => fields.get(selector) || (selector === ".heatmap-panel" ? {dataset:{dashboardFilter: "custom_aadefa5c8ab1"}} : null);
 
 function response(ok, body, status = ok ? 200 : 409) {
   return {ok, status, json: async () => body};
@@ -98,11 +98,13 @@ const context = {
   Intl, Set, Map, String, URL, Promise, fetch, qs,
   qsa: () => [nameInput, textarea, saveButton, csrf],
   document: {addEventListener(name, callback) {events.set(name, callback);}},
-  window: {location: {href: "https://example.test/nv/web?filter=custom_aadefa5c8ab1"}},
+  window: {location: {href: "https://example.test/nv/web?filter=custom_aadefa5c8ab1"}, setTimeout(fn){fn();return 1;}},
   normalizedJournalText: (value) => value.normalize("NFKC").toLocaleLowerCase(),
   journalListPayloadCache: new Map([["stale", {}]]),
   pageCache: new Map([["stale", {}]]),
   closeJournalListEditor: () => {closedCount++;},
+  placeCustomJournalEntry: () => {},
+  showJournalLibraryNotice: message => {savedStatus.textContent = message;},
   journalListError: async (r) => (await r.json()).detail,
   sameOriginUrl: (url) => new URL(url, "https://example.test/nv/web"),
   fetchPage: async (url) => {

@@ -99,7 +99,7 @@ function viewTest() {
   await preferenceTest();
   viewTest();
   assert.ok(app.includes('expected_updated_at: dialog.dataset.revision || null'));
-  assert.ok(app.includes('loadJournalListPayload(endpoint, true)'));
+  assert.ok(app.includes('if (hasCached) return;'));
   assert.ok(app.includes('data-journal-list-export'));
   console.log("Journal selection, preferences, refresh state, and editor protection passed");
 })().catch(error => {console.error(error); process.exitCode = 1;});

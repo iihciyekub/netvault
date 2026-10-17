@@ -40,6 +40,9 @@
 
   const closeFilterMenus = (except = null) => {
     qsa("details.filter-menu[open]").forEach((menu) => {
+      // The left-hand journal collections are ordinary expandable groups,
+      // not transient floating menus. Do not collapse them on outside clicks.
+      if (menu.closest("[data-journal-library]")) return;
       if (menu !== except) menu.removeAttribute("open");
     });
   };
@@ -177,6 +180,7 @@
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setLoading(false);
     initHeatmap(currentMain);
+    window.NetVaultI18n?.translate(currentMain);
     rememberDashboardFilter(url);
     currentMain.focus({ preventScroll: true });
   };
@@ -754,6 +758,9 @@
     const keyInput = qs("input[name='filter_key']", dialog);
     const nameField = qs("[data-custom-list-name-field]", dialog);
     const nameInput = qs("[data-custom-list-name]", dialog);
+    const metaField = qs("[data-custom-list-meta-field]", dialog);
+    const categoryInput = qs("[data-custom-list-category]", dialog);
+    const kindInput = qs("[data-custom-list-kind]", dialog);
     const picker = qs("[data-custom-journal-picker]", dialog);
     const pickerInput = qs("[data-journal-list-picker-input]", dialog);
     if (title) {
@@ -775,6 +782,9 @@
     }
     if (nameField) nameField.hidden = !payload.custom;
     if (nameInput) nameInput.value = payload.custom ? (payload.label || "Custom list") : "";
+    if (metaField) metaField.hidden = !payload.custom;
+    if (categoryInput) categoryInput.value = payload.category || "";
+    if (kindInput) kindInput.value = payload.kind || "";
     if (picker) picker.hidden = !payload.custom;
     if (pickerInput) {
       pickerInput.value = "";
@@ -793,18 +803,33 @@
     const sequence = ++journalListOpenSequence;
     const trigger = qs("[data-journal-list-edit-trigger]", tab);
     if (trigger) trigger.setAttribute("aria-busy", "true");
+    const saveButton = qs("[data-journal-list-form] button[type='submit']", dialog);
+    const cached = journalListPayloadCache.get(endpoint);
+    const hasCached = cached && Date.now() - cached.storedAt < journalListCacheTtlMs;
+    dialog.dataset.endpoint = endpoint;
+    if (hasCached) {
+      populateJournalListEditor(dialog, cached.payload);
+      if (saveButton) saveButton.disabled = false;
+    } else {
+      const title = qs("[data-journal-list-title]", dialog);
+      const textarea = qs("[data-journal-list-textarea]", dialog);
+      const feedback = qs("[data-journal-list-feedback]", dialog);
+      if (title) title.textContent = "Loading list…";
+      if (textarea) { textarea.value = ""; textarea.disabled = true; }
+      if (feedback) feedback.textContent = "";
+      if (saveButton) saveButton.disabled = true;
+    }
+    // Show immediately; previously this awaited a forced GET on every click.
+    if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+    else if (!dialog.open) dialog.setAttribute("open", "");
+    if (hasCached) qs("[data-journal-list-textarea]", dialog)?.focus({ preventScroll: true });
     try {
-      // Avoid opening an empty modal, loading text, and then resizing it.
-      // Nearby hover/focus prefetch and the short-lived snapshot speed up repeats.
-      const payload = await loadJournalListPayload(endpoint, true);
+      if (hasCached) return;
+      const payload = await loadJournalListPayload(endpoint);
       if (sequence !== journalListOpenSequence || !dialog.isConnected || !tab.isConnected)
         return;
-      dialog.dataset.endpoint = endpoint;
       populateJournalListEditor(dialog, payload);
-      const saveButton = qs("[data-journal-list-form] button[type='submit']", dialog);
       if (saveButton) saveButton.disabled = false;
-      if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
-      else if (!dialog.open) dialog.setAttribute("open", "");
       const textarea = qs("[data-journal-list-textarea]", dialog);
       if (textarea) {
         textarea.focus({ preventScroll: true });
@@ -823,10 +848,7 @@
       const picker = qs("[data-custom-journal-picker]", dialog);
       if (picker) picker.hidden = true;
       if (feedback) feedback.textContent = error.message || "Could not load the journal list.";
-      const saveButton = qs("[data-journal-list-form] button[type='submit']", dialog);
       if (saveButton) saveButton.disabled = true;
-      if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
-      else if (!dialog.open) dialog.setAttribute("open", "");
       qs("[data-journal-list-close]", dialog)?.focus({ preventScroll: true });
     } finally {
       if (trigger?.isConnected) trigger.removeAttribute("aria-busy");
@@ -853,6 +875,8 @@
     const feedback = qs("[data-journal-list-feedback]", form);
     const csrfToken = qs("input[name='csrf_token']", form)?.value || "";
     const nameInput = qs("[data-custom-list-name]", form);
+    const categoryInput = qs("[data-custom-list-category]", form);
+    const kindInput = qs("[data-custom-list-kind]", form);
     if (!dialog || !textarea) return;
     if (!endpoint) {
       if (feedback) feedback.textContent = "Unable to save: the journal list was not loaded.";
@@ -873,6 +897,8 @@
         body: JSON.stringify({
           journals: requestedNames,
           name: nameInput && !nameInput.closest("[hidden]") ? nameInput.value.trim() : undefined,
+          category: categoryInput && !categoryInput.closest("[hidden]") ? categoryInput.value.trim() : undefined,
+          kind: kindInput && !kindInput.closest("[hidden]") ? kindInput.value.trim() : undefined,
           expected_updated_at: dialog.dataset.revision || null,
         }),
       });
@@ -891,13 +917,18 @@
       }
       pageCache.clear();
       closeJournalListEditor(dialog);
-      const current = sameOriginUrl(window.location.href);
-      await fetchPage(current ? current.href : window.location.href, {}, false);
-      const status = qs("[data-dashboard-preference-status]");
-      if (status) {
-        status.textContent = "Saved " + savedNames.length
-          + " journal" + (savedNames.length === 1 ? "" : "s") + " to "
-          + (payload.label || "the journal list") + ".";
+      if (payload.key?.startsWith("custom_")) placeCustomJournalEntry(payload);
+      const activeFilter = qs(".heatmap-panel")?.dataset.dashboardFilter;
+      showJournalLibraryNotice("Saved " + savedNames.length
+        + " journal" + (savedNames.length === 1 ? "" : "s") + " to "
+        + (payload.label || "the journal list") + ".");
+      if (activeFilter === payload.key) {
+        // Refresh the active chart after letting the success state paint.
+        // Saving an inactive list needs no full dashboard request at all.
+        const current = sameOriginUrl(window.location.href);
+        window.setTimeout(() => {
+          void fetchPage(current?.href || window.location.href, {}, false);
+        }, 0);
       }
     } catch (error) {
       if (feedback) feedback.textContent = error.message || "Could not save the journal list.";
@@ -910,6 +941,13 @@
   // guarantees that Save list (and Enter from a field) performs the JSON POST,
   // not the browser's default GET of the dashboard.
   document.addEventListener("submit", (event) => {
+    const createForm = event.target.closest?.("[data-journal-create-form]");
+    if (createForm) {
+      event.preventDefault();
+      if (!qs("[data-journal-create-submit]", createForm)?.disabled)
+        void createCustomJournalList(createForm);
+      return;
+    }
     const form = event.target.closest?.("[data-journal-list-form]");
     if (!form) return;
     event.preventDefault();
@@ -938,30 +976,182 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const createCustomJournalList = async (button) => {
-    const endpoint = button.getAttribute("data-endpoint") || "";
+  const showJournalLibraryNotice = (message) => {
+    const notice = qs("[data-journal-library-notice]");
+    if (!notice) return;
+    notice.textContent = message;
+    notice.hidden = !message;
+    window.clearTimeout(showJournalLibraryNotice.timer);
+    if (message) showJournalLibraryNotice.timer = window.setTimeout(() => {
+      if (notice.isConnected) notice.hidden = true;
+    }, 4000);
+  };
+
+  const placeCustomJournalEntry = (payload) => {
+    const library = qs("[data-journal-library]");
+    const menu = qs(".custom-list-menu", library);
+    if (!menu || !payload.key || !payload.key.startsWith("custom_")) return;
+    const category = payload.category || "";
+    let group = qsa("[data-journal-custom-category]", menu)
+      .find((node) => node.dataset.journalCustomCategory === category);
+    if (!group) {
+      group = document.createElement("div");
+      group.className = "journal-custom-category-group";
+      group.dataset.journalCustomCategory = category;
+      if (category) {
+        const title = document.createElement("div");
+        title.className = "journal-custom-category-label";
+        title.textContent = category;
+        group.append(title);
+      }
+      if (category) menu.append(group);
+      else menu.prepend(group);
+    }
+    let row = qsa(".journal-custom-entry", menu)
+      .find((node) => node.dataset.listKey === payload.key);
+    const oldGroup = row?.closest("[data-journal-custom-category]");
+    if (!row) {
+      row = document.createElement("div");
+      row.className = "journal-custom-entry";
+      row.dataset.listKey = payload.key;
+      const link = document.createElement("a");
+      link.dataset.journalListEdit = "";
+      const currentUrl = new URL(qs(".filter-tabs > a", library)?.href || window.location.href);
+      currentUrl.searchParams.set("filter", payload.key);
+      link.href = currentUrl.href;
+      const label = document.createElement("span");
+      link.append(label);
+      const edit = document.createElement("span");
+      edit.className = "filter-edit-mark";
+      edit.dataset.journalListEditTrigger = "";
+      edit.setAttribute("aria-label", "Edit " + payload.label + " journal list");
+      edit.innerHTML = '<i class="fa-solid fa-ellipsis" aria-hidden="true"></i>';
+      link.append(edit);
+      row.append(link);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "journal-custom-delete";
+      remove.dataset.journalCustomDelete = "";
+      remove.innerHTML = '<i class="fa-solid fa-trash-can" aria-hidden="true"></i>';
+      row.append(remove);
+    }
+    const link = qs("a", row);
+    const endpoint = (qs("[data-custom-list-create]")?.dataset.endpoint || "")
+      + "/" + encodeURIComponent(payload.key);
+    link.dataset.journalListUrl = endpoint;
+    link.title = (payload.kind ? payload.kind + " · " : "")
+      + "Click to filter; right-click to edit " + payload.label;
+    link.dataset.listKind = payload.kind || "";
+    qs("span", link).textContent = payload.label || "Custom list";
+    const deleteButton = qs("[data-journal-custom-delete]", row);
+    if (deleteButton) {
+      deleteButton.dataset.endpoint = endpoint;
+      deleteButton.dataset.listKey = payload.key;
+      deleteButton.dataset.listName = payload.label || "";
+      deleteButton.setAttribute("aria-label", "Delete " + payload.label + " journal list");
+      deleteButton.title = "Delete list";
+    }
+    group.append(row);
+    if (oldGroup && oldGroup !== group && !qs(".journal-custom-entry", oldGroup))
+      oldGroup.remove();
+    const customSection = qs('[data-journal-list-group="custom"]', library);
+    if (customSection) customSection.open = true;
+    return row;
+  };
+
+  const openCreateJournalDialog = (button) => {
+    const dialog = qs("[data-journal-create-dialog]");
+    if (!dialog || !button.dataset.endpoint) return;
+    const form = qs("[data-journal-create-form]", dialog);
+    form.reset();
+    form.dataset.endpoint = button.dataset.endpoint;
+    qs("[data-journal-create-feedback]", dialog).textContent = "";
+    qs("[data-journal-create-submit]", dialog).disabled = false;
+    // Opening is synchronous: no prompt(), GET, chart calculation or request.
+    if (typeof dialog.showModal === "function" && !dialog.open) dialog.showModal();
+    else if (!dialog.open) dialog.setAttribute("open", "");
+    qs("[data-create-list-name]", dialog)?.focus({ preventScroll: true });
+  };
+
+  const createCustomJournalList = async (form) => {
+    const dialog = form.closest("[data-journal-create-dialog]");
     const csrfToken = qs("input[name='csrf_token']", qs("[data-journal-list-form]"))?.value || "";
-    const name = window.prompt("Name this journal list:", "Custom list");
-    if (!endpoint || name === null || !name.trim()) return;
-    button.disabled = true;
+    const feedback = qs("[data-journal-create-feedback]", dialog);
+    const submit = qs("[data-journal-create-submit]", dialog);
+    const endpoint = form.dataset.endpoint || "";
+    if (!endpoint || !csrfToken || !form.reportValidity()) return;
+    const fields = new FormData(form);
+    const journals = String(fields.get("journals") || "")
+      .split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (journals.length > 2000) {
+      feedback.textContent = "Use at most 2,000 journal names.";
+      return;
+    }
+    submit.disabled = true;
+    submit.textContent = "Creating…";
+    feedback.textContent = "Saving to your account…";
     try {
       const response = await fetch(endpoint, {
-        method: "POST",
-        credentials: "same-origin",
+        method: "POST", credentials: "same-origin",
         headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrfToken,
+          "Content-Type": "application/json", "X-CSRF-Token": csrfToken,
           "X-Requested-With": "fetch",
         },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({
+          name: String(fields.get("name") || "").trim(),
+          category: String(fields.get("category") || "").trim(),
+          kind: String(fields.get("kind") || "").trim(),
+          journals,
+        }),
       });
       if (!response.ok) throw new Error(await journalListError(response));
       const payload = await response.json();
       pageCache.clear();
-      fetchPage(`${window.location.pathname}?filter=${encodeURIComponent(payload.key)}`, {}, true);
+      const row = placeCustomJournalEntry(payload);
+      const editUrl = qs("a[data-journal-list-url]", row)?.dataset.journalListUrl;
+      if (editUrl) journalListPayloadCache.set(editUrl, {payload, storedAt: Date.now()});
+      dialog.close();
+      showJournalLibraryNotice((payload.label || "List") + " created. Select it to view.");
+      // No full dashboard fetch on creation: the user can keep comparing
+      // their current chart, and choose the new list whenever they want.
+      // Refreshing a 130k-document chart here used to block the interaction.
     } catch (error) {
-      window.alert(error.message || "Could not create the journal list.");
-      button.disabled = false;
+      feedback.textContent = error.message || "Could not create the journal list.";
+    } finally {
+      if (submit.isConnected) {
+        submit.disabled = false;
+        submit.textContent = "Create list";
+      }
+    }
+  };
+
+  const deleteCustomJournalList = async (button) => {
+    const endpoint = button.dataset.endpoint || "";
+    const key = button.dataset.listKey || "";
+    const name = button.dataset.listName || "this list";
+    const token = qs("[data-journal-list-form] input[name='csrf_token']")?.value || "";
+    // Only user-owned custom lists are deletable. Built-in filters must not
+    // expose this control, and the server also enforces that restriction.
+    if (!endpoint || !key.startsWith("custom_") || !token
+        || !window.confirm('Delete custom journal list "' + name + '"? This cannot be undone.')) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(endpoint, {
+        method: "DELETE", credentials: "same-origin",
+        headers: {"X-CSRF-Token": token, "X-Requested-With": "fetch"},
+      });
+      if (!response.ok) throw new Error(await journalListError(response));
+      const payload = await response.json();
+      if (!payload.deleted) throw new Error("The journal list was not deleted.");
+      journalListPayloadCache.delete(endpoint);
+      pageCache.clear();
+      const current = sameOriginUrl(window.location.href);
+      if (current && current.searchParams.get("filter") === key)
+        current.searchParams.set("filter", "all");
+      await fetchPage(current ? current.href : window.location.href, {}, false);
+    } catch (error) {
+      window.alert(error.message || "Could not delete the journal list.");
+      if (button.isConnected) button.disabled = false;
     }
   };
 
@@ -1034,12 +1224,12 @@
     const elements = [];
     const label = document.createElement("div");
     label.className = "heat-journal";
+    label.title = row.label;
     if (row.total === 0) {
       label.classList.add("journal-no-pdfs");
-      label.title = "No year-tagged PDFs currently match this journal.";
+      label.title += " — No year-tagged PDFs currently match this journal.";
     }
     label.tabIndex = 0;
-    label.setAttribute("aria-haspopup", "menu");
     label.dataset.journalRow = String(row.id);
     label.dataset.journalName = row.label;
     label.dataset.journalTotal = String(row.total);
@@ -1071,7 +1261,9 @@
     const total = document.createElement("div");
     total.className = "heat-total";
     total.dataset.journalRow = String(row.id);
+    total.dataset.journalName = row.label;
     total.textContent = row.total.toLocaleString("en-US");
+    total.title = row.label + ": " + total.textContent + " PDFs";
     elements.push(total);
     elements.push(label);
     row.elements = elements;
@@ -1264,29 +1456,32 @@
     }
   };
 
-  // Use the visible heatmap's natural content width rather than stretching
-  // its year scroller to the full dashboard maximum on shorter journal lists.
+  // Preserve a centered unit: fixed-width years | Total | Journal.
+  // When space is scarce only the year viewport scrolls; the Total gap
+  // stays fixed and the journal name remains visible beside it.
   const fitDashboardWidth = (panel) => {
-    const page = panel?.closest(".page");
     const frame = qs(".heatmap-scroll", panel);
     const yearGrid = qs(".journal-heatmap", panel);
     const fixed = qs("[data-heatmap-fixed-body]", panel);
-    if (!page || !frame || !yearGrid || !fixed) return;
-    const mobile = window.matchMedia("(max-width: 760px)").matches;
-    const intrinsicLabelWidth = Math.max(0, ...qsa(".heat-journal-name", fixed)
-      .map((name) => name.scrollWidth));
-    // On small screens retain the established compact fixed-column sizing.
-    const nameWidth = mobile ? null : Math.min(540,
-      Math.max(190, Math.ceil(intrinsicLabelWidth + 20)));
-    if (nameWidth === null) frame.style.removeProperty("--heat-journal-width");
-    else frame.style.setProperty("--heat-journal-width", nameWidth + "px");
+    if (!panel || !frame || !yearGrid || !fixed) return;
+    frame.style.removeProperty("--heat-journal-width");
     const computed = getComputedStyle(frame);
     const totalWidth = parseFloat(computed.getPropertyValue("--heat-total-width")) || 60;
-    const fixedNameWidth = nameWidth ?? (parseFloat(computed.getPropertyValue("--heat-journal-width")) || 180);
+    // Custom property values such as clamp(190px, 20vw, 320px) are returned
+    // as an unresolved string: parseFloat(clamp(...)) would produce NaN and
+    // incorrectly truncate the years by ~100px even on a wide monitor.
+    const journalWidth = qs(".heatmap-fixed-heading .heat-corner", panel)
+      ?.getBoundingClientRect().width || 220;
     const scrollbarRail = parseFloat(computed.getPropertyValue("--heat-scrollbar-rail")) || 16;
-    const naturalWidth = yearGrid.scrollWidth + totalWidth + fixedNameWidth + scrollbarRail + 12;
-    const preferredWidth = Math.min(1320, Math.max(640, Math.ceil(naturalWidth)));
-    page.style.setProperty("--dashboard-content-width", preferredWidth + "px");
+    const naturalWidth = yearGrid.scrollWidth + totalWidth + journalWidth + scrollbarRail;
+    panel.style.setProperty("--dashboard-table-width", Math.ceil(naturalWidth) + "px");
+    const workspace = panel.closest("[data-rank-workspace]");
+    if (workspace) {
+      // Ranking details are always exactly 380 CSS px. The viewport may
+      // scroll horizontally if even the minimum center pane cannot fit.
+      workspace.style.removeProperty("--rank-current-width");
+      workspace.dataset.rankLayout = "docked";
+    }
   };
 
   const applyJournalFilters = (panel) => {
@@ -1302,7 +1497,7 @@
     const { rows, years } = journalRows(heatmap);
     const sortSelect = qs("[data-journal-sort]", panel);
     const sortValue = sortSelect?.value || "total-desc";
-    qsa("[data-journal-sort-toggle]", panel).forEach((button) => {
+    qsa("[data-journal-sort-toggle]", panel.closest(".page")).forEach((button) => {
       const selected = sortValue.startsWith(button.dataset.journalSortToggle + "-");
       button.setAttribute("aria-pressed", String(selected));
       button.title = selected
@@ -1352,17 +1547,34 @@
     if (!fixedBody) return;
     const yearNodes = document.createDocumentFragment();
     const fixedNodes = document.createDocumentFragment();
+    const journalNodes = document.createDocumentFragment();
+    const journalNav = qs("[data-journal-library-items]", panel.closest(".page"));
     qsa(".heat-year", heatmap).forEach((node) => yearNodes.append(node));
     shown.forEach((row) => renderJournalRow(row, years, panel.dataset.pdfSearchUrl)
-      .forEach((node, index) => (index < years.length ? yearNodes : fixedNodes).append(node)));
+      .forEach((node, index) => {
+        if (index < years.length) yearNodes.append(node);
+        else if (index === years.length) fixedNodes.append(node);
+        else if (journalNav) journalNodes.append(node);
+        else fixedNodes.append(node);
+      }));
     heatmap.replaceChildren(yearNodes);
     fixedBody.replaceChildren(fixedNodes);
+    if (journalNav) journalNav.replaceChildren(journalNodes);
+    const journalCount = qs("[data-journal-library-count]", panel.closest(".page"));
+    if (journalCount) journalCount.textContent = String(matches.length);
+    // When search, sort, or pagination rebuilds the fixed journal column,
+    // keep the highlight on the journal currently shown in the rank panel.
+    highlightRankJournal(qs("[data-rank-panel]")?.dataset.journalName);
     fitDashboardWidth(panel);
+    // Preload the rankings for the CURRENT visible page, not just the first
+    // dashboard page. Subsequent mouse hovers then reuse local memory.
+    sharedRankSeed = primeSharedRankCache(panel);
 
     const status = qs("[data-journal-filter-status], .heatmap-filter-status", panel);
     if (status) {
       const noun = rows.length === 1 ? "journal" : "journals";
-      status.textContent = query ? matches.length + " of " + rows.length + " " + noun : rows.length + " " + noun;
+      status.textContent = query ? matches.length + "/" + rows.length : String(rows.length);
+      status.title = query ? matches.length + " of " + rows.length + " " + noun : rows.length + " " + noun;
     }
     const suggestion = qs("[data-journal-suggestion]", panel);
     if (suggestion) {
@@ -1506,7 +1718,6 @@
     const link = qs("[data-journal-wos-link]", menu);
     const name = (target.dataset.journalName || "").replace(/\s+/g, " ").trim();
     if (!menu || !link || !name) return;
-    window.clearTimeout(rankHoverTimer);
     closeJournalMenu();
     const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
     link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
@@ -1527,19 +1738,32 @@
 
   let rankSequence = 0;
   let rankResult = null;
-  let rankDrag = null;
-  let rankHoverTimer = null;
-  let rankHoverEnabled = false;
-  const rankHoverStorageKey = () => "netvault:rank-hover:v1:" + (document.body?.dataset.userId || "");
-  const rankHoverDelayMs = 180;
-  const rankPositionStorageKey = "netvault:rank-position:v1";
+  let highlightedRankJournals = [];
+  const highlightRankJournal = (name, journalNode = null) => {
+    // The left navigator, central journal name and Total are separate nodes.
+    // Keep the same current-journal cue on all of them without touching grid
+    // geometry or the year cells' existing density / hover tooltip.
+    const current = qsa(
+      ".heat-journal[data-journal-name], .heatmap-fixed-body .heat-total[data-journal-name]",
+      qs(".page") || document,
+    ).filter((entry) => entry.dataset.journalName === name);
+    if (journalNode?.isConnected && journalNode.dataset.journalName === name
+        && !current.includes(journalNode)) current.push(journalNode);
+    highlightedRankJournals.forEach((entry) => {
+      if (!current.includes(entry)) entry.removeAttribute("data-rank-current");
+    });
+    current.forEach((entry) => entry.setAttribute("data-rank-current", ""));
+    highlightedRankJournals = current;
+  };
   const rankCacheStorageKey = "netvault:journal-ranks:v1";
-  // PostgreSQL is the durable cache. Revalidate browser results periodically
-  // so another user's manual re-fetch becomes visible without a full day wait.
-  const rankCacheTtlMs = 60 * 1000;
+  // Completed lookups stay cached until the user explicitly requests Retry.
+  // Provider timestamps describe the data source, not cache expiration.
   const rankCache = new Map();
   const rankPending = new Map();
-  let rankPosition = null;
+  const rankKnownMissing = new Set();
+  // Reuse actual table rows on repeated hovers: once rendered, switching
+  // between cached journals just moves prebuilt nodes into the visible tbody.
+  const rankRenderedRows = new Map();
   const validRankResult = (data) => data && typeof data.journal_name === "string"
     && Number.isFinite(data.queried_at) && data.queried_at > 0
     && data.queried_at * 1000 <= Date.now() + 300000
@@ -1547,38 +1771,44 @@
     && data.rows.every(row => row && ["key", "name", "rank", "source"].every(
       field => typeof row[field] === "string" && row[field].length <= 4000));
   try {
-    const position = JSON.parse(localStorage.getItem(rankPositionStorageKey));
-    if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) rankPosition = position;
     const entries = JSON.parse(localStorage.getItem(rankCacheStorageKey) || "[]");
-    if (Array.isArray(entries)) entries.slice(-100).forEach(entry => {
+    if (Array.isArray(entries)) entries.slice(-300).forEach(entry => {
       if (Array.isArray(entry) && typeof entry[0] === "string" && validRankResult(entry[1]))
         rankCache.set(entry[0], entry[1]);
     });
   } catch { /* Memory caching still works when browser storage is unavailable. */ }
   const rankIdentity = (url, name) => url + "\0" + name.trim().replace(/\s+/g, " ").toLowerCase();
-  const cacheRanks = (key, data) => {
+  const persistRankCache = () => {
+    try { localStorage.setItem(rankCacheStorageKey, JSON.stringify([...rankCache])); }
+    catch {
+      // Browser quota limits vary; retain memory cache if storage is full.
+      try { localStorage.setItem(rankCacheStorageKey, JSON.stringify([...rankCache].slice(-100))); }
+      catch { /* Retain memory cache. */ }
+    }
+  };
+  const cacheRanks = (key, data, persist = true) => {
     const previous = rankCache.get(key);
-    if (previous && previous.queried_at > data.queried_at) return;
+    // A valid server response revalidates this browser entry even when the
+    // provider's original timestamp has not changed.
+    const entry = previous && previous.queried_at > data.queried_at ? previous : data;
     rankCache.delete(key);
-    rankCache.set(key, data);
-    while (rankCache.size > 100) rankCache.delete(rankCache.keys().next().value);
-    try { localStorage.setItem(rankCacheStorageKey, JSON.stringify([...rankCache])); } catch { /* Keep the memory cache. */ }
+    rankCache.set(key, { ...entry, received_at: Date.now() });
+    rankKnownMissing.delete(key);
+    rankRenderedRows.delete(key + "\0all");
+    rankRenderedRows.delete(key + "\0selected");
+    while (rankCache.size > 300) {
+      const evicted = rankCache.keys().next().value;
+      rankCache.delete(evicted);
+      rankRenderedRows.delete(evicted + "\0all");
+      rankRenderedRows.delete(evicted + "\0selected");
+    }
+    if (persist) persistRankCache();
   };
   const invalidateRankCache = () => {
     rankCache.clear();
+    rankRenderedRows.clear();
+    rankKnownMissing.clear();
     try { localStorage.removeItem(rankCacheStorageKey); } catch { /* Optional browser storage. */ }
-  };
-  const clampRankPanel = (panel, x, y) => {
-    const top = Math.max(8, Math.min(y, innerHeight - 160));
-    panel.style.maxHeight = `${Math.max(0, innerHeight - top - 8)}px`;
-    panel.style.left = `${Math.max(8, Math.min(x, innerWidth - panel.offsetWidth - 8))}px`;
-    panel.style.top = `${top}px`;
-  };
-  const rememberRankPosition = () => {
-    if (!rankDrag?.moved) { rankDrag = null; return; }
-    rankPosition = {x: parseFloat(rankDrag.panel.style.left), y: parseFloat(rankDrag.panel.style.top)};
-    try { localStorage.setItem(rankPositionStorageKey, JSON.stringify(rankPosition)); } catch { /* Keep the position for this page. */ }
-    rankDrag = null;
   };
   // Display the existing easyScholar dataset's Chinese labels, including for
   // older browser cache entries whose server-provided names were overridden.
@@ -1647,84 +1877,217 @@
     return { row, category, order, label: known ? rankDatasetLabels.get(abbreviation) : row.name };
   };
 
+  const rankImportantPattern = /(\u4e2d\u79d1\u9662(?:\u5347\u7ea7\u7248|\u57fa\u7840\u7248)?|ESCI|SCIE|SSCI|SCI|Q[1-4]|TOP|[1-4]\u533a|[\u4e00\u4e8c\u4e09\u56db]\u533a)/gi;
+  const rankImportantKind = (token) => {
+    if (/^(ESCI|SCIE|SSCI|SCI)$/i.test(token)) return "index";
+    if (/^Q[12]$/i.test(token)) return "quartile";
+    if (/^Q[34]$/i.test(token)) return "secondary";
+    if (/^TOP$/i.test(token)) return "top";
+    if (/^\u4e2d\u79d1\u9662/.test(token)) return "cas";
+    if (/^[1\u4e00]\u533a$/i.test(token)) return "zone";
+    return "secondary";
+  };
+  const renderRankHighlights = (cell, raw) => {
+    for (const part of String(raw).split(rankImportantPattern)) {
+      if (!part) continue;
+      if (!/^(\u4e2d\u79d1\u9662(?:\u5347\u7ea7\u7248|\u57fa\u7840\u7248)?|ESCI|SCIE|SSCI|SCI|Q[1-4]|TOP|[1-4]\u533a|[\u4e00\u4e8c\u4e09\u56db]\u533a)$/i.test(part)) {
+        cell.append(part);
+        continue;
+      }
+      const strong = document.createElement("strong");
+      strong.className = "rank-emphasis rank-emphasis--" + rankImportantKind(part);
+      strong.textContent = part;
+      cell.append(strong);
+    }
+  };
+  const rankTimeDisplayCache = new Map();
+  const showRankRetrievedAt = (result) => {
+    const indicator = qs("[data-rank-queried-at]", qs("[data-rank-panel]"));
+    if (!indicator) return;
+    const seconds = result?.queried_at;
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      indicator.hidden = true;
+      indicator.textContent = "";
+      indicator.removeAttribute("datetime");
+      return;
+    }
+    const stamp = new Date(seconds * 1000);
+    if (!Number.isFinite(stamp.getTime())) {
+      indicator.hidden = true;
+      indicator.textContent = "";
+      indicator.removeAttribute("datetime");
+      return;
+    }
+    const locale = document.documentElement?.lang || globalThis.navigator?.language || "en";
+    const key = locale + ":" + seconds;
+    let display = rankTimeDisplayCache.get(key);
+    if (!display) {
+      const label = window.NetVaultI18n?.translateString("Fetched") || "Fetched";
+      display = label + " · " + stamp.toLocaleString(locale, {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+      });
+      rankTimeDisplayCache.set(key, display);
+    }
+    indicator.dateTime = stamp.toISOString();
+    indicator.textContent = display;
+    indicator.hidden = false;
+  };
   const renderRanks = () => {
     const panel = qs("[data-rank-panel]");
     if (!panel || !rankResult) return;
-    const selectedOnly = qs("[data-rank-selected]", panel)?.getAttribute?.("aria-pressed") === "true";
-    const rows = rankResult.rows
-      .filter(row => !selectedOnly || row.selected)
-      .map(rankRowPresentation)
-      .sort((left, right) => left.category - right.category
-        || left.order - right.order
-        || left.label.localeCompare(right.label, "zh-CN", { numeric: true }));
+    const name = panel.dataset.journalName, url = panel.dataset.rankUrl;
+    const cacheKey = rankIdentity(url, name) + "\0all";
     const body = qs("[data-rank-rows]", panel);
-    body.replaceChildren();
-    let category = -1;
-    for (const entry of rows) {
-      if (category !== entry.category) {
-        category = entry.category;
-        const tr = document.createElement("tr"), th = document.createElement("th");
-        tr.className = "rank-group";
-        th.colSpan = 2;
-        th.textContent = rankDisplayGroups[category].title;
-        tr.append(th);
-        body.append(tr);
+    let rendered = rankRenderedRows.get(cacheKey);
+    if (!rendered) {
+      const rows = rankResult.rows
+        .map(rankRowPresentation)
+        .sort((left, right) => left.category - right.category
+          || left.order - right.order
+          || left.label.localeCompare(right.label, "zh-CN", { numeric: true }));
+      const children = [];
+      let category = -1;
+      for (const entry of rows) {
+        if (category !== entry.category) {
+          category = entry.category;
+          const tr = document.createElement("tr"), th = document.createElement("th");
+          tr.className = "rank-group";
+          th.colSpan = 2;
+          th.textContent = rankDisplayGroups[category].title;
+          tr.append(th);
+          children.push(tr);
+        }
+        const tr = document.createElement("tr"), th = document.createElement("th"), td = document.createElement("td");
+        th.scope = "row";
+        renderRankHighlights(th, entry.label);
+        th.title = entry.label;
+        renderRankHighlights(td, entry.row.rank);
+        td.title = entry.row.rank;
+        tr.append(th, td);
+        children.push(tr);
       }
-      const tr = document.createElement("tr"), th = document.createElement("th"), td = document.createElement("td");
-      th.scope = "row";
-      th.textContent = entry.label;
-      td.textContent = entry.row.rank;
-      tr.append(th, td);
-      body.append(tr);
+      rendered = { children, hasRows: rows.length > 0 };
+      rankRenderedRows.set(cacheKey, rendered);
+      while (rankRenderedRows.size > 120) rankRenderedRows.delete(rankRenderedRows.keys().next().value);
     }
-    qs("[data-rank-table]", panel).hidden = !rows.length;
+    // The cached nodes are detached from the previous table on a switch;
+    // no sorting, highlighting or per-cell element construction is repeated.
+    body.replaceChildren(...rendered.children);
+    qs("[data-rank-table]", panel).hidden = !rendered.hasRows;
     // Show status text only when action or missing data requires attention.
-    qs("[data-rank-status]", panel).textContent = rows.length ? ""
-      : (selectedOnly ? "No selected datasets available." : "No rankings available.");
-    clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));
+    qs("[data-rank-status]", panel).textContent = rendered.hasRows ? ""
+      : "No rankings available.";
+  };
+  // One lookup path serves both the embedded drawer and opportunistic cache
+  // warming, sharing in-flight HTTP requests for the same journal.
+  const fetchRankResult = (name, rankUrl, refresh = false) => {
+    const key = rankIdentity(rankUrl, name);
+    if (!refresh && rankPending.has(key)) return rankPending.get(key);
+    const pending = (async () => {
+      const url = new URL(rankUrl, location.origin);
+      url.search = new URLSearchParams({ name, refresh: String(refresh) });
+      const response = await fetch(url, { credentials: "same-origin", cache: "no-store" });
+      if (!response.headers.get("content-type")?.includes("application/json")) throw Error("Please sign in again.");
+      const data = await response.json();
+      if (!response.ok) throw Error(typeof data.detail === "string" ? data.detail : "Unable to look up this journal.");
+      if (!validRankResult(data) || rankIdentity(rankUrl, data.journal_name) !== key)
+        throw Error("Invalid journal ranking response.");
+      cacheRanks(key, data);
+      return data;
+    })();
+    if (!refresh) rankPending.set(key, pending);
+    return pending.finally(() => {
+      if (rankPending.get(key) === pending) rankPending.delete(key);
+    });
+  };
+  let sharedRankSeed = null;
+  const primeSharedRankCache = (heatmapPanel) => {
+    const rankUrl = qs("[data-journal-context-menu]")?.dataset.rankUrl;
+    const csrfToken = qs("[data-journal-list-form] input[name='csrf_token']")?.value;
+    const heatmap = qs(".journal-heatmap", heatmapPanel);
+    if (!rankUrl || !csrfToken || !heatmap || !heatmapPanel.dataset.rankCachedUrl) return null;
+    const names = [...new Map(journalRows(heatmap).rows
+      .map(row => [rankIdentity(rankUrl, row.label), row.label])).entries()]
+      .filter(([key]) => !rankCache.has(key) && !rankKnownMissing.has(key))
+      .map(([, name]) => name);
+    if (!names.length) return null;
+    // The page can contain up to 200 journals. Load every visible journal
+    // from shared PostgreSQL in batches of 60 (the API limit), without any
+    // calls to the external provider or per-item UI updates.
+    const batches = [];
+    for (let index = 0; index < names.length; index += 60) batches.push(names.slice(index, index + 60));
+    let added = false;
+    return Promise.all(batches.map(async (batch) => {
+      try {
+        const response = await fetch(heatmapPanel.dataset.rankCachedUrl, {
+          method: "POST", credentials: "same-origin", cache: "no-store",
+          headers: {"Content-Type": "application/json", "X-CSRF-Token": csrfToken},
+          body: JSON.stringify({names: batch}),
+        });
+        if (!response.ok) throw Error("Unable to read shared rankings.");
+        const {ranks} = await response.json();
+        if (!Array.isArray(ranks)) return;
+        for (const result of ranks) {
+          if (validRankResult(result)) {
+            const key = rankIdentity(rankUrl, result.journal_name);
+            if (!rankCache.has(key)) {
+              cacheRanks(key, result, false);
+              added = true;
+            }
+          }
+        }
+        // An absent ranking is remembered within this page session so a
+        // search or pagination change does not repeat the same DB check.
+        for (const name of batch) {
+          const key = rankIdentity(rankUrl, name);
+          if (!rankCache.has(key)) rankKnownMissing.add(key);
+        }
+      } catch { /* Hover falls back to the existing server cache API. */ }
+    })).then(() => { if (added) persistRankCache(); });
   };
   const loadRanks = async (refresh = false) => {
     const panel = qs("[data-rank-panel]");
     if (!panel?.dataset.journalName) return;
     const sequence = ++rankSequence;
     const name = panel.dataset.journalName, key = rankIdentity(panel.dataset.rankUrl, name);
-    const cached = rankCache.get(key);
     const current = () => sequence === rankSequence && panel.isConnected;
+    let cached = rankCache.get(key);
     rankResult = cached || null;
+    showRankRetrievedAt(rankResult);
     panel.removeAttribute("aria-busy");
     qs("[data-rank-refresh]", panel).disabled = false;
     if (cached) {
+      // Synchronous hot path: pointerover -> cached table rows -> DOM.
+      // Neither a timer, a Promise, nor any HTTP request precedes this.
       renderRanks();
-      // Fresh results need no network round-trip. Older results stay visible during revalidation.
-      if (!refresh && Date.now() - cached.queried_at * 1000 < rankCacheTtlMs) return;
+      // Never revalidate on hover or revisit, regardless of source age.
+      // An explicit Retry is the only way to replace a successful lookup.
+      if (!refresh) return;
     } else {
       qs("[data-rank-table]", panel).hidden = true;
-      qs("[data-rank-status]", panel).textContent = "Fetching rankings…";
+      qs("[data-rank-status]", panel).textContent =
+        sharedRankSeed && !refresh ? "Loading saved rankings…" : "Fetching rankings…";
+    }
+    if (!refresh && !cached && sharedRankSeed) {
+      await sharedRankSeed;
+      if (!current()) return;
+      cached = rankCache.get(key);
+      if (cached) {
+        rankResult = cached;
+        showRankRetrievedAt(rankResult);
+        renderRanks();
+        return;
+      }
     }
     panel.setAttribute("aria-busy", "true");
     qs("[data-rank-refresh]", panel).disabled = true;
     try {
-      let pending = refresh ? null : rankPending.get(key);
-      if (!pending) {
-        pending = (async () => {
-          const url = new URL(panel.dataset.rankUrl, location.origin);
-          url.search = new URLSearchParams({name, refresh: String(refresh)});
-          const response = await fetch(url, {credentials: "same-origin", cache: "no-store"});
-          if (!response.headers.get("content-type")?.includes("application/json")) throw Error("Please sign in again.");
-          const data = await response.json();
-          if (!response.ok) throw Error(typeof data.detail === "string" ? data.detail : "Unable to look up this journal.");
-          if (!validRankResult(data) || rankIdentity(panel.dataset.rankUrl, data.journal_name) !== key)
-            throw Error("Invalid journal ranking response.");
-          cacheRanks(key, data);
-          return data;
-        })();
-        rankPending.set(key, pending);
-      }
-      let data;
-      try { data = await pending; }
-      finally { if (rankPending.get(key) === pending) rankPending.delete(key); }
+      const data = await fetchRankResult(name, panel.dataset.rankUrl, refresh);
       if (!current()) return;
-      rankResult = rankCache.get(key) || data; renderRanks();
+      rankResult = rankCache.get(key) || data;
+      showRankRetrievedAt(rankResult);
+      renderRanks();
     } catch (error) {
       if (current()) qs("[data-rank-status]", panel).textContent = error.message + (cached ? " Showing saved rankings." : "");
     } finally {
@@ -1733,83 +2096,57 @@
       }
     }
   };
-  const showRankPanel = (name, url, x, y, hover = false) => {
+  const showRankPanel = (name, url, hover = false, journalNode = null) => {
     const panel = qs("[data-rank-panel]");
     if (!panel || !name || !url) return;
-    const visible = !panel.hidden;
-    if (hover && visible && panel.dataset.journalName === name) return;
-    // Keep the floating window in place while scanning journals. Its drag
-    // position applies equally to a manual context-menu open and hover open.
-    const left = visible ? parseFloat(panel.style.left) : NaN;
-    const top = visible ? parseFloat(panel.style.top) : NaN;
+    highlightRankJournal(name, journalNode);
+    if (hover && panel.dataset.journalName === name) return;
     panel.dataset.journalName = name;
     panel.dataset.rankUrl = url;
     panel.dataset.rankOpenMode = hover ? "hover" : "manual";
     qs("[data-rank-title]", panel).textContent = name;
-    qs("[data-rank-table]", panel).hidden = true;
-    panel.hidden = false;
-    clampRankPanel(panel,
-      Number.isFinite(left) ? left : (rankPosition?.x ?? x),
-      Number.isFinite(top) ? top : (rankPosition?.y ?? y));
-    if (!hover) qs("[data-rank-close]", panel).focus({preventScroll: true});
+    if (!hover) qs("[data-rank-refresh]", panel)?.focus({preventScroll:true});
     void loadRanks();
   };
   const openRankPanel = () => {
     const menu = qs("[data-journal-context-menu]");
     if (!menu) return;
-    window.clearTimeout(rankHoverTimer);
-    showRankPanel(menu.dataset.journalName, menu.dataset.rankUrl,
-      Number(menu.dataset.anchorX) + 12, Number(menu.dataset.anchorY) + 12);
+    showRankPanel(menu.dataset.journalName, menu.dataset.rankUrl);
     closeJournalMenu();
   };
-  document.addEventListener("change", event => {
-    if (!event.target.matches?.("[data-rank-hover-toggle]")) return;
-    rankHoverEnabled = event.target.checked;
-    window.clearTimeout(rankHoverTimer);
-    try { localStorage.setItem(rankHoverStorageKey(), String(rankHoverEnabled)); } catch { /* Optional. */ }
-    const panel = qs("[data-rank-panel]");
-    if (!rankHoverEnabled && panel?.dataset.rankOpenMode === "hover") {
-      panel.hidden = true;
-      rankSequence++;
-    }
-  });
   document.addEventListener("pointerover", event => {
-    if (!rankHoverEnabled || event.pointerType !== "mouse" || rankDrag || event.buttons) return;
+    // Hover lookup is always enabled. Ignore old saved toggle preferences:
+    // pointerover must synchronously switch the permanent ranking panel.
+    if (event.pointerType !== "mouse" || event.buttons) return;
     const journal = event.target.closest?.(".heat-journal[data-journal-name]");
-    if (!journal || (event.relatedTarget && journal.contains(event.relatedTarget))) return;
+    const statistic = journal ? null : event.target.closest?.(
+      ".journal-heatmap .heat-cell[data-journal-row], .heatmap-fixed-body .heat-total[data-journal-row]",
+    );
+    if (!journal && !statistic) return;
+    if (journal && event.relatedTarget && journal.contains(event.relatedTarget)) return;
     const menu = qs("[data-journal-context-menu]");
     if (!menu || !menu.hidden) return;
-    window.clearTimeout(rankHoverTimer);
-    const name = (journal.dataset.journalName || "").replace(/\s+/g, " ").trim();
+    // Row IDs originate from the shared heatmap data and survive sorting,
+    // searching and pagination. Reading the in-memory row avoids repeating
+    // large journal names on every year-cell element (including empty cells).
+    const heatmap = statistic && qs(".journal-heatmap", statistic.closest(".heatmap-panel"));
+    const rowId = statistic ? Number(statistic.dataset.journalRow) : -1;
+    const row = heatmap && Number.isInteger(rowId) && rowId >= 0
+      ? journalRows(heatmap).rows[rowId] : null;
+    const name = (journal?.dataset.journalName || statistic?.dataset.journalName
+      || row?.label || "").replace(/\s+/g, " ").trim();
     const panel = qs("[data-rank-panel]");
-    if (!name || (panel && !panel.hidden && panel.dataset.journalName === name)) return;
-    rankHoverTimer = window.setTimeout(() => {
-      if (!rankHoverEnabled || !journal.isConnected || rankDrag || !menu.hidden) return;
-      const rect = journal.getBoundingClientRect();
-      showRankPanel(name, menu.dataset.rankUrl, rect.right + 12, rect.top + 8, true);
-    }, rankHoverDelayMs);
-  });
-  document.addEventListener("pointerout", event => {
-    const journal = event.target.closest?.(".heat-journal[data-journal-name]");
-    if (journal && (!event.relatedTarget || !journal.contains(event.relatedTarget)))
-      window.clearTimeout(rankHoverTimer);
+    if (!name || (panel && panel.dataset.journalName === name)) return;
+    // Immediate in the pointerover call stack; rapid passes across several
+    // rows always show the latest name, with no 120ms hover delay.
+    showRankPanel(name, menu.dataset.rankUrl, true, journal);
   });
   document.addEventListener("click", event => {
-    if (event.target.closest("[data-rank-close]")) {
-      window.clearTimeout(rankHoverTimer);
-      qs("[data-rank-panel]").hidden = true;
-      rankSequence++;
-    }
     if (event.target.closest("[data-rank-refresh]")) loadRanks(true);
-    const selected = event.target.closest("[data-rank-selected]");
-    if (selected) {
-      const pressed = selected.getAttribute("aria-pressed") !== "true";
-      selected.setAttribute("aria-pressed", String(pressed));
-      renderRanks();
-    }
   });
   let rankBatchTimer = null;
   let lastCompletedRankJob = null;
+  let explicitlyRefreshedBatch = null;
   const setRankBatchMessage = (panel, message, retry = false, brief = "Ranks") => {
     const banner = qs("[data-rank-batch-banner]", panel);
     if (!banner) return;
@@ -1829,12 +2166,18 @@
       ? "Ranking check " + (job.status === "completed" ? "completed" : "finished with errors")
         + ": " + progress + (job.last_error ? ". Last error: " + job.last_error : "")
       : "Checking list rankings in the background: " + progress;
-    const brief = "Ranks " + job.processed + "/" + job.total + (job.failed ? " !" : "");
+    const brief = job.processed + "/" + job.total + (job.failed ? "!" : "");
     setRankBatchMessage(panel, message, done, brief);
     qs("[data-rank-batch-banner]", panel).dataset.rankState = job.status;
     if (done && lastCompletedRankJob !== job.id) {
-      invalidateRankCache();
       lastCompletedRankJob = job.id;
+    }
+    if (done && explicitlyRefreshedBatch === job.id) {
+      explicitlyRefreshedBatch = null;
+      // Only an explicit list-wide Retry invalidates the browser rankings.
+      // A completed background job seen on page load must not clear or
+      // prefetch journals that the user has already looked up.
+      invalidateRankCache();
     }
   };
   const pollRankBatch = async (panel) => {
@@ -1884,6 +2227,7 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Unable to start the ranking check.");
       if (!panel.isConnected) return;
+      if (refresh) explicitlyRefreshedBatch = data.id;
       showRankBatchProgress(panel, data);
       void pollRankBatch(panel);
     } catch (error) {
@@ -1899,31 +2243,7 @@
       void startRankBatch(true);
     }
   });
-  document.addEventListener("pointerdown", event => {
-    const header = event.target.closest("[data-rank-drag]");
-    if (!header || event.target.closest("button") || event.button !== 0) return;
-    const panel = header.closest("[data-rank-panel]"), rect = panel.getBoundingClientRect();
-    rankDrag = {panel, x: event.clientX - rect.left, y: event.clientY - rect.top};
-    header.setPointerCapture(event.pointerId); event.preventDefault();
-  });
-  document.addEventListener("pointermove", event => {
-    if (rankDrag) {
-      rankDrag.moved = true;
-      clampRankPanel(rankDrag.panel, event.clientX - rankDrag.x, event.clientY - rankDrag.y);
-    }
-  });
-  document.addEventListener("pointerup", rememberRankPosition);
-  document.addEventListener("pointercancel", rememberRankPosition);
-  window.addEventListener("resize", () => {
-    const panel = qs("[data-rank-panel]");
-    if (panel && !panel.hidden) clampRankPanel(panel, parseFloat(panel.style.left), parseFloat(panel.style.top));
-  });
   document.addEventListener("keydown", event => {
-    if (event.key === "Escape") {
-      window.clearTimeout(rankHoverTimer);
-      const panel = qs("[data-rank-panel]");
-      if (panel) { panel.hidden = true; rankSequence++; }
-    }
     const menu = event.target.closest("[data-journal-context-menu]");
     if (menu && ["ArrowDown", "ArrowUp"].includes(event.key)) {
       event.preventDefault();
@@ -2002,14 +2322,53 @@
     saveJournalLimit(input, revision);
   };
 
+  const journalCollectionsScrollKey = "netvault:journal-collections-scroll:v1";
+  const journalGroupPreferenceKey = "netvault:journal-group-open:v1:";
+  const initJournalLibrary = (root = document) => {
+    const library = qs("[data-journal-library]", root);
+    // Drop the obsolete book icon after PJAX navigation as well as on load.
+    qs("[data-journal-library-rail-toggle]")?.remove();
+    if (!library) {
+      delete document.body.dataset.journalLibraryOpen;
+      return;
+    }
+    // The navigator is permanently visible; there is no collapse control.
+    document.body.dataset.journalLibraryOpen = "true";
+    // PJAX list switches replace the sidebar DOM; restore the previous
+    // scroll position so someone comparing adjacent ABS/custom lists does
+    // not have to find their place again after every click.
+    const collections = qs(".journal-library-collections", library);
+    if (collections) {
+      try {
+        collections.scrollTop = Math.max(0, Number(sessionStorage.getItem(journalCollectionsScrollKey)) || 0);
+      } catch { /* Storage may be disabled; navigation still works. */ }
+      collections.addEventListener("scroll", () => {
+        try { sessionStorage.setItem(journalCollectionsScrollKey, String(collections.scrollTop)); }
+        catch { /* Optional tab-local preference. */ }
+      }, { passive: true });
+    }
+    qsa("details[data-journal-list-group]", library).forEach((group) => {
+      try {
+        const previous = localStorage.getItem(journalGroupPreferenceKey + group.dataset.journalListGroup);
+        if (previous !== null) group.open = previous !== "false";
+      } catch { /* Native details still work when localStorage is unavailable. */ }
+    });
+  };
+  document.addEventListener("click", event => {
+    if (event.target.closest?.("[data-journal-create-cancel]")) {
+      qs("[data-journal-create-dialog]")?.close();
+      return;
+    }
+    const prev = event.target.closest?.("[data-journal-library-prev]");
+    const next = event.target.closest?.("[data-journal-library-next]");
+    if (prev || next) {
+      const panel = qs(".heatmap-panel");
+      if (panel) goToJournalPage(panel, Number(panel.dataset.journalPage || 1) + (next ? 1 : -1));
+    }
+  });
   const initHeatmap = (root = document) => {
+    initJournalLibrary(root);
     qsa(".heatmap-panel", root).forEach((panel) => {
-      const hoverToggle = qs("[data-rank-hover-toggle]", panel);
-      if (hoverToggle) {
-        try { rankHoverEnabled = localStorage.getItem(rankHoverStorageKey()) === "true"; }
-        catch { rankHoverEnabled = false; }
-        hoverToggle.checked = rankHoverEnabled;
-      }
       if (panel.dataset.rankBatchStatusUrl) void pollRankBatch(panel);
       const view = loadJournalView(panel);
       const search = qs("[data-journal-filter]", panel);
@@ -2729,7 +3088,14 @@
 
     const customListCreate = event.target.closest("[data-custom-list-create]");
     if (customListCreate) {
-      createCustomJournalList(customListCreate);
+      openCreateJournalDialog(customListCreate);
+      return;
+    }
+
+    const customListDelete = event.target.closest("[data-journal-custom-delete]");
+    if (customListDelete) {
+      event.preventDefault();
+      void deleteCustomJournalList(customListDelete);
       return;
     }
 
@@ -2742,7 +3108,7 @@
 
     const sortHeading = event.target.closest("[data-journal-sort-toggle]");
     if (sortHeading) {
-      const panel = sortHeading.closest(".heatmap-panel");
+      const panel = sortHeading.closest(".heatmap-panel") || qs(".heatmap-panel");
       const select = qs("[data-journal-sort]", panel);
       if (!select) return;
       const field = sortHeading.dataset.journalSortToggle;
@@ -2786,7 +3152,17 @@
     }
 
     const journal = event.target.closest(".heat-journal[data-journal-name]");
-    if (journal) { event.preventDefault(); openJournalMenu(journal, event); return; }
+    if (journal) {
+      event.preventDefault();
+      if (journal.closest("[data-journal-library-items]")) {
+        if (event.target.closest("[data-journal-more]")) openJournalMenu(journal, event);
+        else {
+          const menu = qs("[data-journal-context-menu]");
+          if (menu) showRankPanel(journal.dataset.journalName, menu.dataset.rankUrl, true, journal);
+        }
+      } else openJournalMenu(journal, event);
+      return;
+    }
     if (event.target.closest("[data-journal-rank]")) { openRankPanel(); return; }
     const link = event.target.closest("a[href]");
     if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -2812,6 +3188,14 @@
     event.preventDefault();
     closeFilterMenus();
     openJournalListEditor(tab);
+  });
+
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const journal = event.target.closest?.(".heatmap-fixed-body .heat-journal[data-journal-name]");
+    if (!journal) return;
+    event.preventDefault();
+    openJournalMenu(journal, event);
   });
 
   document.addEventListener("pointerdown", (event) => {
@@ -2848,6 +3232,11 @@
   };
   document.addEventListener("toggle", (event) => {
     const menu = event.target;
+    if (menu.matches?.("details[data-journal-list-group]")) {
+      try { localStorage.setItem(journalGroupPreferenceKey + menu.dataset.journalListGroup, String(menu.open)); }
+      catch { /* Optional per-device preference. */ }
+      return;
+    }
     if (menu.matches?.("details.filter-menu") && menu.open) {
       closeFilterMenus(menu);
       window.requestAnimationFrame(() => {
