@@ -4685,9 +4685,40 @@ body.dashboard-body:has([data-journal-library]) {
   color: var(--muted);
   cursor: pointer;
 }
+/* List labels fill the available row, reserving the far right for Edit. */
+.dashboard-body .journal-library a[data-journal-list-edit] > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .dashboard-body .journal-library .filter-edit-mark {
+  display: inline-flex;
   flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
   opacity: 0;
+}
+/* On custom lists Delete sits immediately LEFT of the right-edge Edit icon. */
+.dashboard-body .journal-library .journal-custom-entry {
+  position: relative;
+  display: block;
+}
+.dashboard-body .journal-custom-entry > a {
+  width: 100%;
+  min-width: 0;
+}
+.dashboard-body .journal-custom-entry:has(> .journal-custom-delete) > a > span:first-child {
+  padding-right: 28px;
+}
+.dashboard-body .journal-custom-entry > .journal-custom-delete {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 33px;
+  transform: translateY(-50%);
 }
 .dashboard-body .journal-library [data-journal-list-edit]:hover .filter-edit-mark,
 .dashboard-body .journal-library [data-journal-list-edit]:focus-within .filter-edit-mark,
