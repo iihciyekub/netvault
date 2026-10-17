@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+## 0.7.76 — 2026-10-16
+
+- Move the list-wide ranking status into the existing Dashboard search toolbar as a compact `Ranks x/y` indicator, with full progress available on hover and an icon-only re-fetch control. Remove the separate full-width banner so it no longer pushes the heatmap downward.
+- Add an opt-in **Hover ranks** checkbox beside the compact status. Mouse hover over a journal name opens the existing draggable rank window and hovering another name updates its contents without moving the window or stealing keyboard focus.
+- Remember each user's hover setting in browser storage. Debounce hover requests, ignore touch input, and keep the original context-menu lookup and manual refresh unchanged.
+- Run focused ranking UI and layout checks rather than rerunning unrelated PDF extraction tests.
+
+## 0.7.75 — 2026-10-16
+
+- Restore the existing Chinese easyScholar dataset labels in the journal ranking panel, including previously browser-cached responses. Group headings now match the Chinese ranking taxonomy instead of overriding the server mapping with English labels.
+- Persist successful per-journal ranking results globally in PostgreSQL so any authenticated user can reuse them after browser or server restarts. Normal opens read the shared cache; the per-journal Re-fetch action explicitly refreshes and replaces it.
+- Add **Fetch current list rankings** to the journal context menu. It queues a server-side background job for the selected journal list, with resumable progress, safe concurrent-job deduplication, shared per-journal caching, and status polling across page reloads.
+- Add **Re-fetch list rankings** after the batch finishes to deliberately refresh every journal, preserve previously cached data when the provider fails, and report failed counts without blocking the UI.
+- Cover nonblocking execution, cache persistence across users, duplicate requests, restart recovery, manual refresh, permission checks and the Chinese label/frontend actions in new tests.
+
+## 0.7.74 — 2026-10-16
+
+- Fix the journal-list editor's Save list button: wire the delegated form submit event to the authenticated JSON POST, preventing the browser's default GET and ensuring additions/removals reach the database.
+- Show a confirmation with the saved journal count after the dashboard refresh; keep the editor open and report errors or optimistic-concurrency conflicts without discarding edits.
+- Normalize saved-list revision timestamps to UTC across PostgreSQL and SQLite, so consecutive saves and reopening the editor do not generate false conflicts.
+- Add client-side submit-event regressions for adding/removing journals, double-click protection, refresh and error feedback, plus a database-backed save/reopen/delete round-trip test.
+
+## 0.7.73 — 2026-10-16
+
+- Harden dashboard preference migration for long-lived NetVault installations whose schema-version marker is ahead of the actual user columns. Idempotently reconcile the new preference field before loading account records, even if the migration version already matches.
+- Add regression coverage for PostgreSQL-compatible schema drift and preserving existing saved journal lists.
+
+## 0.7.72 — 2026-10-16
+
+- Preserve each user's last selected Dashboard journal list across refreshes, navigation and devices; retain UTD24 as a first-visit default rather than resetting on every visit.
+- Display **every** saved journal in filtered heatmaps, including journals without year-tagged PDFs, with zero counts rather than silently omitting them.
+- Remember Dashboard search text, pagination, sort order and year-scroll position per user/list; retain the existing database-persisted journal display limit and theme settings.
+- Add one-click text export for journal lists, always fetch a fresh list revision for editing, and reject outdated saves from another browser/tab rather than silently overwriting changes.
+- Save the preferred filter only on actual user navigation via an authenticated CSRF-protected POST, not on Dashboard prefetch or read-only GET requests.
+- Extend migration and browser/backend regressions for journal list completeness, selection persistence, editing concurrency and URL-prefix-aware preference requests.
+
+## 0.7.71 — 2026-10-16
+
+- Speed up normal `nv upload` on large folders: batch up to 500 DOI candidates per indexed `/pdfs/exists` request, instead of 12 per preflight.
+- Include SHA-256-bound download-index DOI hints in batch preflight, but only skip distinct PDF bytes when their first-page DOI and complete article title corroborate the server record; keep legacy automatic CSV and ambiguous DOI hints on the verified upload path.
+- Retry transient failures of read-only duplicate-lookup requests without treating network outages as missing server records.
+- Distinguish already-stored files from new uploads in progress, and provide hashing, DOI lookup, precheck, and duplicate-resolution timings in verbose output.
+- Keep force replacement, metadata writeback, explicit CSV trust, and resumable failed uploads on their existing safety workflows.
+
+## 0.7.70 — 2026-10-16
+
+- Remove the visible Correct DOI action from Search PDFs without changing the protected administrative correction API.
+- Add an accessible checkbox to each search result, a Select all / Deselect all toggle scoped to the current page, a live selection count, and Download selected ZIP using the existing authenticated, CSRF-protected streaming ZIP endpoint.
+- Disable ZIP download when nothing is selected and keep PDF selection behavior working after in-app navigation.
+- Add selection interaction and selective ZIP regression tests.
+
+## 0.7.69 — 2026-10-15
+
+- Move dashboard heatmap scrollbars into separate horizontal and vertical rails outside the year squares, including macOS overlay scrollbar configurations.
+- Keep the fixed TOTAL and JOURNAL columns vertically aligned with the independently scrolling year matrix, and synchronize scroll positions in both directions.
+
+## 0.7.68 — 2026-10-15
+
+- Consolidate DOI ZIP downloads into the dashboard Batch DOI editor, showing the exact count of stored PDFs available before offering a ZIP; retain the paginated Search PDFs action and remove the retired download page/sidebar link.
+- Align fixed journal totals and names with the year grid rows.
+- Refresh first-party static scripts and styles after deployment rather than letting the browser cache outdated click handlers for a year; keep vendor assets immutable.
+
 ## 0.7.67 — 2026-10-15
 
 - Add a read-only Meta action to PDF search results, with a responsive dialog showing the vault's catalog metadata separately from the original PDF Document Info.

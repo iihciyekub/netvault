@@ -39,6 +39,9 @@ def cli_upload(tmp_path, monkeypatch):
     monkeypatch.setattr(user, "load_credentials", lambda: {"server_url": "https://vault.example/nv"})
     monkeypatch.setattr(user, "load_upload_index_settings", lambda: (True, ()))
     monkeypatch.setattr(user, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    # The default CLI now checks trusted DOI values before transferring bytes.
+    # This offline fixture models an empty server index for both queries.
+    monkeypatch.setattr(user, "get_existing_pdfs_by_doi", lambda *a, **k: {})
     calls = []
 
     def do_upload(path, **kwargs):

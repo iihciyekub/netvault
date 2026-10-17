@@ -17,6 +17,7 @@ import stat
 import tempfile
 
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import NameObject
 
 from netvault.doi import document_info_candidates, normalize_doi
 from netvault.identity_shared import DOI_RE
@@ -111,6 +112,21 @@ def write_pdf_metadata(
             "The PDF Document Info has a different embedded DOI. "
             "Pass --replace to update conflicting Document Info DOI values."
         )
+    aliases = [
+        key for key in before["document_info"]
+        if key.casefold() == "/doi" and key != "/DOI"
+    ]
+    if aliases and not replace:
+        for key in aliases:
+            try:
+                existing = normalize_doi(before["document_info"][key])
+            except ValueError:
+                existing = None
+            if existing != normalized:
+                raise ValueError(
+                    "The PDF Document Info has an incompatible DOI field. "
+                    "Pass --replace to correct conflicting Document Info DOI values."
+                )
     optional = {
         key: value
         for key, value in {
@@ -122,7 +138,7 @@ def write_pdf_metadata(
         if value is not None
     }
     if (target == source and before["document_info"].get("/DOI") == normalized
-            and not optional and before["status"] == "ok"):
+            and not optional and before["status"] == "ok" and not aliases):
         return {**before, "changed": False}
 
     reader = _open_reader(source)
@@ -132,6 +148,11 @@ def write_pdf_metadata(
     updates.update(optional)
     updates["/DOI"] = normalized
     writer.add_metadata(updates)
+    # PDF name keys are case-sensitive. Keep only canonical /DOI, not /doi
+    # (or other case variants), even if every field contains the same value.
+    info = writer._info.get_object()
+    for key in aliases:
+        info.pop(NameObject(key), None)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.pdf-meta-", dir=target.parent)
@@ -143,7 +164,9 @@ def write_pdf_metadata(
             os.fsync(handle.fileno())
         temporary.chmod(stat.S_IMODE(source.stat().st_mode))
         after = read_pdf_metadata(temporary)
-        if after["status"] != "ok" or after["doi"] != normalized:
+        if (after["status"] != "ok" or after["doi"] != normalized
+                or any(key.casefold() == "/doi" and key != "/DOI"
+                       for key in after["document_info"])):
             raise ValueError(
                 "The rewritten PDF Document Info has conflicting DOI values; "
                 "original file was not changed."

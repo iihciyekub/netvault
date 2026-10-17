@@ -27,11 +27,28 @@
   <p class="result-count"><i class="fa-solid fa-book-open" aria-hidden="true"></i>{{ total }} result{% if total != 1 %}s{% endif %}</p>
   {% if total_pages > 1 %}<span>{{ page }} / {{ total_pages }}</span>{% endif %}
 </div>
+{% if pdfs %}
+<div class="paper-selection-toolbar" data-pdf-selection-toolbar aria-label="Select PDFs for ZIP download">
+  <button class="button ghost paper-select-toggle" type="button" data-pdf-select-toggle aria-pressed="false">
+    <i class="fa-regular fa-square-check" aria-hidden="true"></i><span data-pdf-select-toggle-label>Select all</span>
+  </button>
+  <span class="paper-selected-count" data-pdf-selected-count role="status" aria-live="polite">0 selected</span>
+  <button class="button primary" type="submit" form="selected-pdf-zip-form" data-pdf-selected-zip disabled>
+    <i class="fa-solid fa-file-zipper" aria-hidden="true"></i><span>Download selected ZIP</span>
+  </button>
+</div>
+<form id="selected-pdf-zip-form" method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+</form>
+{% endif %}
 <section class="paper-results" aria-label="Search results">
     {% for pdf in pdfs %}
-    <article class="paper-result">
+    <article class="paper-result" data-pdf-select-item>
       <div class="paper-result-head">
         <div class="paper-result-kicker">
+          <label class="paper-select-label">
+            <input type="checkbox" name="pdf_ids" value="{{ pdf.id }}" form="selected-pdf-zip-form" data-pdf-select-checkbox aria-label="Select PDF {{ pdf.id }} for ZIP download">
+          </label>
           <a class="doi-link" href="{{ pdf.crossref_url or ('https://doi.org/' ~ (pdf.doi|urlencode)) }}" target="_blank" rel="noreferrer" data-no-pjax>
             <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>{{ pdf.doi }}</span><i class="fa-solid fa-arrow-up-right-from-square external-mark" aria-hidden="true"></i>
           </a>
@@ -49,20 +66,6 @@
           <a class="button pdf-action" href="{{ path_for('/web/pdfs/preview') }}?pdf_id={{ pdf.id }}" target="_blank" rel="noopener" data-no-pjax><i class="fa-solid fa-eye" aria-hidden="true"></i><span>Preview</span></a>
           <button class="button pdf-action" type="button" data-pdf-meta data-meta-url="{{ path_for('/web/pdfs/metadata') }}?pdf_id={{ pdf.id }}" aria-haspopup="dialog"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Meta</span></button>
           <a class="button primary pdf-action" href="{{ path_for('/web/pdfs/download') }}?pdf_id={{ pdf.id }}" download data-no-pjax><i class="fa-solid fa-download" aria-hidden="true"></i><span>Download</span></a>
-          {% if user.role == "admin" %}
-          <button
-            class="button pdf-action doi-correct-trigger"
-            type="button"
-            data-doi-correct
-            data-pdf-id="{{ pdf.id }}"
-            data-current-doi="{{ pdf.doi }}"
-            data-pdf-title="{{ pdf.title or pdf.original_name }}"
-            data-sha256="{{ pdf.sha256 }}"
-            data-preview-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi/preview') }}"
-            data-apply-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/correct-doi') }}"
-            data-history-url="{{ path_for('/web/admin/pdfs/' ~ pdf.id ~ '/doi-corrections') }}"
-          ><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>Correct DOI</span></button>
-          {% endif %}
         </div>
       </div>
       <div class="paper-result-main">
@@ -123,46 +126,4 @@
   </div>
 </dialog>
 
-{% if user.role == "admin" %}
-<dialog class="doi-correction-dialog" data-doi-dialog>
-  <form method="dialog" class="doi-dialog-shell" data-doi-form>
-    <div class="doi-dialog-header">
-      <div>
-        <p class="eyebrow">Admin identity correction</p>
-        <h2>Correct DOI</h2>
-      </div>
-      <button class="icon-button" type="button" data-doi-close aria-label="Close DOI correction"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-    </div>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="expected_sha256" data-doi-sha>
-    <input type="hidden" name="expected_current_doi" data-doi-current-hidden>
-    <div class="doi-current-card">
-      <strong data-doi-paper-title>PDF</strong>
-      <span data-doi-current></span>
-      <small data-doi-sha-label></small>
-    </div>
-    <label>
-      New DOI
-      <input name="doi" data-doi-input autocomplete="off" placeholder="10.xxxx/..." required>
-    </label>
-    <label>
-      Reason
-      <textarea name="reason" data-doi-reason rows="3" required placeholder="Why is this DOI being corrected?"></textarea>
-    </label>
-    <div class="doi-verify-result" data-doi-result hidden></div>
-    <label class="check doi-override" data-doi-override-row hidden>
-      <input type="checkbox" name="allow_title_mismatch" value="true" data-doi-override>
-      I independently verified this DOI despite the title mismatch.
-    </label>
-    <details class="doi-history" data-doi-history-wrap>
-      <summary>Correction history</summary>
-      <div data-doi-history class="doi-history-list">No correction history loaded.</div>
-    </details>
-    <div class="doi-dialog-actions">
-      <button class="button" type="button" data-doi-verify><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verify</span></button>
-      <button class="button primary" type="button" data-doi-apply disabled><i class="fa-solid fa-pen" aria-hidden="true"></i><span>Apply correction</span></button>
-    </div>
-  </form>
-</dialog>
-{% endif %}
 {% endblock %}

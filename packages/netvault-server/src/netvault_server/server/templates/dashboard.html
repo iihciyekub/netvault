@@ -3,57 +3,6 @@
 {% block heading %}NetVault dashboard{% endblock %}
 {% block body_class %}dashboard-body{% endblock %}
 {% block content %}
-<div class="dashboard-toolbar">
-  <div class="filter-tabs" aria-label="Journal filters">
-    {% for option in journal_filters %}
-      <a
-        class="{% if option.key == journal_filter %}active{% endif %}"
-        href="{{ path_for('/web') }}?filter={{ option.key }}"
-        {% if option.editable %}
-        data-journal-list-edit
-        data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
-        aria-haspopup="dialog"
-        title="Click to filter; right-click to edit {{ option.label }}"
-        {% endif %}
-      ><span>{{ option.label }}</span>{% if option.editable %}<span class="filter-edit-mark" data-journal-list-edit-trigger aria-label="Edit {{ option.label }} journal list"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span>{% endif %}</a>
-    {% endfor %}
-    <details class="filter-menu{% if journal_filter.startswith('abs') %} active{% endif %}">
-      <summary><span>{% if journal_filter.startswith('abs') %}{{ abs_journal_filters|selectattr('key', 'equalto', journal_filter)|map(attribute='label')|first }}{% else %}ABS{% endif %}</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
-      <div class="filter-menu-popover">
-        {% for option in abs_journal_filters %}
-        <a
-          class="{% if option.key == journal_filter %}active{% endif %}"
-          href="{{ path_for('/web') }}?filter={{ option.key }}"
-          data-journal-list-edit
-          data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
-          title="Click to filter; right-click to edit {{ option.label }}"
-        ><span>{{ option.label }}</span><span class="filter-edit-mark" data-journal-list-edit-trigger aria-label="Edit {{ option.label }} journal list"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span></a>
-        {% endfor %}
-      </div>
-    </details>
-    <details class="filter-menu{% if journal_filter.startswith('custom') %} active{% endif %}">
-      <summary><span>{% if journal_filter.startswith('custom') %}{{ custom_journal_filters|selectattr('key', 'equalto', journal_filter)|map(attribute='label')|first }}{% else %}My lists{% endif %}</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary>
-      <div class="filter-menu-popover custom-list-menu">
-        {% for option in custom_journal_filters %}
-        <a
-          class="{% if option.key == journal_filter %}active{% endif %}"
-          href="{{ path_for('/web') }}?filter={{ option.key }}"
-          data-journal-list-edit
-          data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
-          title="Click to filter; right-click to edit {{ option.label }}"
-        ><span>{{ option.label }}</span><span class="filter-edit-mark" data-journal-list-edit-trigger aria-label="Edit {{ option.label }} journal list"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span></a>
-        {% endfor %}
-        <button type="button" class="filter-menu-create" data-custom-list-create data-endpoint="{{ path_for('/web/journal-filters') }}"><i class="fa-solid fa-plus" aria-hidden="true"></i><span>New list</span></button>
-      </div>
-    </details>
-  </div>
-  <div class="summary-tags" aria-label="Vault summary">
-    <span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ vault_summary.active_pdfs|number }}</span>
-    <span><i class="fa-solid fa-hard-drive" aria-hidden="true"></i>{{ vault_summary.total_size|bytes }}</span>
-  </div>
-</div>
-
-
 <dialog class="journal-list-dialog" data-journal-list-dialog aria-labelledby="journal-list-dialog-title">
   <form class="journal-list-form" data-journal-list-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -67,7 +16,8 @@
             <strong>Journal list help</strong>
             <p>Enter one journal per line. Names become uppercase and sort A–Z after editing.</p>
             <p>Matching ignores case, punctuation, “The”, and “&amp;” versus “and”.</p>
-            <p>Changes are private to your account and sync across devices. Saving a default list creates an editable copy; an empty list matches no journals.</p>
+            <p>Changes are private to your account and sync across devices. A saved list shows all journal names, including journals without any PDFs (0). Saving a default list creates an editable copy; an empty list matches no journals.</p>
+            <p>Export a text backup before major changes. If someone else edited this list, saving will ask you to reload rather than overwrite their changes.</p>
           </div>
         </div>
         <button type="button" class="dialog-close" data-journal-list-close aria-label="Close journal list editor"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
@@ -77,6 +27,16 @@
       <span>List name</span>
       <input name="list_name" type="text" maxlength="60" autocomplete="off" data-custom-list-name>
     </label>
+    <div class="journal-create-columns" data-custom-list-meta-field hidden>
+      <label class="journal-create-field">
+        <span>Category</span>
+        <input type="text" maxlength="40" data-custom-list-category autocomplete="off" list="journal-list-categories">
+      </label>
+      <label class="journal-create-field">
+        <span>Type</span>
+        <input type="text" maxlength="40" data-custom-list-kind autocomplete="off" list="journal-list-kinds">
+      </label>
+    </div>
     <div class="journal-list-picker" data-custom-journal-picker hidden>
       <label for="journal-list-picker-input">Add a journal</label>
       <div class="journal-list-picker-control">
@@ -111,6 +71,7 @@
     <p class="journal-list-feedback" data-journal-list-feedback aria-live="polite"></p>
     <div class="journal-list-actions">
       <button type="button" class="ghost" data-journal-list-reset hidden><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span data-journal-list-reset-label>Reset default</span></button>
+      <button type="button" class="ghost" data-journal-list-export><i class="fa-solid fa-file-arrow-down" aria-hidden="true"></i><span>Export .txt</span></button>
       <span></span>
       <button type="button" class="ghost" data-journal-list-close>Cancel</button>
       <button type="submit" class="primary"><i class="fa-solid fa-check" aria-hidden="true"></i><span data-button-label>Save list</span></button>
@@ -118,14 +79,142 @@
   </form>
 </dialog>
 
-<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
+<dialog class="journal-create-dialog" data-journal-create-dialog
+        aria-labelledby="journal-create-title">
+  <form class="journal-create-form" data-journal-create-form>
+    <h2 id="journal-create-title">New list</h2>
+    <label class="journal-create-field">
+      <span>List name</span>
+      <input name="name" maxlength="60" required autocomplete="off" data-create-list-name
+             placeholder="e.g. Language learning">
+    </label>
+    <div class="journal-create-columns">
+      <label class="journal-create-field">
+        <span>Category</span>
+        <input name="category" maxlength="40" autocomplete="off"
+               placeholder="e.g. Education" list="journal-list-categories">
+      </label>
+      <label class="journal-create-field">
+        <span>Type</span>
+        <input name="kind" maxlength="40" autocomplete="off"
+               placeholder="e.g. Research" list="journal-list-kinds">
+      </label>
+    </div>
+    <datalist id="journal-list-categories">
+      {% for option in custom_journal_filters|selectattr('category')|groupby('category') %}
+      <option value="{{ option.grouper }}"></option>
+      {% endfor %}
+    </datalist>
+    <datalist id="journal-list-kinds">
+      {% for option in custom_journal_filters|selectattr('kind')|groupby('kind') %}
+      <option value="{{ option.grouper }}"></option>
+      {% endfor %}
+    </datalist>
+    <label class="journal-create-field">
+      <span>Journal names (optional)</span>
+      <textarea name="journals" rows="4" spellcheck="false"
+                placeholder="One journal per line"></textarea>
+    </label>
+    <p class="journal-create-feedback" data-journal-create-feedback role="status" aria-live="polite"></p>
+    <div class="journal-create-actions">
+      <button type="button" class="ghost" data-journal-create-cancel>Cancel</button>
+      <button type="submit" class="primary" data-journal-create-submit>Create list</button>
+    </div>
+  </form>
+</dialog>
+
+{# A journal navigator beside the narrow icon rail, like a chat-history list.
+   The same filtered/sorted/paged rows feed it and the year/count heatmap. #}
+<aside class="journal-library" data-journal-library id="journal-library"
+       aria-label="Journal list">
+  {% set active_filter_options = (journal_filters + abs_journal_filters + custom_journal_filters)|selectattr('key', 'equalto', journal_filter)|list %}
+  {% set current_list_name = active_filter_options[0].label if active_filter_options else 'All' %}
+  <header class="journal-library-head">
+    <h2 data-journal-library-title title="{{ current_list_name }}">{{ current_list_name }}</h2>
+  </header>
+  <button type="button" class="journal-library-create" data-custom-list-create
+          data-endpoint="{{ path_for('/web/journal-filters') }}">
+    <i class="fa-solid fa-plus" aria-hidden="true"></i><span>New list</span>
+  </button>
+  <section class="journal-library-collections" aria-label="Journal lists">
+    <div class="filter-tabs" aria-label="Journal filters">
+      {% for option in journal_filters %}
+        <a
+          class="{% if option.key == journal_filter %}active{% endif %}"
+          href="{{ path_for('/web') }}?filter={{ option.key }}"
+          {% if option.editable %}
+          data-journal-list-edit
+          data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
+          aria-haspopup="dialog"
+          title="Click to filter; right-click to edit {{ option.label }}"
+          {% endif %}
+        ><span>{{ option.label }}</span>{% if option.editable %}<span class="filter-edit-mark" data-journal-list-edit-trigger aria-label="Edit {{ option.label }} journal list"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span>{% endif %}</a>
+      {% endfor %}
+      <details class="journal-list-group{% if journal_filter.startswith('abs') %} active{% endif %}"
+               data-journal-list-group="abs" open>
+        <summary class="journal-list-group-heading">
+          <span>ABS</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        </summary>
+        <div class="filter-menu-popover">
+          {% for option in abs_journal_filters %}
+          <a
+            class="{% if option.key == journal_filter %}active{% endif %}"
+            href="{{ path_for('/web') }}?filter={{ option.key }}"
+            data-journal-list-edit
+            data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
+            title="Click to filter; right-click to edit {{ option.label }}"
+          ><span>{{ option.label }}</span><span class="filter-edit-mark" data-journal-list-edit-trigger aria-label="Edit {{ option.label }} journal list"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span></a>
+          {% endfor %}
+        </div>
+      </details>
+      <details class="journal-list-group{% if journal_filter.startswith('custom') %} active{% endif %}"
+               data-journal-list-group="custom" open>
+        <summary class="journal-list-group-heading">
+          <span>My lists</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        </summary>
+        <div class="filter-menu-popover custom-list-menu">
+          {% for category, options in custom_journal_filters|groupby('category') %}
+          <div class="journal-custom-category-group" data-journal-custom-category="{{ category }}">
+            {% if category %}<div class="journal-custom-category-label">{{ category }}</div>{% endif %}
+          {% for option in options %}
+          <div class="journal-custom-entry" data-list-key="{{ option.key }}">
+          <a
+            class="{% if option.key == journal_filter %}active{% endif %}"
+            href="{{ path_for('/web') }}?filter={{ option.key }}"
+            data-journal-list-edit
+            data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
+            data-list-kind="{{ option.kind }}"
+            title="{% if option.kind %}{{ option.kind }} · {% endif %}Click to filter; right-click to edit {{ option.label }}"
+          ><span>{{ option.label }}</span><span class="filter-edit-mark" data-journal-list-edit-trigger aria-label="Edit {{ option.label }} journal list"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></span></a>
+          {% if option.key.startswith('custom_') %}
+          <button type="button" class="journal-custom-delete" data-journal-custom-delete
+                  data-endpoint="{{ path_for('/web/journal-filters/' ~ option.key) }}"
+                  data-list-key="{{ option.key }}" data-list-name="{{ option.label }}"
+                  aria-label="Delete {{ option.label }} journal list" title="Delete list">
+            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+          </button>
+          {% endif %}
+          </div>
+          {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+  </section>
+  <p class="journal-library-notice" data-journal-library-notice aria-live="polite" hidden></p>
+</aside>
+
+<div class="dashboard-workspace" data-rank-workspace data-rank-layout="docked">
+<section class="panel heatmap-panel" aria-labelledby="journal-year-title" data-dashboard-filter="{{ journal_filter }}" data-dashboard-preference-url="{{ path_for('/web/preferences/dashboard-filter') }}" data-rank-batch-url="{{ path_for('/web/journal-rank-batches') }}" data-rank-batch-status-url="{{ path_for('/web/journal-rank-batches/latest') }}" data-rank-cached-url="{{ path_for('/web/journal-ranks/cached') }}" data-dashboard-revision="{{ dashboard_revision }}" data-dashboard-revision-url="{{ path_for('/web/dashboard-revision') }}" data-pdf-search-url="{{ path_for('/web/pdfs') }}">
     <h2 id="journal-year-title" class="sr-only">Journal by Year</h2>
+    <span class="dashboard-preference-status" data-dashboard-preference-status role="status" aria-live="polite"></span>
     {% if journal_year.rows %}
     <div class="heatmap-filter-bar">
       <button type="button" class="doi-batch-inline-button" data-doi-batch-open
         aria-label="Batch DOI search" title="Open batch DOI search">
         <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-        <span>Batch DOI</span>
+        <span>DOI</span>
       </button>
       <label class="sr-only" for="journal-name-filter">Filter journals by name or initials</label>
       <div class="heatmap-filter-field">
@@ -133,7 +222,7 @@
         <input
           id="journal-name-filter"
           type="search"
-          placeholder="Search name or initials (e.g. NRL, IJIR)..."
+          placeholder="Search journals..."
           title="Search a journal name or initials, such as IJIR."
           autocomplete="off"
           spellcheck="false"
@@ -142,9 +231,28 @@
           data-journal-filter
         >
       </div>
+      <form class="heatmap-limit-form" method="post" action="{{ path_for('/web/preferences/all-journal-limit') }}" data-journal-limit-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="active_filter" value="{{ journal_filter }}">
+        <label for="dashboard-journal-limit" title="Number of journals shown">
+          <i class="fa-solid fa-eye" aria-hidden="true"></i>
+          <span class="sr-only">Number of journals shown</span>
+          <input id="dashboard-journal-limit" name="journal_limit" type="number" min="1" max="200" value="{{ dashboard_journal_limit }}" inputmode="numeric" aria-label="Number of journals shown" aria-describedby="journal-limit-status" data-journal-limit data-saved-value="{{ dashboard_journal_limit }}">
+        </label>
+        <output id="journal-limit-status" class="heatmap-limit-status" data-journal-limit-status aria-live="polite"></output>
+      </form>
       <span class="sr-only" data-journal-suggestion aria-live="polite" hidden></span>
+      <div class="rank-quick-tools">
+        <div class="rank-batch-inline" data-rank-batch-banner aria-label="Ranking lookup progress" hidden>
+          <span data-rank-batch-brief>Ranks</span>
+          <span class="sr-only" data-rank-batch-message role="status" aria-live="polite"></span>
+          <button type="button" data-rank-batch-retry title="Re-fetch list rankings" aria-label="Re-fetch list rankings" hidden>
+            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
       <div class="heatmap-filter-summary">
-        <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite">{{ journal_year.rows|length }} journal{% if journal_year.rows|length != 1 %}s{% endif %}</output>
+        <output id="journal-filter-status" class="heatmap-filter-status" aria-live="polite" aria-label="Journal count" title="{{ journal_year.rows|length }} journals">{{ journal_year.rows|length }}</output>
         <span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{{ summary.active_pdfs|number }}</span>
       </div>
       <select id="journal-heatmap-sort" data-journal-sort aria-label="Sort journals" hidden>
@@ -156,17 +264,27 @@
     </div>
     <script type="application/json" data-journal-heatmap-data>{{ heatmap_rows|tojson }}</script>
     <div class="heatmap-scroll">
-      <div class="heatmap-years-viewport" data-heatmap-years-viewport tabindex="0" role="region" aria-label="Year grid, horizontally and vertically scrollable">
-        <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
-          {% for year in journal_year.years|reverse %}
-            <div class="heat-year"><span>{{ year }}</span></div>
-          {% endfor %}
+      <div class="heatmap-years-shell">
+        <div class="heatmap-years-viewport" data-heatmap-years-viewport tabindex="0" role="region" aria-label="Year grid, horizontally and vertically scrollable">
+          <div id="journal-year-heatmap" class="journal-heatmap" style="--year-count: {{ journal_year.years|length }}">
+            {% for year in journal_year.years|reverse %}
+              <div class="heat-year"><span>{{ year }}</span></div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="heatmap-scrollbar-x" data-heatmap-scrollbar-x aria-hidden="true">
+          <div class="heatmap-scrollbar-x-spacer" data-heatmap-scrollbar-x-spacer></div>
+        </div>
+      </div>
+      <div class="heatmap-scrollbar-y-shell" aria-hidden="true">
+        <div class="heatmap-scrollbar-y" data-heatmap-scrollbar-y>
+          <div class="heatmap-scrollbar-y-spacer" data-heatmap-scrollbar-y-spacer></div>
         </div>
       </div>
       <div class="heatmap-fixed-viewport" data-heatmap-fixed-viewport>
         <div class="heatmap-fixed-heading">
           <button type="button" class="heat-total-head" data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>
-          <button type="button" class="heat-corner" data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name">Journal</button>
+          <span class="heat-corner">Journal</span>
         </div>
         <div class="heatmap-fixed-body-viewport">
           <div class="heatmap-fixed-body" data-heatmap-fixed-body></div>
@@ -184,16 +302,6 @@
         <span class="heat-cell level-4"></span>
         <span>More</span>
       </div>
-      <form class="heatmap-limit-form" method="post" action="{{ path_for('/web/preferences/all-journal-limit') }}" data-journal-limit-form>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="active_filter" value="{{ journal_filter }}">
-        <label for="dashboard-journal-limit">
-          <i class="fa-solid fa-eye" aria-hidden="true"></i>
-          <span class="sr-only">Number of journals shown</span>
-          <input id="dashboard-journal-limit" name="journal_limit" type="number" min="1" max="200" value="{{ dashboard_journal_limit }}" inputmode="numeric" aria-label="Number of journals shown" aria-describedby="journal-limit-status" data-journal-limit data-saved-value="{{ dashboard_journal_limit }}">
-        </label>
-        <output id="journal-limit-status" class="heatmap-limit-status" data-journal-limit-status aria-live="polite"></output>
-      </form>
       </div>
       <div class="heatmap-pager-navigation">
       <span class="heatmap-page-range" data-journal-page-range aria-live="polite"></span>
@@ -211,6 +319,26 @@
     <div class="empty-state">No journal-year data.</div>
     {% endif %}
 </section>
+<aside class="journal-rank-slot" aria-label="Journal ranking sidebar">
+  <section class="journal-rank-panel" data-rank-panel id="rank-drawer-details"
+           role="region" aria-labelledby="rank-title" aria-label="Journal rankings">
+    <header>
+      <h2 id="rank-title" data-rank-title>Journal rankings</h2>
+    </header>
+    <div class="rank-meta-row">
+      <time data-rank-queried-at hidden></time>
+      <button type="button" data-rank-refresh aria-label="Retry ranking lookup" title="Retry ranking lookup"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>Retry</span></button>
+    </div>
+    <p data-rank-status role="status" aria-live="polite">Hover over a journal to view its rankings.</p>
+    <div class="rank-table-scroll" tabindex="0" role="region" aria-label="Journal ranking results">
+      <table data-rank-table hidden>
+        <thead><tr><th title="Dataset names are abbreviated; refer to each official source for rankings and classifications.">Dataset</th><th>Rank</th></tr></thead>
+        <tbody data-rank-rows></tbody>
+      </table>
+    </div>
+  </section>
+</aside>
+</div>
 <dialog class="doi-batch-dialog" data-doi-batch-dialog
         data-batch-url="{{ path_for('/web/pdfs/batch') }}"
         aria-labelledby="doi-batch-title">
@@ -233,32 +361,35 @@
       <output data-doi-batch-count aria-live="polite">0 DOIs</output>
     </div>
     <p class="doi-batch-status" id="doi-batch-status" data-doi-batch-status role="status" aria-live="polite"></p>
+    <div class="doi-batch-availability" data-doi-batch-availability role="status" aria-live="polite" hidden>
+      <div><strong data-doi-batch-available>0</strong> of <span data-doi-batch-requested>0</span> DOIs available on the server</div>
+      <p data-doi-batch-detail></p>
+    </div>
     <footer>
       <button type="button" class="ghost" data-doi-batch-format title="Normalize and remove duplicate DOIs">
         <i class="fa-solid fa-align-left" aria-hidden="true"></i><span>Format</span>
       </button>
-      <button type="button" class="primary" data-doi-batch-search>
+      <button type="button" class="ghost" data-doi-batch-search>
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Search PDFs</span>
+      </button>
+      <button type="button" class="primary" data-doi-batch-check>
+        <i class="fa-solid fa-list-check" aria-hidden="true"></i><span>Check availability</span>
+      </button>
+      <button type="submit" class="primary" form="doi-batch-zip-form" data-doi-batch-download disabled hidden>
+        <i class="fa-solid fa-file-zipper" aria-hidden="true"></i><span>Download ZIP</span>
       </button>
     </footer>
   </form>
 </dialog>
+<form id="doi-batch-zip-form" method="post" action="{{ path_for('/web/pdfs/download-all') }}" data-native-submit hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <div data-doi-batch-download-ids></div>
+</form>
 
 <div class="journal-context-menu" data-journal-context-menu data-rank-url="{{ path_for('/web/journal-rank') }}" role="menu" aria-label="Journal actions" hidden>
   <button type="button" role="menuitem" data-journal-copy><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy journal name</span></button>
   <a href="https://www.webofscience.com/" data-journal-wos-link role="menuitem" target="_blank" rel="noopener noreferrer" data-no-pjax><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>Open in Web of Science</span></a>
   <button type="button" role="menuitem" data-journal-rank><i class="fa-solid fa-ranking-star" aria-hidden="true"></i><span>Journal rankings</span></button>
+  <button type="button" role="menuitem" data-journal-rank-batch><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Fetch current list rankings</span></button>
 </div>
-<section class="journal-rank-panel" data-rank-panel role="dialog" aria-labelledby="rank-title" aria-label="Journal rankings" hidden>
-  <header data-rank-drag>
-    <h2 id="rank-title" data-rank-title></h2>
-    <div class="rank-header-actions">
-      <button type="button" data-rank-selected aria-pressed="false" aria-label="Selected datasets only" title="Selected datasets only"><i class="fa-solid fa-square-check" aria-hidden="true"></i></button>
-      <button type="button" data-rank-refresh aria-label="Re-fetch rankings" title="Re-fetch rankings"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i></button>
-      <button type="button" data-rank-close aria-label="Close journal rankings" title="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-    </div>
-  </header>
-  <p data-rank-status role="status" aria-live="polite"></p>
-  <div class="rank-table-scroll" tabindex="0" role="region" aria-label="Journal ranking results"><table data-rank-table hidden><thead><tr><th title="Dataset names are abbreviated; refer to each official source for rankings and classifications.">Dataset</th><th>Rank</th></tr></thead><tbody data-rank-rows></tbody></table></div>
-</section>
 {% endblock %}

@@ -2,6 +2,7 @@ from pathlib import Path
 import logging
 import hashlib
 import json
+import requests
 
 import pytest
 from pypdf import PdfWriter
@@ -684,7 +685,88 @@ def test_upload_no_index_uses_existing_pdf_resolver(
     assert "download index hits" not in result.output
     assert uploads[0]["doi"] == "10.1234/pdf.value"
     assert uploads[0]["doi_source"] == "pdf-content"
-    assert doi_checks == []
+    assert doi_checks == [["10.1234/pdf.value"]]
+
+
+def test_first_page_doi_and_title_corroboration_rejects_reference_noise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    text = [
+        "Journal Header\nA Study of Rivers in Australia Using Models\n"
+        "DOI: 10.1234/article.2024\nAbstract: This paper evaluates rivers.\n"
+    ]
+
+    class Page:
+        def extract_text(self):
+            return text[0]
+
+    class Reader:
+        is_encrypted = False
+        pages = [Page()]
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(user_cli, "PdfReader", Reader)
+    assert user_cli.verified_first_page_doi_and_title(
+        pdf, "10.1234/article.2024",
+        "A Study of Rivers in Australia Using Models",
+    )
+    assert not user_cli.verified_first_page_doi_and_title(
+        pdf, "10.1234/different.2024",
+        "A Study of Rivers in Australia Using Models",
+    )
+    text[0] = (
+        "A Different Research Paper\nDOI: 10.1234/other\n"
+        "References\nA Study of Rivers in Australia Using Models "
+        "doi:10.1234/article.2024"
+    )
+    assert not user_cli.verified_first_page_doi_and_title(
+        pdf, "10.1234/article.2024",
+        "A Study of Rivers in Australia Using Models",
+    )
+
+
+def test_upload_skips_content_doi_only_after_matching_stored_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nDOI 10.1234/content-check\n%%EOF")
+    stored = {
+        "doi": "10.1234/content-check", "title": "Real Original Article",
+        "sha256": "a" * 64, "original_name": "compressed.pdf",
+    }
+    monkeypatch.setattr(
+        user_cli, "get_existing_pdfs_by_doi",
+        lambda *a, **k: {stored["doi"]: stored},
+    )
+    monkeypatch.setattr(
+        user_cli, "extract_doi_evidence",
+        lambda *a, **k: DoiEvidence(
+            "ok", stored["doi"], "pdf-content", [], None
+        ),
+    )
+    corroborations = []
+
+    def corroborate(path, doi, title):
+        corroborations.append((doi, title))
+        return True
+
+    monkeypatch.setattr(user_cli, "verified_first_page_doi_and_title", corroborate)
+    monkeypatch.setattr(
+        user_cli, "upload_pdf",
+        lambda *a, **k: pytest.fail("matched content and title must skip upload"),
+    )
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--no-index", "--verbose"])
+    assert result.exit_code == 0, result.output
+    assert corroborations == [(stored["doi"], stored["title"])]
+    assert "trusted DOI skips: 1" in result.output
 
 
 def test_upload_reports_server_duplicate_as_skipped(
@@ -832,7 +914,244 @@ def test_upload_reuses_manual_identity_without_parsing_pdf(tmp_path: Path, monke
     assert "1 DOI cache hits" in result.output
     assert "DOI scans" not in result.output
     assert registered == []
-    assert sent[0]["doi"] == "10.1234/manual" and sent[0]["doi_source"] == "user"
+    assert sent == []  # No PDF transfer when the confirmed DOI already exists.
+    assert "trusted DOI skips: 1" in result.output
+
+
+def test_upload_skips_existing_embedded_doi_with_different_sha(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    pdf = tmp_path / "embedded.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=300)
+    writer.add_metadata({"/DOI": "10.1234/fast.duplicate", "/Title": "Original paper"})
+    with pdf.open("wb") as target:
+        writer.write(target)
+    existing = {
+        "doi": "10.1234/fast.duplicate", "sha256": "a" * 64,
+        "title": "Original paper", "original_name": "saved.pdf",
+    }
+    seen_dois = []
+
+    def lookup(dois, **kwargs):
+        seen_dois.extend(dois)
+        return {existing["doi"]: existing}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", lookup)
+    monkeypatch.setattr(
+        user_cli, "extract_doi_evidence",
+        lambda *a, **k: pytest.fail("embedded DOI should not trigger page extraction"),
+    )
+    monkeypatch.setattr(
+        user_cli, "upload_pdf",
+        lambda *a, **k: pytest.fail("existing trusted DOI must skip binary upload"),
+    )
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--verbose", "--no-index"])
+    assert result.exit_code == 0, result.output
+    assert seen_dois == [existing["doi"]]
+    assert "already stored: 1 skipped" in result.output
+    assert "trusted DOI skips: 1" in result.output
+
+
+def test_upload_checks_embedded_dois_in_one_server_sized_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    expected = {}
+    for index in range(25):
+        doi = f"10.1234/batch.{index}"
+        pdf = tmp_path / f"batch-{index}.pdf"
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=300)
+        writer.add_metadata({"/DOI": doi})
+        with pdf.open("wb") as handle:
+            writer.write(handle)
+        expected[doi] = {
+            "doi": doi, "sha256": "a" * 64,
+            "title": f"Verified paper {index}", "original_name": "stored.pdf",
+        }
+    prechecks = []
+
+    def check_dois(dois, **_kwargs):
+        batch = list(dois)
+        prechecks.append(batch)
+        return {doi: expected[doi] for doi in batch}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", check_dois)
+    monkeypatch.setattr(
+        user_cli, "upload_pdf",
+        lambda *a, **k: pytest.fail("a stored DOI must not transfer the PDF"),
+    )
+    result = CliRunner().invoke(
+        user_cli.app, ["upload", str(tmp_path), "--verbose", "--no-index"]
+    )
+    assert result.exit_code == 0, result.output
+    assert len(prechecks) == 1
+    assert set(prechecks[0]) == set(expected)
+    assert "uploaded: 0; already stored: 25 skipped" in result.output
+    assert "trusted DOI skips: 25" in result.output
+
+
+@pytest.mark.parametrize("failure", [
+    user_cli.ApiError(502, "temporary gateway error"),
+    user_cli.ApiError(503, "maintenance"),
+    user_cli.ApiError(429, "rate limit"),
+    requests.ConnectionError("connection reset"),
+    requests.Timeout("timeout"),
+])
+def test_duplicate_preflight_retries_transient_errors(monkeypatch, failure) -> None:
+    attempts = []
+    delays = []
+
+    def post(path, *, json):
+        attempts.append((path, json))
+        if len(attempts) < 3:
+            raise failure
+        return {"existing_doi": {"10.1234/example": {"doi": "10.1234/example"}}}
+
+    monkeypatch.setattr(user_cli, "api_post", post)
+    monkeypatch.setattr(user_cli, "sleep", delays.append)
+    result = user_cli.get_existing_pdfs_by_doi(["10.1234/example"])
+    assert result["10.1234/example"]["doi"] == "10.1234/example"
+    assert len(attempts) == 3
+    assert delays == [0.5, 1.0]
+
+
+def test_duplicate_preflight_does_not_mask_persistent_errors(monkeypatch) -> None:
+    attempts = []
+    monkeypatch.setattr(user_cli, "sleep", lambda seconds: None)
+
+    def fail(path, *, json):
+        attempts.append(json)
+        raise user_cli.ApiError(502, "gateway unavailable")
+
+    monkeypatch.setattr(user_cli, "api_post", fail)
+    with pytest.raises(user_cli.ApiError, match="gateway unavailable"):
+        user_cli.get_existing_pdfs_by_doi(["10.1234/example"])
+    assert len(attempts) == 3
+
+    attempts.clear()
+
+    def forbidden(path, *, json):
+        attempts.append(json)
+        raise user_cli.ApiError(403, "not authorized")
+
+    monkeypatch.setattr(user_cli, "api_post", forbidden)
+    with pytest.raises(user_cli.ApiError, match="not authorized"):
+        user_cli.get_existing_pdfs_by_doi(["10.1234/example"])
+    assert len(attempts) == 1
+
+
+def test_duplicate_preflight_groups_large_doi_sets_into_500(monkeypatch) -> None:
+    calls = []
+
+    def post(path, *, json):
+        assert path == "/pdfs/exists"
+        calls.append(json["doi"])
+        return {
+            "existing_doi": {
+                doi: {"doi": doi} for doi in json["doi"]
+            },
+        }
+
+    monkeypatch.setattr(user_cli, "api_post", post)
+    all_dois = [f"10.1234/group.{index}" for index in range(1101)]
+    found = user_cli.get_existing_pdfs_by_doi(all_dois + all_dois[:10])
+    assert len(found) == 1101
+    assert sorted(map(len, calls)) == [101, 500, 500]
+    assert set(doi for batch in calls for doi in batch) == set(all_dois)
+
+
+@pytest.mark.parametrize("heading_matches", [False, True])
+def test_download_index_doi_fast_skip_requires_first_page_corroboration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, heading_matches: bool
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nno embedded DOI\n%%EOF\n")
+    doi = "10.1234/from.index"
+    title = "This paper investigates effective language learning"
+    write_download_index(tmp_path / "pdf-download-index.json", pdf, doi)
+    existing = {
+        "doi": doi, "title": title, "sha256": "a" * 64,
+        "original_name": "stored.pdf",
+    }
+    prechecks, corroborations, uploads = [], [], []
+
+    def check_dois(dois, **_kwargs):
+        prechecks.append(list(dois))
+        return {doi: existing}
+
+    def check_heading(path, printed_doi, server_title):
+        corroborations.append((path, printed_doi, server_title))
+        return heading_matches
+
+    def upload_file(path, **kwargs):
+        uploads.append((path, kwargs))
+        return {"deduplicated": True, "pdf": existing}
+
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_doi", check_dois)
+    monkeypatch.setattr(user_cli, "verified_first_page_doi_and_title", check_heading)
+    monkeypatch.setattr(user_cli, "upload_pdf", upload_file)
+    monkeypatch.setattr(
+        user_cli, "extract_doi_evidence",
+        lambda *a, **k: pytest.fail("index DOI must not trigger a full PDF DOI scan"),
+    )
+    result = CliRunner().invoke(user_cli.app, ["upload", str(pdf), "--verbose"])
+    assert result.exit_code == 0, result.output
+    assert prechecks == [[doi]]
+    assert corroborations == [(pdf, doi, title)]
+    assert len(uploads) == (0 if heading_matches else 1)
+    assert f"trusted DOI skips: {int(heading_matches)}" in result.output
+    assert "uploaded: 0; already stored: 1 skipped" in result.output
+
+
+def test_upload_can_opt_out_of_doi_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(user_cli, "HASH_CACHE_PATH", tmp_path / "hash-cache.json")
+    monkeypatch.setattr(user_cli, "IDENTITY_CACHE_PATH", tmp_path / "identity-cache.json")
+    monkeypatch.setattr(user_cli, "ensure_logged_in", lambda: None)
+    monkeypatch.setattr(user_cli, "get_existing_pdfs_by_sha256", lambda *a, **k: {})
+    monkeypatch.setattr(
+        user_cli, "get_existing_pdfs_by_doi",
+        lambda *a, **k: pytest.fail("DOI precheck disabled by flag"),
+    )
+    pdf = tmp_path / "embedded.pdf"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=300)
+    writer.add_metadata({"/DOI": "10.1234/keep-upload"})
+    with pdf.open("wb") as target:
+        writer.write(target)
+    uploads = []
+
+    def upload(path, **kwargs):
+        uploads.append(kwargs)
+        return {
+            "pdf": {
+                "doi": kwargs["doi"], "sha256": kwargs["sha256"],
+                "title": "Paper", "original_name": path.name
+            },
+            "deduplicated": False,
+        }
+
+    monkeypatch.setattr(user_cli, "upload_pdf", upload)
+    result = CliRunner().invoke(
+        user_cli.app, ["upload", str(pdf), "--no-skip-existing-doi", "--no-index"]
+    )
+    assert result.exit_code == 0, result.output
+    assert len(uploads) == 1
+    assert uploads[0]["doi"] == "10.1234/keep-upload"
 
 
 def test_upload_collapses_local_duplicate_paths_before_server_check(

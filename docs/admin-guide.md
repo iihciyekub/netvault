@@ -241,8 +241,9 @@ nv correct-doi 56240 10.1287/msom.2021.1032 \
   --reason "Incorrect DOI extracted from PDF syntax"
 ```
 
-Administrators can perform the same preview/apply workflow from **Search PDFs → Correct DOI** in
-the Web UI.
+The **Search PDFs** web page no longer displays a Correct DOI action. DOI
+correction remains available through the authenticated administrative API
+and the `nv correct-doi` CLI workflow shown above.
 
 The server-package admin command remains available for lower-level operations. Preview first and
 bind the operation to the currently observed file hash:

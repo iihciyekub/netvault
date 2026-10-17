@@ -1,83 +1,167 @@
-// Exercise the ranking UI with isolated browser storage and controllable network responses.
+// Journal ranking UI: permanent sidebar, shared saved results, hover, retry and emphasis.
+const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const {join} = require('node:path');
 const {runInNewContext} = require('node:vm');
-const assert = require('node:assert/strict');
 const app = readFileSync(join(__dirname, '../packages/netvault-server/src/netvault_server/server/static/app.js'), 'utf8');
+const template = readFileSync(join(__dirname, '../packages/netvault-server/src/netvault_server/server/templates/dashboard.html'), 'utf8');
 const code = app.slice(app.indexOf('  let rankSequence ='), app.indexOf('  const journalLimitValue ='));
+assert(!template.includes('data-rank-hover-toggle'), 'Hover control must be removed');
+assert(!template.includes('data-rank-toggle'), 'The right panel must not slide or collapse');
+assert(!template.includes('data-rank-close'), 'The ranking panel stays visible');
+assert(!app.includes('rankHoverEnabled'), 'Hover must always be active');
+assert(!app.includes('rankHoverStorageKey'), 'Previously saved false flags must be ignored');
 const storage = new Map();
-const requests = [];
-let fail = false;
-function environment() {
-  const nodes = new Map();
-  function node() { return {hidden: false, disabled: false, style: {}, dataset: {},
-    append() {}, replaceChildren() {}, setAttribute() {}, removeAttribute() {}, focus() {}}; }
-  const panel = node();
-  panel.isConnected = true; panel.offsetWidth = 460;
-  panel.dataset = {journalName: 'Nature', rankUrl: '/web/journal-rank'};
-  const menu = node(); menu.dataset = {journalName: 'Nature', rankUrl: '/web/journal-rank', anchorX: '600', anchorY: '500'};
-  nodes.set('[data-rank-panel]', panel); nodes.set('[data-journal-context-menu]', menu);
-  const qs = selector => { if (!nodes.has(selector)) nodes.set(selector, node()); return nodes.get(selector); };
-  const events = {};
-  const context = {URL, URLSearchParams, Date, Map, JSON, Number, Math, innerHeight:800, innerWidth:1200,
-    location:{origin:'https://example.test'}, qs, qsa:()=>[], closeJournalMenu(){},
-    localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
-    document:{createElement:node,addEventListener:(name, fn)=>(events[name] ||= []).push(fn)},
-    window:{addEventListener(){}},
-    fetch:async url=>{
-      requests.push(String(url));
-      if (fail) throw Error('Offline');
-      return {ok:true,headers:{get:()=> 'application/json'},json:async()=>({
-        journal_name:url.searchParams.get('name'),queried_at:Date.now()/1000,
-        rows:[{key:'sci',name:'SCI',rank:'Q1',source:'Official datasets',selected:true}]})};
-    }};
-  runInNewContext(code + '\nthis.ui = {loadRanks, openRankPanel, clampRankPanel, cacheRanks, rankIdentity, rememberRankPosition, getPosition:()=>rankPosition, setDrag:value=>rankDrag=value};', context);
-  return {context, panel, menu, nodes, qs, ui:context.ui};
+const sent = [];
+
+function node() {
+  return {
+    hidden:false, isConnected:true, disabled:false, dataset:{}, attrs:{}, style:{}, children:[],
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children=children; },
+    setAttribute(name,value) { this.attrs[name]=value; },
+    getAttribute(name) { return this.attrs[name] || null; },
+    removeAttribute(name) { delete this.attrs[name]; },
+    focus() {},
+  };
 }
+function environment(journalNames = ['Nature','System']) {
+  const nodes = new Map();
+  const listeners = {};
+  const timers = new Map();
+  let clock = 0;
+  const qs = selector => {
+    if (!nodes.has(selector)) nodes.set(selector,node());
+    return nodes.get(selector);
+  };
+  const panel=qs('[data-rank-panel]');
+  panel.dataset={journalName:'Nature',rankUrl:'/web/journal-rank'};
+  const menu=qs('[data-journal-context-menu]');
+  menu.hidden=true;
+  menu.dataset={journalName:'Nature',rankUrl:'/web/journal-rank'};
+  const heatmap=qs('.heatmap-panel');
+  heatmap.dataset={rankCachedUrl:'/web/journal-ranks/cached'};
+  qs("[data-journal-list-form] input[name='csrf_token']").value='csrf';
+  const context={
+    URL,URLSearchParams,Date,Map,Math,Number,JSON,String,
+    innerWidth:1500,innerHeight:950,location:{origin:'https://example.test'},
+    qs,qsa:()=>[],journalRows:()=>({rows:journalNames.map(label=>({label}))}),
+    closeJournalMenu() {},fitDashboardWidth() {},
+    localStorage:{
+      getItem:key=>storage.get(key) || null,
+      setItem:(key,value)=>storage.set(key,value),
+      removeItem:key=>storage.delete(key),
+    },
+    document:{body:{dataset:{userId:'1'}},createElement:node,
+      addEventListener:(event,fn)=>(listeners[event] ||= []).push(fn)},
+    window:{clearTimeout(id){timers.delete(id);},
+      setTimeout(fn){const id=++clock;timers.set(id,fn);return id;}},
+    fetch:async (url,options={})=>{
+      const key=String(url);
+      sent.push({url:key,method:options.method || 'GET'});
+      if ((options.method || 'GET') === 'POST') {
+        assert.equal(key,'/web/journal-ranks/cached');
+        assert.equal(options.headers['X-CSRF-Token'],'csrf');
+        const names=JSON.parse(options.body).names;
+        return {ok:true,json:async()=>({ranks:names.map(name=>({
+          journal_name:name,queried_at:Date.now()/1000,rows:[
+            {key:'sciUpTop',name:'中科院Top分区',rank:'1区 TOP',source:'Official datasets'}
+          ]}))})};
+      }
+      const name=url.searchParams.get('name');
+      return {ok:true,headers:{get:()=> 'application/json'},json:async()=>({
+        journal_name:name,queried_at:Date.now()/1000,
+        rows:[{key:'sci',name:'SCI JCR quartile',rank:'Q1',source:'Official datasets'}]})};
+    },
+  };
+  runInNewContext(code + '\nthis.actions={loadRanks,openRankPanel,renderRankHighlights,primeSharedRankCache,getCache:()=>rankCache};',context);
+  return {qs,panel,menu,heatmap,context,listeners,actions:context.actions,
+    fireTimers(){for (const [id,fn] of [...timers]) {timers.delete(id);fn();}}};
+}
+
 (async()=>{
-  let env = environment();
-  await env.ui.loadRanks(); assert.equal(requests.length,1);
-  await env.ui.loadRanks(); assert.equal(requests.length,1,'Repeated lookup must avoid the network');
-  env.panel.dataset.journalName = 'Management Science';
-  await env.ui.loadRanks(); assert.equal(requests.length,2);
-  env.panel.dataset.journalName = 'Nature';
-  await env.ui.loadRanks(); assert.equal(requests.length,2,'Switching back must use cached rankings');
-  await env.ui.loadRanks(true); assert.equal(requests.length,3,'Refresh must bypass the cache');
-  env.ui.clampRankPanel(env.panel,40,30);
-  env.ui.setDrag({panel:env.panel,moved:true});env.ui.rememberRankPosition();
-  env = environment();
-  fail = true;
-  await env.ui.loadRanks(); assert.equal(requests.length,3,'Reload must restore fresh cached data without network');
-  assert.equal(env.qs('[data-rank-table]').hidden,false);
-  env.menu.dataset.journalName = 'Management Science';env.ui.openRankPanel();
-  assert.equal(env.panel.style.left,'40px');assert.equal(env.panel.style.top,'30px');
-  assert.equal(env.panel.style.maxHeight,'762px','Height must use available space below the saved position');
-  env.ui.clampRankPanel(env.panel,1100,700);
-  assert.equal(env.panel.style.left,'732px');assert.equal(env.panel.style.top,'640px');
-  assert.equal(env.panel.style.maxHeight,'152px');
-  env.ui.cacheRanks(env.ui.rankIdentity('/web/journal-rank','Nature'),{
-    journal_name:'Nature',queried_at:Date.now()/1000-90000,
-    rows:[{key:'sci',name:'SCI',rank:'Q2',source:'Official datasets',selected:true}]});
-  // Use a separate stale entry because newer results must never be replaced by older responses.
-  env.panel.dataset.journalName='Stale Journal';
-  env.ui.cacheRanks(env.ui.rankIdentity('/web/journal-rank','Stale Journal'),{
-    journal_name:'Stale Journal',queried_at:Date.now()/1000-90000,
-    rows:[{key:'sci',name:'SCI',rank:'Q2',source:'Official datasets',selected:true}]});
-  const pending=env.ui.loadRanks();
-  assert.equal(env.qs('[data-rank-table]').hidden,false,'Stale data must appear before revalidation finishes');
-  await pending;
-  assert.match(env.qs('[data-rank-status]').textContent,/Showing saved rankings/);
-  assert.equal(env.qs('[data-rank-table]').hidden,false,'Offline refresh must preserve displayed results');
-  fail = false;
-  env.panel.dataset.journalName = 'Concurrent Journal';
-  const beforeConcurrent = requests.length;
-  await Promise.all([env.ui.loadRanks(), env.ui.loadRanks()]);
-  assert.equal(requests.length, beforeConcurrent + 1, 'Concurrent lookups must share one request');
-  const bootstrap = readFileSync(join(__dirname, '../packages/netvault-server/src/netvault_server/server/static/theme.js'), 'utf8');
-  const themeRoot = {dataset:{}};
-  runInNewContext(bootstrap, {document:{documentElement:themeRoot},localStorage:{getItem:()=> 'dark'}});
-  assert.equal(themeRoot.dataset.theme,'dark','Saved dark preference must load before rendering');
-  runInNewContext(bootstrap, {document:{documentElement:themeRoot},localStorage:{getItem:()=>{throw Error('Storage blocked');}}});
-  assert.equal(themeRoot.dataset.theme,'light','Unavailable storage must keep a usable default');
-  console.log('Ranking UI: cache, reload, refresh, stale/offline fallback, saved position and viewport bounds passed.');
+  let env=environment();
+  await env.actions.loadRanks();
+  assert.equal(sent.length,1,'First uncached journal invokes the authenticated endpoint');
+  await env.actions.loadRanks();
+  assert.equal(sent.length,1,'Already queried journal never requests it again');
+  const rows=env.qs('[data-rank-rows]').children;
+  assert(rows[1].children[0].children.some(p=>p.className === 'rank-emphasis rank-emphasis--index'));
+  assert(rows[1].children[1].children.some(p=>p.className === 'rank-emphasis rank-emphasis--quartile'));
+
+  const rich=node();
+  env.actions.renderRankHighlights(rich,'ESCI / SCI / Q1 Q2 / 中科院TOP / 1区');
+  const kinds=rich.children.filter(v=>typeof v==='object').map(v=>v.className);
+  for(const kind of ['index','quartile','cas','top','zone'])
+    assert(kinds.includes('rank-emphasis rank-emphasis--'+kind),kind+' highlighted');
+  assert.equal(rich.children.map(p=>typeof p==='string'?p:p.textContent).join(''),
+    'ESCI / SCI / Q1 Q2 / 中科院TOP / 1区','Important text stays intact');
+
+  env.panel.dataset.journalName='Other Journal';
+  await env.actions.loadRanks();
+  assert.equal(sent.length,2);
+  env.panel.dataset.journalName='Nature';
+  await env.actions.loadRanks();
+  assert.equal(sent.length,2,'Revisiting Nature reuses browser results');
+  env.actions.getCache().get(env.actions.getCache().keys().next().value).received_at=1;
+  await env.actions.loadRanks();
+  assert.equal(sent.length,2,'Expired receipt time must never silently query the provider');
+  await env.actions.loadRanks(true);
+  assert.equal(sent.length,3,'Visible Retry is the only forced journal refresh');
+
+  // Reload the page as another browser session: the server-wide database
+  // endpoint seeds results without calling each journal endpoint.
+  env=environment();
+  await env.actions.primeSharedRankCache(env.heatmap);
+  assert.equal(sent[sent.length-1].method,'POST');
+  const seeded=env.actions.getCache().get('/web/journal-rank\0system');
+  assert(seeded && seeded.rows[0].rank==='1区 TOP','Shared server rank is preloaded');
+  env.panel.dataset.journalName='System';
+  const before=sent.length;
+  await env.actions.loadRanks();
+  assert.equal(sent.length,before,'Hovering a database-cached journal uses the shared saved result');
+
+  // The visible list can contain up to 200 journals. Seed every entry in
+  // groups of at most 60, without issuing a separate HTTP call per hover.
+  env=environment(Array.from({length:143},(_,index)=>'Prefetched '+String(index).padStart(3,'0')));
+  const batchStart=sent.length;
+  await env.actions.primeSharedRankCache(env.heatmap);
+  const batchRequests=sent.slice(batchStart).filter(request=>request.method==='POST');
+  assert.equal(batchRequests.length,3,'143 visible journals use three PostgreSQL cache reads');
+  assert.equal(env.actions.getCache().get('/web/journal-rank\0prefetched 142').rows[0].rank,'1区 TOP');
+  await env.actions.primeSharedRankCache(env.heatmap);
+  assert.equal(sent.length,batchStart+3,'Prefetched rankings do not cause repeated PostgreSQL reads');
+
+  let focusCount=0;
+  env.qs('[data-rank-refresh]').focus=()=>focusCount++;
+  env.menu.dataset.journalName='System';
+  env.actions.openRankPanel();
+  assert.equal(env.panel.hidden,false,'Manual selection keeps the sidebar permanently visible');
+  assert.equal(focusCount,1,'Manual selection provides an accessible retry control');
+
+  // Hover always swaps the journal and its quiet active-row cue, regardless
+  // of stale browser preferences.
+  const journal=name=>Object.assign(node(),{dataset:{journalName:name},contains(){return false;}});
+  const eventFor=(entry,type='mouse')=>({pointerType:type,buttons:0,relatedTarget:null,
+    target:{closest:selector=> selector === '.heat-journal[data-journal-name]'?entry:null}});
+  const cultural=journal('Cultural Studies'), nature=journal('Nature');
+  env.listeners.pointerover[0](eventFor(cultural));
+  assert.equal(env.panel.dataset.journalName,'Cultural Studies');
+  assert('data-rank-current' in cultural.attrs,'Hovered journal must be highlighted immediately');
+  assert.equal(env.panel.hidden,false);
+  storage.set('netvault:rank-hover:v2:1','false');
+  env.listeners.pointerover[0](eventFor(nature));
+  assert.equal(env.panel.dataset.journalName,'Nature',
+    'Hover must keep working even if an old preference disables it');
+  assert('data-rank-current' in nature.attrs,'Current ranking journal receives the cue');
+  assert(!('data-rank-current' in cultural.attrs),'Previous journal highlight is cleared');
+  assert.equal(env.panel.hidden,false,'The permanent sidebar remains visible');
+  assert(!app.includes('setRankExpanded('), 'No expanding, sliding or collapse logic');
+
+  const bootstrap=readFileSync(join(__dirname,'../packages/netvault-server/src/netvault_server/server/static/theme.js'),'utf8');
+  const themeRoot={dataset:{}};
+  runInNewContext(bootstrap,{document:{documentElement:themeRoot},
+    localStorage:{getItem:()=> 'dark'}});
+  assert.equal(themeRoot.dataset.theme,'dark');
+  console.log('Ranking UI: persistent 380/500 sidebar, shared cache, hover, highlights and explicit retry passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

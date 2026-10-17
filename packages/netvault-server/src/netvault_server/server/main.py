@@ -97,6 +97,9 @@ def initialize_app() -> None:
                     )
                 )
                 db.commit()
+    from netvault_server.server.journal_ranks import recover_ranking_batches
+
+    recover_ranking_batches()
 
 
 @asynccontextmanager
@@ -126,7 +129,11 @@ async def add_static_cache_headers(request: Request, call_next):
     duration_ms = (perf_counter() - started) * 1000
     response.headers.setdefault("X-Request-ID", request_id)
     response.headers.setdefault("Server-Timing", f"app;dur={duration_ms:.1f}")
-    if request.url.path.startswith("/static/"):
+    if request.url.path in ("/static/app.js", "/static/styles.css", "/static/theme.js"):
+        # First-party UI may be hotfixed between packaged releases. Revalidate
+        # rather than pinning stale handlers for a year behind an unchanged URL.
+        response.headers["Cache-Control"] = "public, no-cache, must-revalidate"
+    elif request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     else:
         response.headers.setdefault("Cache-Control", "private, no-store")

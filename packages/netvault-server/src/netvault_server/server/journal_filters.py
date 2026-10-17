@@ -1,6 +1,7 @@
 import json
 import re
 import secrets
+from datetime import timezone
 from functools import lru_cache
 from html import unescape
 from pathlib import Path
@@ -123,6 +124,14 @@ def get_user_filter_override(
     )
 
 
+def available_dashboard_filter(db: Session, user_id: int, filter_key: str | None) -> str:
+    """Do not expose a deleted or another user's custom journal filter."""
+    key = normalize_filter_key(filter_key)
+    if is_custom_filter_key(key) and key != "custom" and get_user_filter_override(db, user_id, key) is None:
+        return "all"
+    return key
+
+
 def _override_payload(override: Any) -> tuple[list[str], str | None]:
     try:
         payload = json.loads(override.journals_json)
@@ -135,6 +144,45 @@ def _override_payload(override: Any) -> tuple[list[str], str | None]:
         label = str(payload.get("name", "")).strip() or None
         return deduplicate_journal_names(names if isinstance(names, list) else []), label
     return [], None
+
+
+def _custom_metadata(override: Any | None) -> dict[str, str]:
+    """Optional display grouping stored alongside journals; no DB migration."""
+    try:
+        value = json.loads(override.journals_json) if override is not None else {}
+    except (TypeError, ValueError):
+        value = {}
+    if not isinstance(value, dict):
+        value = {}
+    return {
+        name: str(value.get(name, "") or "").strip()
+        for name in ("category", "kind")
+        if isinstance(value.get(name, ""), str)
+    }
+
+
+def _validate_custom_metadata(category: str | None, kind: str | None) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for name, value in (("category", category), ("kind", kind)):
+        if value is None:
+            continue
+        cleaned = value.strip()
+        if len(cleaned) > 40 or any(ord(char) < 32 for char in cleaned):
+            raise ValueError(f"List {name} must contain at most 40 characters of text")
+        result[name] = cleaned
+    return result
+
+
+def _override_revision(override: Any | None) -> str | None:
+    if override is None:
+        return None
+    # PostgreSQL returns an aware timestamptz; SQLite may return a naive
+    # datetime even for a UTC value. Keep the client revision stable across
+    # the initial POST response and subsequent GETs in either database.
+    stamp = override.updated_at
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc).isoformat()
 
 
 def effective_journal_names(
@@ -166,10 +214,16 @@ def user_filter_options(db: Session, user_id: int) -> tuple[list[dict[str, Any]]
     custom_options: list[dict[str, Any]] = []
     base_override = custom_by_key.pop("custom", None)
     base_label = _override_payload(base_override)[1] if base_override is not None else None
-    custom_options.append({"key": "custom", "label": base_label or "Custom list", "editable": True, "custom": True})
+    custom_options.append({
+        "key": "custom", "label": base_label or "Custom list",
+        "editable": True, "custom": True, **_custom_metadata(base_override),
+    })
     for row in custom_by_key.values():
         _names, label = _override_payload(row)
-        custom_options.append({"key": row.filter_key, "label": label or "Custom list", "editable": True, "custom": True})
+        custom_options.append({
+            "key": row.filter_key, "label": label or "Custom list",
+            "editable": True, "custom": True, **_custom_metadata(row),
+        })
     return standard, abs_options, custom_options
 
 
@@ -190,6 +244,8 @@ def journal_filter_state(db: Session, user_id: int, filter_key: str) -> dict[str
         "can_reset": override is not None and not definition.get("custom"),
         "custom": bool(definition.get("custom")),
         "can_delete": bool(definition.get("custom") and key != "custom"),
+        "updated_at": _override_revision(override),
+        **_custom_metadata(override),
         **journal_filter_source(key),
     }
 
@@ -200,6 +256,10 @@ def save_user_journal_filter(
     filter_key: str,
     names: list[str],
     name: str | None = None,
+    expected_updated_at: str | None = None,
+    check_revision: bool = False,
+    category: str | None = None,
+    kind: str | None = None,
 ) -> dict[str, Any]:
     from netvault_server.server.models import UserJournalFilter, utc_now
 
@@ -209,6 +269,10 @@ def save_user_journal_filter(
         raise ValueError("This journal filter is not editable")
     journals = deduplicate_journal_names(names)
     override = get_user_filter_override(db, user_id, key)
+    if check_revision:
+        current_revision = _override_revision(override)
+        if expected_updated_at != current_revision:
+            raise ValueError("This journal list changed in another session. Reopen it before saving.")
     if override is None:
         override = UserJournalFilter(user_id=user_id, filter_key=key, journals_json="[]")
         db.add(override)
@@ -216,7 +280,11 @@ def save_user_journal_filter(
         label = (name or "Custom list").strip()
         if not label or len(label) > 60:
             raise ValueError("List name must contain 1 to 60 characters")
-        override.journals_json = json.dumps({"name": label, "journals": journals}, ensure_ascii=False)
+        metadata = _custom_metadata(override)
+        metadata.update(_validate_custom_metadata(category, kind))
+        override.journals_json = json.dumps(
+            {"name": label, "journals": journals, **metadata}, ensure_ascii=False,
+        )
     else:
         override.journals_json = json.dumps(journals, ensure_ascii=False)
     override.updated_at = utc_now()
@@ -236,19 +304,24 @@ def reset_user_journal_filter(db: Session, user_id: int, filter_key: str) -> dic
     return journal_filter_state(db, user_id, key)
 
 
-def create_user_journal_filter(db: Session, user_id: int, name: str) -> dict[str, Any]:
+def create_user_journal_filter(
+    db: Session, user_id: int, name: str, category: str = "",
+    kind: str = "", journals: list[str] | None = None,
+) -> dict[str, Any]:
     from netvault_server.server.models import UserJournalFilter, utc_now
 
     label = name.strip()
     if not label or len(label) > 60:
         raise ValueError("List name must contain 1 to 60 characters")
+    metadata = _validate_custom_metadata(category, kind)
+    names = deduplicate_journal_names(journals or [])
     key = f"custom_{secrets.token_hex(6)}"
     while get_user_filter_override(db, user_id, key) is not None:
         key = f"custom_{secrets.token_hex(6)}"
     db.add(UserJournalFilter(
         user_id=user_id,
         filter_key=key,
-        journals_json=json.dumps({"name": label, "journals": []}, ensure_ascii=False),
+        journals_json=json.dumps({"name": label, "journals": names, **metadata}, ensure_ascii=False),
         updated_at=utc_now(),
     ))
     db.commit()
@@ -263,6 +336,11 @@ def delete_user_journal_filter(db: Session, user_id: int, filter_key: str) -> di
     if override is None:
         raise ValueError("Custom list not found")
     db.delete(override)
+    from netvault_server.server.models import User
+
+    user = db.get(User, user_id)
+    if user is not None and user.dashboard_filter_key == key:
+        user.dashboard_filter_key = "all"
     db.commit()
     return {"deleted": True, "key": key}
 

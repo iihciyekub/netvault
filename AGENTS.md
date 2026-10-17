@@ -10,8 +10,9 @@
 
 ## Web Interface Language
 
-- All user-visible text in the NetVault web interface must be written in English.
-- This rule applies to templates, JavaScript-generated messages, form labels, buttons, headings, help text, placeholders, validation messages, accessibility labels, and other UI copy.
-- Do not add Chinese or mixed-language UI text unless the user explicitly changes this project-wide requirement.
-- Before completing a web UI change, scan the templates and first-party static files for Chinese characters and run the test suite. The automated UI-language test must remain enabled.
-- User-provided content and document metadata are data, not interface copy, and are not subject to this restriction.
+- NetVault now supports **English (en), Simplified Chinese (zh-CN), and Traditional Chinese (zh-TW)**, as explicitly requested on 2026-10-17.
+- Write new canonical UI text in English in Jinja templates and application JavaScript, and supply both Chinese variants in `static/i18n-catalog.tsv`. Regenerate `static/i18n.js` with `python scripts/build_i18n.py` and keep the generated bundle in sync with its source.
+- The only Chinese text directly embedded in HTML is the language menu's own native-language labels (简体中文 and 繁體中文). Other user-facing interface translations belong in the catalog; do not spread hard-coded localized strings across templates and feature scripts.
+- The menu icon lives immediately below the theme button in the bottom-left sidebar; guest login pages have an equivalent floating chooser.
+- Keep DOI identity, PDF titles and authors, journal names, filenames, technical commands, user-entered values, and research data in their original language. Language selection must never modify or submit this data.
+- Run `tests/test_i18n_web.py`, the in-repo JavaScript locale behavior tests and the existing web UI language-source guard before deploying. Keep the guard enabled, updated to allow only the explicit localized-menu labels and translation catalog.

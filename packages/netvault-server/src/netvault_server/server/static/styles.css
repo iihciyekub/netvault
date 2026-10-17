@@ -11,7 +11,7 @@
   --heat-4: #216e39;
   --link: #0969da;
   --fg: #000000;
-  --muted: #666666;
+  --muted: #20242a;
   --soft: #fafafa;
   --line: #eaeaea;
   --line-strong: #d4d4d4;
@@ -79,6 +79,13 @@ body {
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: 0;
+}
+
+/* Override the browser's semi-transparent gray default placeholders. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .page:focus,
@@ -587,16 +594,23 @@ h2 {
 
 .journal-list-actions {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   align-items: center;
   gap: 8px;
   padding-top: 2px;
 }
 
 .journal-list-actions [data-journal-list-reset] { grid-column: 1; }
-.journal-list-actions > span { grid-column: 2; }
-.journal-list-actions [data-journal-list-close] { grid-column: 3; }
-.journal-list-actions [type="submit"] { grid-column: 4; }
+.journal-list-actions [data-journal-list-export] { grid-column: 2; }
+.journal-list-actions > span { grid-column: 3; }
+.journal-list-actions [data-journal-list-close] { grid-column: 4; }
+.journal-list-actions [type="submit"] { grid-column: 5; }
+
+.dashboard-preference-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.dashboard-preference-status:empty { display: none; }
 
 .summary-tags {
   display: flex;
@@ -791,6 +805,63 @@ tr:last-child td { border-bottom: 0; }
   margin: 0;
   color: var(--fg);
   font-weight: 600;
+}
+
+.paper-selection-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.paper-selection-toolbar .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.paper-selection-toolbar [data-pdf-selected-zip] {
+  margin-left: auto;
+}
+
+.paper-selection-toolbar [data-pdf-selected-zip]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paper-selected-count {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paper-select-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  cursor: pointer;
+}
+
+.paper-select-label input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent, #3267b1);
+}
+
+.paper-select-label input:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 3px;
+}
+
+.paper-result.is-selected {
+  border-color: var(--line-strong);
+  box-shadow: inset 3px 0 0 var(--fg);
 }
 
 .paper-results {
@@ -2128,6 +2199,9 @@ ul {
   .journal-list-actions [data-journal-list-reset] {
     grid-column: 1 / -1;
   }
+  .journal-list-actions [data-journal-list-export] {
+    grid-column: 1 / -1;
+  }
   .journal-list-actions [data-journal-list-close] {
     grid-column: 1;
   }
@@ -2504,7 +2578,7 @@ body.with-sidebar {
 .dashboard-body { --page-width: 100%; }
 .dashboard-body .page { width: min(var(--dashboard-content-width, 1120px), calc(100vw - var(--sidebar-width, 0px) - var(--page-gutter))); max-width: calc(100vw - var(--sidebar-width, 0px) - var(--page-gutter)); }
 .dashboard-body.with-sidebar .page { width: min(var(--dashboard-content-width, 1120px), calc(100vw - var(--sidebar-width) - var(--page-gutter))); }
-.dashboard-toolbar, .heatmap-filter-bar { flex-wrap: wrap; }
+.dashboard-toolbar { flex-wrap: wrap; }
 .heatmap-scroll { width: 100%; }
 .journal-heatmap {
   --journal-width: clamp(150px, 32vw, 540px);
@@ -2526,6 +2600,66 @@ body.with-sidebar {
 .rank-tools label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; }
 .rank-tools input { width: 13px; height: 13px; min-height: 0; margin: 0; padding: 0; }
 .journal-rank-panel [data-rank-status] { margin: 0 12px 5px; font-size: 11px; line-height: 1.35; color: var(--muted); }
+/* A compact ranking indicator occupies the existing filter toolbar, never
+   its own row above the heatmap. The full progress is available as a tooltip. */
+.rank-quick-tools {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 9px;
+  min-height: 30px;
+}
+.rank-batch-inline:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 26px;
+  padding: 0 2px 0 8px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rank-batch-inline[data-rank-state="completed"] { color: var(--fg); }
+.rank-batch-inline[data-rank-state="partial"] { color: var(--danger, var(--fg)); }
+.rank-batch-inline [data-rank-batch-brief] { white-space: nowrap; }
+.rank-batch-inline [data-rank-batch-retry]:not([hidden]) {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  min-height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+.rank-batch-inline [data-rank-batch-retry]:hover,
+.rank-batch-inline [data-rank-batch-retry]:focus-visible {
+  background: var(--soft);
+  outline-offset: -2px;
+}
+/* The search, rank progress and document count share one row.
+   The search field shrinks first; on narrow screens scroll rather than wrap. */
+.dashboard-body .heatmap-filter-bar {
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.dashboard-body .heatmap-filter-field {
+  flex: 1 1 230px;
+  min-width: 115px;
+  max-width: none;
+}
+.dashboard-body .rank-quick-tools { gap: 5px; }
+.dashboard-body .heatmap-filter-summary { gap: 5px; }
+.dashboard-body .rank-batch-inline:not([hidden]) { padding-left: 6px; }
 .rank-table-scroll { min-height: 0; overflow: auto; padding: 0 8px; }
 .journal-rank-panel th, .journal-rank-panel td { padding: 6px 8px; line-height: 1.35; }
 .journal-rank-panel th { text-transform: none; }
@@ -2547,7 +2681,7 @@ body.with-sidebar {
   --bg: #101216;
   --surface: #171a20;
   --fg: #edf0f5;
-  --muted: #a7b0be;
+  --muted: #e3e9f2;
   --soft: #21262f;
   --line: #2c333f;
   --line-strong: #414b5b;
@@ -3050,14 +3184,56 @@ body.with-sidebar {
   --heat-total-width: 60px;
   --heat-journal-width: clamp(190px, 32vw, 540px);
   --heat-grid-row-gap: 4px;
+  --heat-row-height: 20px;
+  --heat-scrollbar-rail: 16px;
+}
+.dashboard-body .heatmap-years-shell {
+  display: grid;
+  flex: 1 1 0;
+  grid-template-rows: minmax(0, 1fr) var(--heat-scrollbar-rail);
+  min-width: 64px;
+  min-height: 0;
 }
 .dashboard-body .heatmap-years-viewport {
-  flex: 1 1 0;
-  min-width: 64px;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  /* Native overlay scrollbars cannot reserve gutters on macOS. Keep the
+     scrollable grid here but place its visible controls in separate rails. */
+  scrollbar-width: none;
+}
+.dashboard-body .heatmap-years-viewport::-webkit-scrollbar {
+  display: none;
+}
+.dashboard-body .heatmap-scrollbar-x,
+.dashboard-body .heatmap-scrollbar-y {
+  min-width: 0;
+  min-height: 0;
   scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.dashboard-body .heatmap-scrollbar-x {
+  overflow-x: scroll;
+  overflow-y: hidden;
+}
+.dashboard-body .heatmap-scrollbar-x-spacer {
+  height: 1px;
+}
+.dashboard-body .heatmap-scrollbar-y-shell {
+  display: grid;
+  flex: 0 0 var(--heat-scrollbar-rail);
+  grid-template-rows: 48px minmax(0, 1fr) var(--heat-scrollbar-rail);
+  min-width: 0;
+  min-height: 0;
+}
+.dashboard-body .heatmap-scrollbar-y {
+  grid-row: 2;
+  overflow-x: hidden;
+  overflow-y: scroll;
+}
+.dashboard-body .heatmap-scrollbar-y-spacer {
+  width: 1px;
 }
 .dashboard-body .heatmap-years-viewport:focus-visible {
   outline: 1px solid var(--choice-line);
@@ -3078,10 +3254,12 @@ body.with-sidebar {
   flex: 0 0 calc(var(--heat-total-width) + var(--heat-journal-width));
   flex-direction: column;
   width: calc(var(--heat-total-width) + var(--heat-journal-width));
-  max-width: calc(100% - 64px);
+  max-width: calc(100% - 64px - var(--heat-scrollbar-rail));
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  box-sizing: border-box;
+  padding-bottom: var(--heat-scrollbar-rail);
   background: var(--bg);
 }
 .dashboard-body .heatmap-fixed-heading,
@@ -3148,6 +3326,7 @@ body.with-sidebar {
   grid-auto-rows: var(--heat-row-height);
   row-gap: var(--heat-grid-row-gap);
   padding-top: var(--heat-grid-row-gap);
+  align-items: center;
   will-change: transform;
 }
 .dashboard-body .heatmap-fixed-body .heat-total {
@@ -3159,6 +3338,8 @@ body.with-sidebar {
   min-width: 0;
   padding-inline: 0 8px;
   text-align: right;
+  box-sizing: border-box;
+  line-height: 1;
 }
 .dashboard-body .heatmap-fixed-body .heat-journal {
   display: flex;
@@ -3174,6 +3355,8 @@ body.with-sidebar {
   background: transparent;
   text-align: left;
   white-space: nowrap;
+  box-sizing: border-box;
+  line-height: 1;
 }
 .dashboard-body .heatmap-fixed-body .heat-journal-name {
   display: block;
@@ -3182,6 +3365,7 @@ body.with-sidebar {
   overflow-wrap: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 400;
 }
 @media (max-width: 900px) {
   .dashboard-body .heatmap-scroll {
@@ -3642,11 +3826,28 @@ body.with-sidebar {
 .doi-batch-status:empty {
   display: none;
 }
+.doi-batch-availability {
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 13px;
+}
+.doi-batch-availability strong {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.doi-batch-availability p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 .doi-batch-shell footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .doi-batch-shell footer button {
   display: inline-flex;
@@ -3666,4 +3867,1373 @@ body.with-sidebar {
 @media (max-width: 520px) {
   .doi-batch-shell { padding: 14px; }
   .doi-batch-shell textarea { min-height: 160px; }
+}
+/* Admin Console: separate from ordinary reader dashboard data. */
+.maintenance-console { margin-bottom: 36px; }
+.maintenance-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 0 18px; }
+.maintenance-heading h2 { font-size: 23px; line-height: 1.2; letter-spacing: -0.025em; margin: 0 0 8px; }
+.maintenance-heading p { margin: 0; font-size: 12px; color: var(--muted); max-width: 680px; }
+.maintenance-heading .maintenance-kicker { font-size: 10px; font-weight: 700; letter-spacing: 0.15em; margin-bottom: 10px; }
+.maintenance-link { border: 1px solid var(--line); border-radius: 6px; padding: 9px 12px; white-space: nowrap; }
+.maintenance-status-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 11px 14px; margin-bottom: 14px; background: var(--soft); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; color: var(--muted); }
+.maintenance-status-line strong { color: var(--fg); font-weight: 600; }
+.maintenance-dot { width: 8px; height: 8px; display: inline-block; border-radius: 50%; background: var(--muted); margin-right: 2px; }
+.maintenance-dot.online { background: #27944b; }
+.maintenance-dot.offline { background: #a75c19; }
+.maintenance-note { margin-left: auto; }
+.maintenance-separator { margin: 0 9px; }
+.maintenance-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.maintenance-metrics strong { font-size: clamp(18px, 2vw, 25px); overflow-wrap: anywhere; }
+.maintenance-metrics strong.maintenance-recipe { font-size: 19px; }
+.maintenance-subheading { font-size: 16px; margin: 26px 0 13px; }
+.maintenance-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.maintenance-action { align-content: start; }
+.maintenance-action h3 { font-size: 15px; margin: 0; }
+.maintenance-action p { color: var(--muted); margin: 0; font-size: 12px; line-height: 1.6; min-height: 55px; }
+.maintenance-action label { font-size: 12px; }
+.maintenance-action .primary { margin-top: auto; }
+.maintenance-icon { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--soft); }
+.maintenance-policy { display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--line); background: var(--soft); padding: 13px 15px; margin-top: 14px; border-radius: var(--radius); color: var(--muted); font-size: 12px; }
+.maintenance-policy i { color: var(--fg); margin-top: 3px; }
+.maintenance-jobs-heading { margin-top: 28px; }
+.maintenance-table { min-width: 860px; }
+.maintenance-table th, .maintenance-table td { vertical-align: top; font-size: 12px; }
+.maintenance-nowrap { white-space: nowrap; }
+.maintenance-id, .maintenance-muted { color: var(--muted); }
+.maintenance-id { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.maintenance-badge { text-transform: capitalize; font-size: 11px; font-weight: 650; color: var(--muted); }
+.maintenance-badge.status-completed { color: #27834c; }
+.maintenance-badge.status-failed { color: var(--danger); }
+.maintenance-badge.status-running { color: var(--link); }
+.maintenance-error { color: var(--danger); overflow-wrap: anywhere; }
+.maintenance-report-link { display: inline-flex; gap: 5px; color: var(--link); font-weight: 600; margin-bottom: 8px; }
+.maintenance-approval { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); width: 190px; }
+.maintenance-approval label { display: grid; gap: 5px; font-size: 11px; color: var(--muted); }
+.maintenance-approval input { width: 100%; min-width: 0; }
+.maintenance-approval button { white-space: normal; font-size: 11px; padding: 8px; }
+.maintenance-console button:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 760px) {
+  .maintenance-heading { align-items: flex-start; flex-direction: column; }
+  .maintenance-action-grid { grid-template-columns: 1fr; }
+  .maintenance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .maintenance-note { margin-left: 0; }
+}
+
+.maintenance-progress { display: grid; gap: 5px; min-width: 100px; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+.maintenance-progress progress { display: block; width: 100%; height: 6px; appearance: auto; accent-color: var(--fg); }
+
+/* Admin navigation must be discoverable without hovering an icon-only rail. */
+.app-sidebar .sidebar-admin-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 40px;
+  height: 46px;
+  min-height: 46px;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+}
+.app-sidebar .sidebar-admin-link.active {
+  color: var(--surface);
+  background: var(--fg);
+  border-color: var(--fg);
+}
+.sidebar-admin-caption {
+  display: block;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: .01em;
+}
+.summary-tags .dashboard-admin-console {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--fg);
+  border-radius: 7px;
+  background: var(--fg);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.summary-tags .dashboard-admin-console:hover,
+.summary-tags .dashboard-admin-console:focus-visible {
+  background: var(--primary-hover);
+  color: var(--surface);
+}
+@media (max-width: 760px) {
+  .app-sidebar .sidebar-admin-link { width: 40px; }
+}
+
+/* Explicit all-eligible host PDFCraft operation; distinct from bounded pilots. */
+.maintenance-action-grid .maintenance-action-full {
+  grid-column: 1 / -1;
+  gap: 13px;
+  border-color: var(--line-strong);
+}
+.maintenance-full-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.maintenance-full-header h3 { margin-bottom: 4px; }
+.maintenance-full-header .maintenance-full-kicker {
+  min-height: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .065em;
+}
+.maintenance-action-full > p { min-height: 0; max-width: 930px; }
+.maintenance-command {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.maintenance-full-controls {
+  display: grid;
+  grid-template-columns: 175px minmax(190px, 1fr);
+  align-items: end;
+  gap: 12px;
+  max-width: 680px;
+}
+.maintenance-full-controls label { min-width: 0; }
+.maintenance-danger-ack {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 9px;
+  max-width: 870px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+.maintenance-danger-ack input { width: 16px; height: 16px; flex: 0 0 auto; margin: 2px 0 0; }
+.maintenance-full-button { justify-self: start; }
+.maintenance-badge.status-cancelled { color: var(--muted); }
+@media (max-width: 760px) {
+  .maintenance-full-controls { grid-template-columns: 1fr; max-width: none; }
+  .maintenance-full-button { justify-self: stretch; }
+}
+
+/* Locale switcher: first control directly beneath the bottom sidebar theme. */
+.language-switcher { position: relative; width: 36px; height: 36px; flex: 0 0 auto; }
+.app-sidebar .language-switcher > .language-toggle { width: 36px; height: 36px; }
+.app-sidebar .language-toggle[aria-expanded="true"] { background: var(--line); color: var(--fg); }
+.app-sidebar .language-toggle[aria-expanded="true"]::after { display: none; }
+.language-menu[hidden] { display: none !important; }
+.language-menu {
+  position: absolute;
+  z-index: 120;
+  bottom: 0;
+  left: calc(100% + 12px);
+  display: grid;
+  gap: 3px;
+  width: max-content;
+  min-width: 158px;
+  max-width: calc(100vw - 68px);
+  padding: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--fg);
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 16%);
+}
+.language-menu [data-language-option] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-height: 35px;
+  padding: 7px 30px 7px 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.language-menu [data-language-option]:hover,
+.language-menu [data-language-option]:focus-visible {
+  background: var(--soft);
+  outline: 2px solid transparent;
+}
+.language-menu [data-language-option][aria-checked="true"] { background: var(--soft); font-weight: 700; }
+.language-menu [data-language-option][aria-checked="true"]::after {
+  content: "✓";
+  position: absolute;
+  right: 10px;
+  color: var(--fg);
+}
+.theme-toggle-floating { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.theme-toggle-floating .language-switcher { height: 36px; }
+.theme-toggle-floating .language-toggle { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); }
+.theme-toggle-floating .language-menu [data-language-option] { width: 100%; min-height: 35px; height: auto; padding: 7px 30px 7px 11px; border: 0; background: transparent; color: var(--fg); border-radius: 6px; }
+.theme-toggle-floating .language-menu [data-language-option]:hover,
+.theme-toggle-floating .language-menu [data-language-option][aria-checked="true"] { background: var(--soft); }
+
+/* Admin Console: restrained, application-owned management layout. */
+.page:has(> .admin-console-shell) { width: min(1390px, calc(100vw - var(--page-gutter))); padding-top: 28px; }
+.admin-console-shell { display: grid; grid-template-columns: 205px minmax(0, 1fr); gap: 38px; align-items: start; }
+.admin-console-rail { position: sticky; top: 24px; min-width: 0; min-height: 480px; padding: 9px 19px 0 0; border-right: 1px solid var(--line); }
+.admin-console-brand { display: flex; align-items: center; gap: 10px; margin: 2px 0 32px 8px; }
+.admin-console-brand-mark { display: grid; place-items: center; width: 31px; height: 31px; border-radius: 9px; color: var(--surface); background: var(--fg); font-size: 15px; font-weight: 750; }
+.admin-console-brand > span:last-child { display: grid; gap: 1px; }
+.admin-console-brand strong { font-size: 13px; font-weight: 710; line-height: 1.2; }
+.admin-console-brand small { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.admin-console-nav-label { margin: 0 0 10px 10px; font-size: 10px; font-weight: 650; letter-spacing: .1em; color: var(--muted); }
+.admin-console-nav { display: flex; flex-direction: column; align-items: stretch; width: 100%; gap: 3px; }
+.admin-console-nav a { display: flex; width: 100%; min-height: 41px; height: auto; align-items: center; gap: 11px; padding: 9px 12px; font-size: 12px; font-weight: 530; border: 1px solid transparent; border-radius: 8px; }
+.admin-console-nav a i { width: 15px; text-align: center; font-size: 12px; color: var(--muted); }
+.admin-console-nav a:hover { background: var(--soft); }
+.admin-console-nav a.active { background: var(--soft); color: var(--fg); font-weight: 690; }
+.admin-console-nav a.active i { color: var(--fg); }
+.admin-console-nav a:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.admin-console-running-dot { width: 7px; height: 7px; flex: 0 0 7px; margin-left: auto; border-radius: 50%; background: #399761; }
+.admin-console-rail-note { display: flex; align-items: center; gap: 9px; margin: 36px 0 0 10px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.admin-console-main { min-width: 0; padding-bottom: 34px; }
+.admin-console-page-head { margin-bottom: 24px; }
+.admin-console-breadcrumb { display: flex; align-items: center; gap: 9px; margin: 0 0 20px; color: var(--muted); font-size: 11px; }
+.admin-console-breadcrumb i { font-size: 8px; }
+.admin-console-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.admin-console-heading-row h2 { margin: 0 0 8px; font-size: clamp(24px, 3vw, 30px); letter-spacing: -.035em; font-weight: 690; line-height: 1.15; }
+.admin-console-heading-row p { margin: 0; color: var(--muted); font-size: 12px; }
+.admin-console-page-action, .admin-console-page-link { display: inline-flex; align-items: center; gap: 9px; flex: 0 0 auto; min-height: 35px; padding: 0 13px; border-radius: 7px; font-size: 12px; font-weight: 630; white-space: nowrap; }
+.admin-console-page-action { background: var(--fg); color: var(--surface); }
+.admin-console-page-action:hover { opacity: .86; }
+.admin-console-page-link { border: 1px solid var(--line-strong); }
+.admin-console-page-link:hover { background: var(--soft); }
+.admin-console-active-card { padding: 22px 24px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--surface); margin-bottom: 25px; }
+.admin-console-card-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 11px; color: var(--muted); font-size: 11px; }
+.admin-console-active-card h3 { margin: 0 0 8px; font-size: 17px; font-weight: 690; letter-spacing: -.02em; }
+.admin-console-active-card > p { margin: 0 0 17px; font-size: 12px; color: var(--muted); }
+.admin-console-progress-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 10px 0 12px; font-size: 12px; color: var(--muted); }
+.admin-console-progress-line strong { font-size: 22px; line-height: 1; color: var(--fg); font-weight: 680; }
+.admin-console-progress-line strong span { font-size: 14px; font-weight: 480; color: var(--muted); }
+.admin-console-active-card > progress { width: 100%; height: 8px; display: block; accent-color: var(--fg); }
+.admin-console-progress-meta { display: flex; gap: 10px 22px; flex-wrap: wrap; margin: 13px 0; color: var(--muted); font-size: 11px; }
+.admin-console-inline-link { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); font-size: 12px; font-weight: 650; }
+.admin-console-inline-link:hover { text-decoration: underline; }
+.admin-console-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 16px 0 14px; }
+.admin-console-section-head h3 { margin: 0; font-size: 15px; font-weight: 680; }
+.admin-console-section-head > span, .admin-console-section-head > a { color: var(--muted); font-size: 11px; }
+.admin-console-section-head a:hover { color: var(--fg); text-decoration: underline; }
+.admin-console-recent-list { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.admin-console-recent-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 64px; border-top: 1px solid var(--line); }
+.admin-console-recent-item:first-child { border-top: 0; }
+.admin-console-recent-item:hover { background: var(--soft); }
+.admin-console-recent-icon { display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 8px; background: var(--soft); border: 1px solid var(--line); color: var(--muted); }
+.admin-console-recent-info { display: grid; gap: 3px; min-width: 0; margin-right: auto; }
+.admin-console-recent-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 630; }
+.admin-console-recent-info small { font-size: 10px; color: var(--muted); }
+.admin-console-empty { margin: 0; padding: 20px; color: var(--muted); font-size: 12px; }
+.admin-console-jobs-active { margin-bottom: 24px; }
+.admin-console-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 18px 0 5px; color: var(--muted); font-size: 12px; }
+.admin-console-pagination a { height: auto; padding: 7px 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--fg); }
+.admin-console-pagination a:hover { background: var(--soft); }
+.maintenance-table tr:target { scroll-margin-top: 60px; background: var(--soft); }
+.admin-console-shell .maintenance-console { margin-bottom: 0; }
+.admin-console-shell .maintenance-metrics { grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 26px; }
+.admin-console-shell .maintenance-metrics article { padding: 14px; min-height: 92px; }
+.admin-console-shell .maintenance-metrics strong { font-size: clamp(19px,2vw,23px); }
+.admin-console-shell .maintenance-table { min-width: 860px; }
+.admin-console-shell .admin-grid { margin-top: 0; }
+.admin-console-shell .maintenance-jobs-heading { margin-top: 0; }
+@media (max-width: 1120px) {
+  .admin-console-shell { grid-template-columns: 160px minmax(0,1fr); gap: 22px; }
+  .admin-console-rail { padding-right: 10px; }
+  .admin-console-shell .maintenance-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 760px) {
+  .page:has(> .admin-console-shell) { width: calc(100vw - var(--page-gutter)); padding-top: 18px; }
+  .admin-console-shell { display: block; }
+  .admin-console-rail { position: static; min-height: 0; padding: 0; margin-bottom: 22px; border: 0; }
+  .admin-console-brand, .admin-console-nav-label, .admin-console-rail-note { display: none; }
+  .admin-console-nav { display: flex; flex-direction: row; gap: 6px; overflow-x: auto; padding: 3px 0; width: 100%; }
+  .admin-console-nav a { width: auto; flex: 0 0 auto; white-space: nowrap; padding: 9px 11px; min-height: 38px; }
+  .admin-console-heading-row { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .admin-console-breadcrumb { margin-bottom: 13px; }
+  .admin-console-active-card { padding: 18px; }
+  .admin-console-progress-meta { gap: 6px 15px; }
+  .admin-console-shell .maintenance-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+.admin-console-people-list-head { margin-top: 24px; }
+
+/* Embedded details pane in a full-width split workspace; the flexible chart
+   column owns horizontal year scrolling and the ranking pane never overlaps. */
+.dashboard-body .page,
+.dashboard-body.with-sidebar .page {
+  width: calc(100% - 16px);
+  max-width: none;
+  margin-inline: 8px;
+}
+.dashboard-body .dashboard-workspace {
+  --rank-drawer-width: 380px;
+  --rank-current-width: 380px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rank-current-width);
+  align-items: stretch;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  gap: 12px;
+}
+.dashboard-body .dashboard-workspace > .heatmap-panel {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+}
+.journal-rank-slot {
+  justify-self: end;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.dashboard-body .journal-rank-slot .journal-rank-panel {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface);
+}
+.dashboard-body .journal-rank-panel[hidden] { display: none; }
+.dashboard-body .journal-rank-panel header {
+  min-height: 54px;
+  align-items: center;
+  cursor: default;
+  touch-action: auto;
+  padding: 12px 11px 12px 14px;
+}
+.dashboard-body .journal-rank-panel h2 { font-size: 13px; font-weight: 700; }
+.dashboard-body .journal-rank-panel [data-rank-status]:not(:empty) { margin: 10px 14px; }
+.dashboard-body .journal-rank-panel .rank-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 11px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.dashboard-body .journal-rank-panel table { table-layout: fixed; width: 100%; font-size: 11px; }
+.dashboard-body .journal-rank-panel thead { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+.dashboard-body .journal-rank-panel thead th { padding: 9px 8px; font-size: 10px; }
+.dashboard-body .journal-rank-panel thead th:first-child { width: 52%; }
+.dashboard-body .journal-rank-panel thead th:last-child { width: 48%; }
+.dashboard-body .journal-rank-panel tbody tr:not(.rank-group) { height: 33px; }
+.dashboard-body .journal-rank-panel tbody tr:not(.rank-group) > :is(th, td) {
+  height: 33px;
+  max-height: 33px;
+  padding: 0 8px;
+  line-height: 32px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.dashboard-body .journal-rank-panel tbody .rank-group th {
+  height: 30px;
+  padding: 0 8px;
+  line-height: 29px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dashboard-body .journal-rank-panel .rank-header-actions [data-rank-refresh] {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 67px;
+  gap: 5px;
+  padding-inline: 9px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+}
+
+/* Clear, durable classification cues in both themes. Text and shape carry
+   meaning even when colors are hard to distinguish. All remain inline to
+   preserve the fixed 33px ranking row height. */
+.dashboard-body .journal-rank-panel .rank-emphasis {
+  font-weight: 820;
+  font-size: 11.5px;
+  line-height: inherit;
+  padding: 2px 4px;
+  margin-inline: 1px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.dashboard-body .rank-emphasis--index { color: #144c88; background: #e8f2ff; }
+.dashboard-body .rank-emphasis--quartile { color: #16603d; background: #e5f6eb; }
+.dashboard-body .rank-emphasis--top { color: #8d3c06; background: #fff0d8; }
+.dashboard-body .rank-emphasis--zone { color: #8d3c06; background: #fff0d8; }
+.dashboard-body .rank-emphasis--cas { color: #81427a; background: #f7eafa; }
+.dashboard-body .rank-emphasis--secondary { color: #615772; background: #efedf3; }
+:root[data-theme="dark"] .dashboard-body .rank-emphasis--index { color: #a9d2ff; background: #182b42; }
+:root[data-theme="dark"] .dashboard-body .rank-emphasis--quartile { color: #9ae4b9; background: #183b2b; }
+:root[data-theme="dark"] .dashboard-body .rank-emphasis--top,
+:root[data-theme="dark"] .dashboard-body .rank-emphasis--zone { color: #ffcd8a; background: #44301c; }
+:root[data-theme="dark"] .dashboard-body .rank-emphasis--cas { color: #e7b6e9; background: #3e2841; }
+:root[data-theme="dark"] .dashboard-body .rank-emphasis--secondary { color: #c2b9d1; background: #2d2934; }
+
+/* Center the entire compact heatmap inside its available column; its DOI,
+   search field and year matrix remain aligned within it. Keep the controls
+   on one physical row, shrinking only the search field when space is short. */
+.dashboard-body .heatmap-filter-bar {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-rows: auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-filter-field {
+  grid-column: 2;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+}
+.dashboard-body .heatmap-filter-field input {
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
+.dashboard-body .heatmap-filter-bar > .rank-quick-tools {
+  grid-column: 3;
+  min-width: max-content;
+}
+.dashboard-body .rank-quick-tools:not(:has([data-rank-batch-banner]:not([hidden]))) {
+  display: none;
+}
+.dashboard-body .heatmap-filter-bar:has([data-rank-batch-banner]:not([hidden])) {
+  grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-filter-summary {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: max-content;
+  justify-self: end;
+}
+.dashboard-body .heatmap-filter-bar:has([data-rank-batch-banner]:not([hidden])) > .heatmap-filter-summary {
+  grid-column: 4;
+}
+@media (max-width: 560px) {
+  .dashboard-body .heatmap-filter-bar {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+  }
+  .dashboard-body .heatmap-filter-bar > .heatmap-filter-summary {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+/* Flat, quiet highlight only on the journal currently shown in rankings.
+   No bold text, accent stripe or card styling; keep row geometry unchanged. */
+.dashboard-body .heatmap-fixed-body .heat-journal[data-rank-current] {
+  background: #f4f5f7;
+  box-shadow: none;
+  border-radius: 0;
+}
+:root[data-theme="dark"] .dashboard-body .heatmap-fixed-body .heat-journal[data-rank-current] {
+  background: #1d222a;
+}
+
+/* Journal navigator: an understated ChatGPT-style second column next to the
+   existing 52px icon rail. Widths are CSS px (not Retina screenshot pixels).
+   The heatmap retains fixed year tracks and Total; journal titles live here. */
+body.dashboard-body {
+  --journal-library-width: 220px;
+}
+body.dashboard-body:has([data-journal-library]) {
+  padding-left: calc(var(--sidebar-width) + var(--journal-library-width));
+}
+.dashboard-body .journal-library {
+  position: fixed;
+  z-index: 72;
+  inset: 0 auto 0 var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--journal-library-width);
+  height: 100dvh;
+  min-height: 0;
+  background: color-mix(in srgb, var(--bg) 88%, var(--surface));
+  border-right: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 12px;
+}
+.dashboard-body .journal-library-head {
+  display: flex;
+  flex: 0 0 49px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 9px 4px 12px;
+}
+.dashboard-body .journal-library-head h2 {
+  overflow: hidden;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dashboard-body .journal-library-actions,
+.dashboard-body .journal-library-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dashboard-body .journal-library :is(.journal-library-actions, .journal-library-footer-actions) button,
+.dashboard-body .journal-library-section button {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  min-width: 29px;
+  min-height: 29px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.dashboard-body .journal-library button:hover,
+.dashboard-body .journal-library button:focus-visible {
+  background: var(--soft);
+  color: var(--fg);
+}
+.dashboard-body .journal-library :is(button, .heat-journal):focus-visible {
+  outline: 2px solid var(--line-strong);
+  outline-offset: -2px;
+}
+.dashboard-body .journal-library-section {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 31px;
+  min-width: 0;
+  padding: 2px 9px 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 510;
+}
+.dashboard-body .journal-library-section > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-body [data-journal-library-count] { color: var(--muted); font-variant-numeric: tabular-nums; }
+.dashboard-body .journal-library-section [data-journal-library-sort] { width: 26px; height: 26px; min-width: 26px; min-height: 26px; }
+.dashboard-body .journal-library-items {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 7px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.dashboard-body .journal-library-items .heat-journal {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 29px;
+  min-height: 29px;
+  min-width: 0;
+  margin: 1px 0;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.dashboard-body .journal-library-items .heat-journal-name {
+  display: block;
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+.dashboard-body .journal-library-items .journal-library-more {
+  display: inline-grid;
+  flex: 0 0 23px;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  min-width: 23px;
+  min-height: 23px;
+  padding: 0;
+  margin-left: 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  opacity: 0;
+  cursor: pointer;
+}
+.dashboard-body .journal-library-items .heat-journal:hover .journal-library-more,
+.dashboard-body .journal-library-items .heat-journal:focus-within .journal-library-more,
+.dashboard-body .journal-library-items .journal-library-more:focus-visible {
+  opacity: 1;
+}
+.dashboard-body .journal-library-items .journal-library-more:hover {
+  background: var(--soft);
+  color: var(--fg);
+}
+.dashboard-body .journal-library-items .heat-journal:hover,
+.dashboard-body .journal-library-items .heat-journal:focus-visible {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.dashboard-body .journal-library-items .heat-journal[data-rank-current] {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  font-weight: 400;
+}
+.dashboard-body .journal-library-items .heat-journal[data-rank-current]:hover {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.dashboard-body .journal-library-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 40px;
+  padding: 5px 9px 7px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-body .journal-library-footer button:disabled { opacity: .25; cursor: default; }
+.dashboard-body .heatmap-fixed-viewport {
+  flex: 0 0 var(--heat-total-width);
+  width: var(--heat-total-width);
+}
+.dashboard-body .heatmap-fixed-heading,
+.dashboard-body .heatmap-fixed-body {
+  grid-template-columns: var(--heat-total-width);
+  column-gap: 0;
+}
+.dashboard-body .heatmap-fixed-heading .heat-corner { display: none; }
+@media (max-width: 1120px) {
+  body.dashboard-body:has([data-journal-library]) {
+    padding-left: var(--sidebar-width);
+  }
+  .dashboard-body .journal-library { box-shadow: 12px 0 30px rgb(0 0 0 / 12%); }
+}
+@media (max-width: 760px) {
+  body.dashboard-body { --journal-library-width: min(220px, calc(100vw - var(--sidebar-width) - 16px)); }
+}
+
+/* All, UTD24, FT50, ABS tiers and user-created lists now live in the journal
+   navigator instead of a second row of top-page buttons. The active list's
+   full name occupies the large heading; the collection choices are expanded
+   chat-style rows in the panel's independently scrollable upper section. */
+.dashboard-body .journal-library-collections {
+  flex: 0 1 auto;
+  max-height: min(44dvh, 400px);
+  min-height: 0;
+  padding: 0 8px 9px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--line);
+}
+.dashboard-body .journal-library-collections-head {
+  padding: 5px 8px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.dashboard-body .journal-library .filter-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 0 auto;
+  gap: 2px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  max-width: 100%;
+}
+.dashboard-body .journal-library .filter-tabs > a,
+.dashboard-body .journal-library .filter-menu summary,
+.dashboard-body .journal-library .filter-menu-popover a,
+.dashboard-body .journal-library .filter-menu-popover .filter-menu-create {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 33px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  box-shadow: none;
+  text-decoration: none;
+}
+.dashboard-body .journal-library .filter-tabs :is(a, summary, button):hover,
+.dashboard-body .journal-library .filter-tabs :is(a, summary, button):focus-visible {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+.dashboard-body .journal-library .filter-tabs a.active,
+.dashboard-body .journal-library .filter-tabs .filter-menu.active > summary {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  color: var(--fg);
+  font-weight: 500;
+}
+.dashboard-body .journal-library .filter-menu {
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+}
+.dashboard-body .journal-library .filter-menu summary {
+  justify-content: space-between;
+  cursor: pointer;
+}
+.dashboard-body .journal-library .filter-menu summary > span {
+  overflow: hidden;
+  flex: 1 1 auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-body .journal-library .filter-menu-popover,
+.dashboard-body .journal-library .custom-list-menu {
+  position: static;
+  display: grid;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  padding: 0 0 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none !important;
+}
+.dashboard-body .journal-library .filter-menu-popover a {
+  gap: 5px;
+  padding-right: 5px;
+  padding-left: 10px;
+  white-space: nowrap;
+}
+.dashboard-body .journal-library .filter-menu-popover a > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-body .journal-library .filter-menu-popover .filter-menu-create {
+  gap: 8px;
+  justify-content: flex-start;
+  padding-left: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dashboard-body .journal-library .filter-edit-mark {
+  flex: 0 0 22px;
+  opacity: 0;
+}
+.dashboard-body .journal-library [data-journal-list-edit]:hover .filter-edit-mark,
+.dashboard-body .journal-library [data-journal-list-edit]:focus-within .filter-edit-mark,
+.dashboard-body .journal-library [data-journal-list-edit].active .filter-edit-mark {
+  opacity: 1;
+}
+.dashboard-body .journal-library-head h2[data-journal-library-title] {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dashboard-body .journal-library-section {
+  flex: 0 0 31px;
+  padding-top: 5px;
+}
+
+/* Codex-like split workspace. Details are an actual right-hand column, not
+   an overlay. The middle chart always stretches to the width it is given;
+   when that is narrower than all the years, its native year scroller handles
+   the overflow without resizing a single year square or the Total column. */
+.dashboard-body .dashboard-workspace {
+  /* The right details pane never grows to 500px or shrinks below 380px.
+     Keep a usable central pane; very narrow windows scroll the split view
+     horizontally instead of crushing the year / Total / Journal columns. */
+  grid-template-columns: minmax(280px, 1fr) var(--rank-current-width);
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.dashboard-body .dashboard-workspace .heatmap-scroll,
+.dashboard-body .dashboard-workspace .heatmap-years-shell,
+.dashboard-body .dashboard-workspace .heatmap-years-viewport {
+  min-width: 0;
+  max-width: 100%;
+}
+.dashboard-body .dashboard-workspace .journal-rank-slot {
+  min-width: 0;
+  box-shadow: none;
+}
+.dashboard-body .journal-library-collections { padding-inline: 6px; }
+.dashboard-body .journal-library-collections-head { padding-inline: 6px; }
+.dashboard-body .journal-library .filter-tabs > a,
+.dashboard-body .journal-library .filter-menu summary,
+.dashboard-body .journal-library .filter-menu-popover a,
+.dashboard-body .journal-library .filter-menu-popover .filter-menu-create {
+  min-height: 29px;
+  font-size: 11.5px;
+  padding-inline: 8px;
+}
+.dashboard-body .journal-library .filter-menu-popover { padding-left: 8px; }
+@media (max-width: 650px) {
+  .dashboard-body .dashboard-workspace { gap: 5px; }
+  .dashboard-body .heatmap-years-shell { min-width: 24px; }
+  .dashboard-body .journal-rank-panel .rank-table-scroll { padding-inline: 5px; }
+  .dashboard-body .journal-rank-panel thead th,
+  .dashboard-body .journal-rank-panel tbody tr:not(.rank-group) > :is(th, td) { padding-inline: 4px; }
+}
+
+/* The choice list is part of the sidebar, not a popup. It gets a separate
+   bounded scroller when the window is short; journal entries scroll below. */
+.dashboard-body .journal-library-collections {
+  position: static;
+  flex: 0 1 auto;
+  min-height: 0;
+  width: auto;
+  /* Reserve usable height for the independent journal-name scroller even
+     on short browser windows. The choices themselves scroll when necessary. */
+  max-height: min(55dvh, calc(100dvh - 232px), 490px);
+  padding: 5px 6px 9px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.dashboard-body .journal-library-collections-head {
+  padding: 6px 6px 7px;
+  font-size: 10.5px;
+}
+.dashboard-body .journal-library .journal-list-group {
+  display: block;
+  min-width: 0;
+  width: 100%;
+}
+.dashboard-body .journal-library .journal-list-group-heading {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 29px;
+  min-height: 29px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.dashboard-body .journal-library .journal-list-group-heading::-webkit-details-marker { display: none; }
+.dashboard-body .journal-library .journal-list-group-heading > span { flex: 1; min-width: 0; }
+.dashboard-body .journal-library .journal-list-group-heading > i {
+  color: var(--muted);
+  font-size: 9px;
+  transition: transform 110ms ease;
+}
+.dashboard-body .journal-library .journal-list-group:not([open]) .journal-list-group-heading > i {
+  transform: rotate(-90deg);
+}
+.dashboard-body .journal-library .journal-list-group-heading:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg);
+}
+.dashboard-body .journal-library .journal-list-group.active > .journal-list-group-heading {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+}
+.dashboard-body .journal-library .journal-list-group > .filter-menu-popover {
+  display: grid;
+  position: static;
+  min-width: 0;
+  width: 100%;
+  padding-left: 8px;
+}
+.dashboard-body .journal-library .journal-list-group:not([open]) > .filter-menu-popover {
+  display: none;
+}
+.dashboard-body .journal-custom-category-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 1px;
+}
+.dashboard-body .journal-custom-category-label {
+  padding: 8px 8px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 530;
+}
+.dashboard-body .journal-custom-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+.dashboard-body .journal-custom-entry > a {
+  width: 100%;
+  min-width: 0;
+}
+.dashboard-body .journal-library .journal-custom-delete {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+  width: 24px;
+  height: 26px;
+  min-width: 24px;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  opacity: .7;
+  cursor: pointer;
+}
+.dashboard-body .journal-library .journal-custom-delete:is(:hover, :focus-visible) {
+  color: var(--fg);
+  background: var(--soft);
+  opacity: 1;
+}
+.dashboard-body .journal-custom-delete:disabled { opacity: .35; cursor: wait; }
+.dashboard-body .journal-library-create {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-sizing: border-box;
+  width: 100%;
+  flex: 0 0 39px;
+  height: 39px;
+  min-height: 39px;
+  padding: 0 14px;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11.5px;
+  text-align: left;
+}
+.dashboard-body .journal-library-create:is(:hover, :focus-visible) {
+  color: var(--fg);
+  background: var(--soft);
+}
+
+/* New list is a small, synchronous native dialog. No browser prompt, remote
+   payload load or backdrop blur is required merely to open it. */
+.journal-create-dialog {
+  box-sizing: border-box;
+  width: min(450px, calc(100vw - 26px));
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 14px 44px rgb(0 0 0 / 22%);
+  overflow-y: auto;
+  transition: none;
+}
+.journal-create-dialog::backdrop { background: rgb(0 0 0 / 32%); backdrop-filter: none; }
+.journal-create-form { display: grid; gap: 14px; padding: 20px; }
+.journal-create-form h2 { margin: 0 0 3px; font-size: 17px; line-height: 1.4; font-weight: 600; }
+.journal-create-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.journal-create-field { display: grid; min-width: 0; gap: 6px; }
+.journal-create-field > span { font-size: 12px; color: var(--muted); font-weight: 550; }
+.journal-create-field input, .journal-create-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.journal-create-field textarea { resize: vertical; min-height: 75px; }
+.journal-create-field :is(input, textarea):focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+.journal-create-feedback { margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.journal-create-feedback:empty { display: none; }
+.journal-create-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.journal-create-actions button { min-height: 34px; }
+@media (max-width: 420px) {
+  .journal-create-form { padding: 14px; }
+  .journal-create-columns { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Center the WHOLE years | Total | Journal group, not the year grid alone.
+   The fixed vertical-scrollbar rail is the only gap between the last year
+   and Total: its width stays 16 CSS px regardless of monitor width. */
+.dashboard-body .dashboard-workspace .heatmap-scroll {
+  --heat-journal-width: clamp(190px, 20vw, 320px);
+  width: 100%;
+  max-width: min(100%, var(--dashboard-table-width, 100%));
+  margin-inline: auto;
+}
+.dashboard-body .heatmap-filter-bar,
+.dashboard-body .heatmap-pagination {
+  width: 100%;
+  max-width: var(--dashboard-table-width, 100%);
+  margin-inline: auto;
+}
+.dashboard-body .journal-heatmap {
+  margin-inline: 0;
+}
+.dashboard-body .heatmap-fixed-viewport {
+  flex: 0 0 calc(var(--heat-total-width) + var(--heat-journal-width));
+  width: calc(var(--heat-total-width) + var(--heat-journal-width));
+}
+.dashboard-body .heatmap-fixed-heading,
+.dashboard-body .heatmap-fixed-body {
+  grid-template-columns: var(--heat-total-width) minmax(0, 1fr);
+  column-gap: 0;
+}
+.dashboard-body .heatmap-fixed-heading .heat-corner {
+  display: flex;
+  align-items: flex-end;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 48px;
+  padding: 0 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.dashboard-body .heatmap-fixed-body .heat-journal {
+  padding-inline: 8px 6px;
+  cursor: pointer;
+}
+.dashboard-body .heatmap-fixed-body .heat-journal-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+.dashboard-body .heatmap-fixed-body .heat-total[data-rank-current] {
+  background: #f4f5f7;
+}
+:root[data-theme="dark"] .dashboard-body .heatmap-fixed-body .heat-total[data-rank-current] {
+  background: #1d222a;
+}
+@media (max-width: 900px) {
+  .dashboard-body .dashboard-workspace .heatmap-scroll {
+    --heat-journal-width: clamp(160px, 22vw, 220px);
+  }
+  .dashboard-body .heatmap-years-shell { min-width: 20px; }
+}
+@media (max-width: 560px) {
+  .dashboard-body .dashboard-workspace .heatmap-scroll {
+    --heat-journal-width: 138px;
+  }
+  .dashboard-body .heatmap-fixed-heading .heat-corner { font-size: 9px; }
+}
+
+/* The DOI/search/show-count row is the FIRST visible dashboard row. The
+   old Admin Console and vault-wide storage cards no longer consume a band
+   above the journal results. User permissions/navigation remain unchanged. */
+.dashboard-body .page { padding-top: 8px; }
+.dashboard-body .dashboard-workspace > .heatmap-panel { position: relative; }
+.dashboard-body .dashboard-preference-status:empty { display: none; }
+.dashboard-body .dashboard-preference-status:not(:empty) {
+  position: fixed;
+  z-index: 160;
+  bottom: 20px;
+  right: 20px;
+  max-width: min(380px, calc(100vw - 40px));
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--fg);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: 12px;
+}
+.dashboard-body .heatmap-filter-bar {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+  grid-template-rows: 36px;
+  align-items: center;
+  column-gap: 7px;
+  min-width: 0;
+  min-height: 36px;
+  margin-bottom: 6px;
+  overflow: visible;
+  white-space: nowrap;
+}
+.dashboard-body .heatmap-filter-bar > .doi-batch-inline-button {
+  grid-column: 1;
+  grid-row: 1;
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-filter-field {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  width: 100%;
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-limit-form {
+  position: relative;
+  display: inline-flex;
+  grid-column: 3;
+  grid-row: 1;
+  align-items: center;
+  justify-self: end;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  color: var(--fg);
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-limit-form label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: text;
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-limit-form input {
+  box-sizing: border-box;
+  width: 42px;
+  height: 32px;
+  min-height: 32px;
+  padding: 3px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  outline-offset: 1px;
+  background: var(--soft);
+  color: var(--fg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.dashboard-body .heatmap-limit-form input::-webkit-inner-spin-button,
+.dashboard-body .heatmap-limit-form input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-limit-form input:focus-visible {
+  outline: 2px solid var(--choice-line);
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-limit-form [data-journal-limit-status]:not(:empty) {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 15;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--fg);
+  background: var(--surface);
+}
+.dashboard-body .heatmap-filter-bar > .heatmap-filter-summary {
+  grid-column: 4;
+  grid-row: 1;
+  min-width: max-content;
+  justify-self: end;
+}
+.dashboard-body .heatmap-filter-bar > .rank-quick-tools {
+  grid-column: 4;
+  grid-row: 1;
+}
+.dashboard-body .heatmap-filter-bar:has([data-rank-batch-banner]:not([hidden])) {
+  grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
+}
+.dashboard-body .heatmap-filter-bar:has([data-rank-batch-banner]:not([hidden])) > .heatmap-filter-summary {
+  grid-column: 5;
+}
+@media (max-width: 960px) {
+  .dashboard-body .heatmap-filter-bar {
+    grid-template-columns: max-content minmax(72px, 1fr) max-content;
+  }
+  .dashboard-body .heatmap-filter-bar > .heatmap-filter-summary {
+    display: none;
+  }
+  .dashboard-body .heatmap-filter-bar:has([data-rank-batch-banner]:not([hidden])) {
+    grid-template-columns: max-content minmax(72px, 1fr) max-content max-content;
+  }
+}
+
+/* Journal names are the menu trigger, not a row of permanent ellipsis
+   buttons. Give the name more of the center table without changing year
+   cell sizes or the fixed 16px separation to Total. */
+.dashboard-body .dashboard-workspace .heatmap-scroll {
+  --heat-journal-width: clamp(280px, 27vw, 430px);
+}
+.dashboard-body .heatmap-fixed-body .heat-journal {
+  padding-inline: 8px 10px;
+}
+.dashboard-body .heatmap-fixed-body .heat-journal-name {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: -.06px;
+}
+@media (max-width: 1120px) {
+  .dashboard-body .dashboard-workspace .heatmap-scroll {
+    --heat-journal-width: clamp(215px, 27vw, 280px);
+  }
+}
+@media (max-width: 560px) {
+  .dashboard-body .dashboard-workspace .heatmap-scroll {
+    --heat-journal-width: 170px;
+  }
+}
+
+/* Ranking title on the first line; Retry + actual provider query time on
+   a dedicated second line. Removing the selected-only toggle simplifies
+   the header without reducing the legibility of ranking rows. */
+.dashboard-body .journal-rank-panel header {
+  min-height: 40px;
+  padding: 9px 11px 3px 14px;
+  border-bottom: 0;
+}
+.dashboard-body .journal-rank-panel .rank-meta-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 11px 7px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.dashboard-body .journal-rank-panel .rank-meta-row time {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.dashboard-body .journal-rank-panel .rank-meta-row time[hidden] {
+  display: none;
+}
+.dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh] {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 67px;
+  height: 27px;
+  min-height: 27px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh]:is(:hover, :focus-visible) {
+  background: var(--soft);
+}
+.dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh]:disabled {
+  opacity: .5;
+  cursor: wait;
 }

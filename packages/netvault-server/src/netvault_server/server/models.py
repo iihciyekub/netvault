@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, event
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, event, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netvault_server.server.database import Base
@@ -26,6 +26,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     dashboard_journal_limit: Mapped[int] = mapped_column(Integer, default=20, server_default="20", nullable=False)
+    dashboard_filter_key: Mapped[str] = mapped_column(String(32), default="utd24", server_default="utd24", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -47,6 +48,76 @@ class UserJournalFilter(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="journal_filters")
+
+
+class JournalRankCache(Base):
+    """Shared, persisted easyScholar rankings, independent of the requesting user."""
+    __tablename__ = "journal_rank_cache"
+
+    journal_key: Mapped[str] = mapped_column(String(300), primary_key=True)
+    journal_name: Mapped[str] = mapped_column(Text, nullable=False)
+    rows_json: Mapped[str] = mapped_column(Text, nullable=False)
+    queried_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class JournalRankBatchJob(Base):
+    """Resumable background task: a snapshot of a journal list, not user-owned rank data."""
+    __tablename__ = "journal_rank_batch_jobs"
+    __table_args__ = (Index(
+        "uq_journal_rank_batch_active_snapshot", "snapshot_hash", unique=True,
+        postgresql_where=text("status IN ('queued', 'running')"),
+        sqlite_where=text("status IN ('queued', 'running')"),
+    ),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    filter_key: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    names_json: Mapped[str] = mapped_column(Text, nullable=False)
+    force_refresh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(20), index=True, nullable=False, default="queued")
+    total: Mapped[int] = mapped_column(Integer, nullable=False)
+    processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fetched: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+
+class MaintenanceJob(Base):
+    """Durable admin-only host-run maintenance work and approval audit trail."""
+
+    __tablename__ = "maintenance_jobs"
+    __table_args__ = (
+        Index(
+            "uq_maintenance_active_job", "singleton_key", unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+        UniqueConstraint("source_job_id", name="uq_maintenance_source_approval"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), index=True, nullable=False, default="queued")
+    singleton_key: Mapped[str] = mapped_column(String(24), nullable=False, default="maintenance")
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    source_job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    options_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    result_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_by: Mapped[User] = relationship()
 
 
 class Pdf(Base):
@@ -72,6 +143,10 @@ class Pdf(Base):
     crossref_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    pdfcraft_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pdfcraft_processed_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pdfcraft_ppi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pdfcraft_quality: Mapped[int | None] = mapped_column(Integer, nullable=True)
     uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True, nullable=False)

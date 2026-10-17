@@ -1,0 +1,521 @@
+# Localize NetVault interface, preserve IDs/PDF titles/commands exactly.
+# English label <TAB> 简体中文 <TAB> 繁體中文
+NetVault navigation	NetVault 导航	NetVault 導覽
+Main navigation	主导航	主導覽
+Home	首页	首頁
+Search	搜索	搜尋
+Search PDFs	搜索文献	搜尋文獻
+CLI	命令行	命令列
+Admin Console	管理控制台	管理控制台
+Admin	管理员	管理員
+Help	帮助	說明
+Language	语言	語言
+Choose language	选择界面语言	選擇介面語言
+Switch language	切换语言	切換語言
+Current language	当前语言	目前語言
+English	English	English
+Simplified Chinese	简体中文	簡體中文
+Traditional Chinese	繁体中文	繁體中文
+Skip to content	跳转到内容	跳至內容
+Switch to dark theme	切换到深色主题	切換至深色主題
+Switch to light theme	切换到浅色主题	切換至淺色主題
+Logout all sessions	退出所有会话	登出所有工作階段
+Signed in as	登录账号	登入帳號
+NetVault home, version	NetVault 首页，版本	NetVault 首頁，版本
+Journal filters	期刊筛选	期刊篩選
+Vault summary	文献库概览	文獻庫概覽
+Login	登录	登入
+Log in to NetVault	登录 NetVault	登入 NetVault
+Username	用户名	使用者名稱
+Password	密码	密碼
+Help - NetVault	帮助 - NetVault	說明 - NetVault
+Dashboard - NetVault	仪表盘 - NetVault	儀表板 - NetVault
+Search - NetVault	搜索 - NetVault	搜尋 - NetVault
+Upload - NetVault	上传 - NetVault	上傳 - NetVault
+Login - NetVault	登录 - NetVault	登入 - NetVault
+Admin - NetVault	管理 - NetVault	管理 - NetVault
+CLI - NetVault	命令行 - NetVault	命令列 - NetVault
+NetVault dashboard	NetVault 仪表盘	NetVault 儀表板
+NetVault administration	NetVault 管理控制台	NetVault 管理控制台
+NetVault command-line interface	NetVault 命令行工具	NetVault 命令列工具
+NetVault Help	NetVault 帮助	NetVault 說明
+Version	版本	版本
+Platform Overview	平台概览	平台概覽
+Usage Policy	使用政策	使用政策
+Upload PDFs	上传 PDF	上傳 PDF
+Drop PDF files	拖放 PDF 文件	拖放 PDF 檔案
+Choose files	选择文件	選擇檔案
+Manual DOI	手动 DOI	手動 DOI
+Only when uploading one file	仅上传一个文件时填写	僅上傳單一檔案時填寫
+Skip online DOI/title verification and metadata	跳过在线 DOI、标题与元数据验证	略過線上 DOI、標題與中繼資料驗證
+Preparing upload...	正在准备上传…	正在準備上傳…
+Upload	上传	上傳
+Cancel	取消	取消
+Results	结果	結果
+File	文件	檔案
+Status	状态	狀態
+DOI / Error	DOI / 错误	DOI / 錯誤
+existing	已存在	已存在
+uploaded	已上传	已上傳
+failed	失败	失敗
+Upload stopped	上传已停止	上傳已停止
+Completed with errors	已完成，但存在错误	已完成，但有錯誤
+Upload endpoint is unavailable	上传服务不可用	上傳服務無法使用
+Server check failed	服务器检查失败	伺服器檢查失敗
+Network error	网络错误	網路錯誤
+Hashing PDFs...	正在计算 PDF 哈希…	正在計算 PDF 雜湊…
+Checking server...	正在检查服务器…	正在檢查伺服器…
+Processing metadata...	正在处理元数据…	正在處理中繼資料…
+Search by DOI or metadata	按 DOI 或元数据搜索	依 DOI 或中繼資料搜尋
+Search by DOI or Crossref metadata.	按 DOI 或 Crossref 元数据搜索。	依 DOI 或 Crossref 中繼資料搜尋。
+Search within these results	在当前结果中搜索	在目前結果中搜尋
+DOI, title, author, journal, publisher, filename	DOI、标题、作者、期刊、出版商、文件名	DOI、標題、作者、期刊、出版者、檔名
+Search results	搜索结果	搜尋結果
+Search result pages	搜索结果分页	搜尋結果分頁
+Active search filters	当前筛选条件	目前篩選條件
+Active DOI batch	当前 DOI 批次	目前 DOI 批次
+DOI batch	DOI 批次	DOI 批次
+Journal:	期刊：	期刊：
+Year:	年份：	年份：
+results	条结果	筆結果
+result	条结果	筆結果
+Clear	清除	清除
+No PDFs found.	没有找到 PDF。	找不到 PDF。
+Select PDFs for ZIP download	选择 PDF 下载 ZIP	選取 PDF 下載 ZIP
+Select all	全选	全選
+Deselect all	取消全选	取消全選
+Download selected ZIP	下载所选 ZIP	下載所選 ZIP
+selected	已选	已選
+Copy DOI	复制 DOI	複製 DOI
+Copy	复制	複製
+Copied	已复制	已複製
+Preview	预览	預覽
+Meta	元数据	中繼資料
+Download	下载	下載
+Download ZIP	下载 ZIP	下載 ZIP
+PDF ID	PDF 编号	PDF 編號
+Crossref metadata	Crossref 元数据	Crossref 中繼資料
+Metadata retrieved from Crossref	从 Crossref 获取的元数据	從 Crossref 取得的中繼資料
+Previous	上一页	上一頁
+Next	下一页	下一頁
+Page	第	第
+of	共	共
+PDF metadata	PDF 元数据	PDF 中繼資料
+Close PDF metadata	关闭 PDF 元数据	關閉 PDF 中繼資料
+Vault record	文献库记录	文獻庫紀錄
+Metadata saved in NetVault. It may differ from the original PDF.	NetVault 保存的元数据，可能与原 PDF 不同。	NetVault 儲存的中繼資料，可能與原 PDF 不同。
+PDF Document Info	PDF 文档信息	PDF 文件資訊
+Read directly from the stored PDF; XMP is not used for DOI identity.	直接从已存储 PDF 读取；XMP 不用于 DOI 身份判定。	直接從已儲存的 PDF 讀取；XMP 不用於 DOI 身分判定。
+Loading PDF metadata...	正在加载 PDF 元数据…	正在載入 PDF 中繼資料…
+No metadata fields found.	未找到元数据字段。	找不到中繼資料欄位。
+Unable to read PDF metadata.	无法读取 PDF 元数据。	無法讀取 PDF 中繼資料。
+Session expired. Sign in and try again.	登录已过期，请重新登录。	登入已逾期，請重新登入。
+DOI source	DOI 来源	DOI 來源
+Metadata status	元数据状态	中繼資料狀態
+Size (bytes)	大小（字节）	大小（位元組）
+My lists	我的列表	我的清單
+Lists	列表	清單
+Entries	期刊条目	期刊項目
+Choose journal list	选择期刊列表	選擇期刊清單
+New list	新建列表	新增清單
+Category	分类	分類
+Type	类别	類別
+Create list	创建列表	建立清單
+Journal names (optional)	期刊名称（可选）	期刊名稱（選填）
+One journal per line	每行一个期刊	每行一個期刊
+e.g. Language learning	例如：语言学习	例如：語言學習
+e.g. Education	例如：教育	例如：教育
+e.g. Research	例如：研究	例如：研究
+Journal list	期刊列表	期刊清單
+Journal list help	期刊列表帮助	期刊清單說明
+Journal names	期刊名称	期刊名稱
+List name	列表名称	清單名稱
+Add a journal	添加期刊	新增期刊
+Choose a journal name...	选择期刊名称…	選擇期刊名稱…
+Suggested journals	建议期刊	建議期刊
+Add	添加	新增
+Save list	保存列表	儲存清單
+Delete list	删除列表	刪除清單
+Custom list	自定义列表	自訂清單
+Default source	默认来源	預設來源
+Reset default	恢复默认	重設預設
+Export .txt	导出 .txt	匯出 .txt
+Journal by Year	期刊年度分布	期刊年度分布
+Filter journals by name or initials	按名称或缩写筛选期刊	依名稱或縮寫篩選期刊
+Search journals...	搜索期刊…	搜尋期刊…
+Journals	期刊列表	期刊清單
+Journals on this page	本页期刊	本頁期刊
+Current list	当前列表	目前清單
+Search journals	搜索期刊	搜尋期刊
+Collapse journal list	收起期刊列表	收合期刊清單
+Expand journal list	展开期刊列表	展開期刊清單
+Sort journal names	按期刊名称排序	依期刊名稱排序
+Sort journal names A–Z	期刊名称 A–Z 排序	期刊名稱 A–Z 排序
+Journal	期刊	期刊
+Total	合计	總計
+Hover	悬停	懸停
+Ranks	排名	排名
+Rank	排名	排名
+Ranking lookup progress	排名查询进度	排名查詢進度
+Journal count	期刊数量	期刊數量
+PDFs in current journal filter	当前期刊筛选中的 PDF	目前期刊篩選中的 PDF
+Journal A–Z	期刊 A–Z	期刊 A–Z
+Journal Z–A	期刊 Z–A	期刊 Z–A
+Total: High to Low	总量：从高到低	總量：由高到低
+Total: Low to High	总量：从低到高	總量：由低到高
+Sort journals	期刊排序	期刊排序
+Sort by total	按总量排序	依總量排序
+Sort by journal name	按期刊名排序	依期刊名稱排序
+Year grid, horizontally and vertically scrollable	年度网格，可水平和垂直滚动	年度格狀圖，可水平及垂直捲動
+Heatmap legend	热力图图例	熱圖圖例
+Less	较少	較少
+More	较多	較多
+Number of journals shown	显示期刊数	顯示期刊數
+Previous journal page	上一页期刊	上一頁期刊
+Next journal page	下一页期刊	下一頁期刊
+Journal page number	期刊页码	期刊頁碼
+Journal pages	期刊分页	期刊分頁
+No journals match the current filters.	没有符合当前条件的期刊。	沒有符合目前條件的期刊。
+No journal-year data.	暂无期刊年度数据。	暫無期刊年度資料。
+Batch DOI search	批量 DOI 搜索	批次 DOI 搜尋
+DOIs, one per line	每行一个 DOI	每行一個 DOI
+Extract DOIs (regex)	提取 DOI（正则）	擷取 DOI（正規表示式）
+Format	格式化	格式化
+Check availability	检查可用性	檢查可用性
+DOIs available on the server	服务器已有的 DOI	伺服器已有的 DOI
+Close DOI editor	关闭 DOI 编辑器	關閉 DOI 編輯器
+Open batch DOI search	打开批量 DOI 搜索	開啟批次 DOI 搜尋
+Copy journal name	复制期刊名称	複製期刊名稱
+Open in Web of Science	在 Web of Science 中打开	在 Web of Science 中開啟
+Journal rankings	期刊排名	期刊排名
+Journal ranking results	期刊排名结果	期刊排名結果
+Fetch current list rankings	获取当前列表排名	取得目前清單排名
+Re-fetch rankings	重新获取排名	重新取得排名
+Re-fetch list rankings	重新获取列表排名	重新取得清單排名
+Close journal rankings	关闭期刊排名	關閉期刊排名
+Selected datasets only	仅显示已选数据集	僅顯示已選資料集
+Dataset	数据集	資料集
+Dataset names are abbreviated; refer to each official source for rankings and classifications.	数据集名称为缩写；排名与分类以各官方来源为准。	資料集名稱為縮寫；排名與分類以各官方來源為準。
+No rankings available.	暂无排名数据。	暫無排名資料。
+No selected datasets available.	没有可用的已选数据集。	沒有可用的已選資料集。
+Fetching rankings…	正在获取排名…	正在取得排名…
+No year-tagged PDFs currently match this journal.	当前期刊没有匹配的带年份 PDF。	目前期刊沒有符合的年度 PDF。
+Could not load the journal list.	无法加载期刊列表。	無法載入期刊清單。
+Could not save the journal list.	无法保存期刊列表。	無法儲存期刊清單。
+Could not create the journal list.	无法创建期刊列表。	無法建立期刊清單。
+Could not reset the journal list.	无法恢复期刊列表。	無法重設期刊清單。
+Choose a journal name from the list.	请从列表选择期刊名称。	請從清單選擇期刊名稱。
+Unable to load journal list	无法加载期刊列表	無法載入期刊清單
+Unable to save: the journal list was not loaded.	保存失败：期刊列表尚未加载。	儲存失敗：尚未載入期刊清單。
+Could not remember the selected journal list.	无法记住所选期刊列表。	無法記住選取的期刊清單。
+Could not save the selected journal list. Please try again.	无法保存所选期刊列表，请重试。	無法儲存選取的期刊清單，請重試。
+Name this journal list:	为此期刊列表命名：	為此期刊清單命名：
+Please sign in again.	请重新登录。	請重新登入。
+Invalid journal ranking response.	期刊排名响应无效。	期刊排名回應無效。
+Unable to look up this journal.	无法查询该期刊。	無法查詢該期刊。
+Unable to check list ranking progress.	无法检查列表排名进度。	無法檢查清單排名進度。
+Select a journal list before fetching rankings.	请先选择期刊列表。	請先選擇期刊清單。
+Please sign in again before requesting rankings.	查询排名前请重新登录。	查詢排名前請重新登入。
+Starting background journal ranking check...	正在开始后台期刊排名检查…	正在啟動背景期刊排名檢查…
+Unable to start the ranking check.	无法启动排名检查。	無法啟動排名檢查。
+Close	关闭	關閉
+Start	开始	開始
+Save	保存	儲存
+Delete	删除	刪除
+Reset	重置	重設
+Load	加载	載入
+Retry	重试	重試
+Loading...	正在加载…	正在載入…
+Cancel upload	取消上传	取消上傳
+Copy install command	复制安装命令	複製安裝命令
+Copy update command	复制更新命令	複製更新命令
+Copy version command	复制版本命令	複製版本命令
+Copy example login command	复制登录示例命令	複製登入範例命令
+Copy status command	复制状态命令	複製狀態命令
+Copy logout command	复制退出命令	複製登出命令
+Copy upload preview command	复制上传预览命令	複製上傳預覽命令
+Copy folder upload command	复制文件夹上传命令	複製資料夾上傳命令
+Copy DOI write eligibility preview command	复制 DOI 写入检查命令	複製 DOI 寫入檢查命令
+Copy verified DOI write and upload command	复制 DOI 写入并上传命令	複製 DOI 寫入並上傳命令
+Copy failed upload retry command	复制失败重试命令	複製失敗重試命令
+Copy DOI resolution retry command	复制 DOI 解析重试命令	複製 DOI 解析重試命令
+Copy single download command	复制单篇下载命令	複製單篇下載命令
+Copy DOI list download command	复制 DOI 列表下载命令	複製 DOI 清單下載命令
+Copy literature preview command	复制文献预览命令	複製文獻預覽命令
+Copy literature organize command	复制文献整理命令	複製文獻整理命令
+Copy journal literature command	复制按期刊整理命令	複製按期刊整理命令
+Copy journal inventory export command	复制期刊索引导出命令	複製期刊索引匯出命令
+Copy offline literature command	复制离线文献整理命令	複製離線文獻整理命令
+Copy content duplicate check command	复制正文查重命令	複製內文去重命令
+Copy CSV upload preview command	复制 CSV 上传预览命令	複製 CSV 上傳預覽命令
+Copy CSV upload command	复制 CSV 上传命令	複製 CSV 上傳命令
+Copy manual DOI upload command	复制手动 DOI 上传命令	複製手動 DOI 上傳命令
+Copy PDF metadata read command	复制 PDF 元数据读取命令	複製 PDF 中繼資料讀取命令
+Copy PDF DOI write command	复制 PDF DOI 写入命令	複製 PDF DOI 寫入命令
+Copy PDF DOI correction command	复制 PDF DOI 更正命令	複製 PDF DOI 更正命令
+Copy DOI audit command	复制 DOI 审核命令	複製 DOI 稽核命令
+Copy DOI correction preview command	复制 DOI 更正预览命令	複製 DOI 更正預覽命令
+Copy DOI correction command	复制 DOI 更正命令	複製 DOI 更正命令
+Install / Update	安装 / 更新	安裝 / 更新
+Login / Status	登录 / 状态	登入 / 狀態
+Step 01	步骤 01	步驟 01
+Step 02	步骤 02	步驟 02
+Step 03	步骤 03	步驟 03
+Step 04	步骤 04	步驟 04
+Step 05	步骤 05	步驟 05
+Advanced Management	高级管理	進階管理
+Literature Management	文献管理	文獻管理
+Offline index and content duplicates	离线索引与正文去重	離線索引與內文去重
+CSV uploads and manual DOI	CSV 上传与手动 DOI	CSV 上傳與手動 DOI
+Read and write PDF DOI metadata	读取与写入 PDF DOI 元数据	讀取與寫入 PDF DOI 中繼資料
+DOI Audit and Correction	DOI 审核与更正	DOI 稽核與更正
+Retry files and PaperDock integration	文件重试与 PaperDock 集成	檔案重試與 PaperDock 整合
+Preview first, then upload.	先预览，再上传。	先預覽，再上傳。
+Folders include all subfolders.	包含所有子文件夹。	包含所有子資料夾。
+Automatically write a verified missing DOI	自动写入经核验的缺失 DOI	自動寫入經驗證的缺漏 DOI
+Download a DOI or a list of DOIs. Server matches are checked first; progress counts only files still needed locally. Missing DOI values are summarized quietly.	下载单个 DOI 或 DOI 列表；先检查服务器已有文件，进度仅统计本地仍需下载的文件。	下載單個 DOI 或 DOI 清單；先檢查伺服器既有檔案，進度僅統計本機仍需下載的檔案。
+Downloads use 8 parallel workers by default. Admin downloads have no hourly count limit; regular users keep the server limit. If the limit is reached, run the same command later. Failure and pending details are saved to	默认使用 8 个并行线程下载。管理员不受每小时下载数量限制，普通用户仍受服务器限额约束；失败和待处理信息保存到	預設以 8 個並行工作程序下載。管理員不受每小時下載量限制，一般使用者仍受伺服器限額限制；失敗與待處理資訊儲存至
+One command for local PDFs:	一条命令管理本地 PDF：	一條命令管理本機 PDF：
+Subfolders are included and no PDFs are uploaded.	包含子文件夹，不会上传 PDF。	包含子資料夾，不會上傳 PDF。
+1. Preview any folder — no ISSN needed:	1. 预览任意文件夹，无需 ISSN：	1. 預覽任意資料夾，無需 ISSN：
+2. Rename and organize:	2. 重命名并整理：	2. 重新命名並整理：
+Know the journal? Add	如果知道期刊，请添加	若已知期刊，請加入
+for fast local matching:	以加快本地匹配：	以加快本機比對：
+Export once, then reuse the CSV without login or network requests:	只需导出一次，此后无需登录或网络即可复用 CSV：	只需匯出一次，之後不必登入或連線即可重複使用 CSV：
+Read Document Info offline, then append a DOI to its custom	离线读取文档信息，再将 DOI 写入自定义	離線讀取文件資訊，再將 DOI 寫入自訂
+field. The write preserves existing page objects and other Info fields. XMP is unchanged and does not participate in DOI identity.	字段；原有页面对象及其他信息字段保持不变。XMP 不变，也不参与 DOI 身份判定。	欄位；既有頁面物件及其他資訊欄位保持不變。XMP 不變，也不參與 DOI 身分判定。
+Admin-only tools for finding suspicious DOI identities and safely correcting the DOI attached to an existing PDF without replacing the PDF file.	仅管理员可使用的工具，用于识别异常 DOI 并安全更正现有 PDF 关联的 DOI，不替换 PDF 文件。	僅管理員可使用的工具，用來找出異常 DOI 並安全更正現有 PDF 關聯的 DOI，不替換 PDF 檔案。
+Use a current DOI, PDF id, or SHA-256 as the first argument. The command previews metadata before applying the correction and keeps the PDF file, SHA-256, aliases, and correction history unchanged. Use	首个参数可填写现有 DOI、PDF 编号或 SHA-256。修改前会预览元数据，PDF 文件、哈希、别名和更正历史均保持不变。使用	第一個參數可填入現有 DOI、PDF 編號或 SHA-256。修改前會預覽中繼資料，PDF 檔案、雜湊、別名與更正紀錄均保持不變。使用
+only after independently verifying the DOI.	前必须独立核实 DOI。	前必須獨立驗證 DOI。
+NETVAULT / OPERATIONS	NETVAULT / 运维	NETVAULT / 維運
+Document & Database Maintenance	文献与数据库维护	文獻與資料庫維護
+Manage Users	管理用户	管理使用者
+Host worker:	主机任务执行器：	主機任務執行器：
+Snapshot:	快照：	快照：
+Online	在线	在線
+Offline / not configured	离线 / 未配置	離線 / 未設定
+Unavailable	不可用	無法使用
+(timestamp only; backup verified before write jobs)	（仅显示时间；写入前验证备份）	（僅顯示時間；寫入前驗證備份）
+Active documents	有效文献	有效文獻
+PDF storage	PDF 存储空间	PDF 儲存空間
+PostgreSQL size	PostgreSQL 数据库大小	PostgreSQL 資料庫大小
+Optimized PDFs	已优化 PDF	已最佳化 PDF
+Pending optimization	待优化 PDF	待最佳化 PDF
+Metadata to review	待检查元数据	待檢查中繼資料
+Available disk space	可用磁盘空间	可用磁碟空間
+Processing recipe	处理参数	處理參數
+Maintenance Actions	维护操作	維護操作
+Full Library Optimization + DOI Writeback	全库优化与 DOI 写入	全庫最佳化與 DOI 寫入
+ALL ELIGIBLE PDFS · PDFCRAFT 150 PPI / Q75	所有待处理 PDF · PDFCRAFT 150 PPI / Q75	所有待處理 PDF · PDFCRAFT 150 PPI / Q75
+Parallel PDF workers	并行 PDF 线程	並行 PDF 工作程序
+3 (recommended)	3（推荐）	3（建議）
+Type RUN FULL LIBRARY to confirm	输入 RUN FULL LIBRARY 确认	輸入 RUN FULL LIBRARY 確認
+Start Full Library Optimization + DOI	启动全库优化与 DOI 写入	啟動全庫最佳化與 DOI 寫入
+Document Health Audit	文献健康检查	文獻健康檢查
+Maximum preview rows	最多预览条数	最多預覽筆數
+Run Read-Only Audit	运行只读检查	執行唯讀檢查
+Bibliography Verification	书目信息核验	書目資訊驗證
+Maximum documents	最多处理文献数	最多處理文獻數
+Preview Metadata Changes	预览元数据变更	預覽中繼資料變更
+Task History & Review	任务历史与审核	工作歷史與審核
+Created (UTC)	创建时间（UTC）	建立時間（UTC）
+Task	任务	工作
+Result	结果	結果
+Review / Report	审核 / 报告	審核 / 報告
+Recent Log	最近日志	最近日誌
+Stop Full Run	停止全库任务	停止全庫工作
+Type STOP FULL RUN to stop	输入 STOP FULL RUN 以停止	輸入 STOP FULL RUN 以停止
+Type APPLY METADATA to authorize	输入 APPLY METADATA 授权	輸入 APPLY METADATA 授權
+Apply Verified Fields	写入已核验字段	寫入已驗證欄位
+Approved PDF batch	已批准的 PDF 批次	已核准的 PDF 批次
+Type COMPRESS PDFS to authorize	输入 COMPRESS PDFS 授权	輸入 COMPRESS PDFS 授權
+Start Approved Compression	启动批准的压缩	啟動已核准的壓縮
+Report	报告	報告
+Completed	已完成	已完成
+Running	运行中	執行中
+Queued	排队中	排隊中
+Stopping	正在停止	正在停止
+Cancelled	已取消	已取消
+Failed	失败	失敗
+Waiting for worker	等待执行器	等待執行器
+User Management	用户管理	使用者管理
+Create User	创建用户	建立使用者
+Role	角色	角色
+Create	创建	建立
+Reset Password	重置密码	重設密碼
+User	用户	使用者
+New password	新密码	新密碼
+Update Password	更新密码	更新密碼
+Created	创建时间	建立時間
+Last login (UTC)	上次登录（UTC）	上次登入（UTC）
+Active	启用	啟用
+Inactive	已停用	已停用
+Deactivate	停用	停用
+Activate	启用	啟用
+No maintenance tasks yet. Start with a read-only audit.	暂无维护任务，建议先运行只读检查。	目前沒有維護工作，建議先執行唯讀檢查。
+
+# Page descriptions, warnings and procedural information
+Review PostgreSQL metadata and PDF object health before starting a bounded maintenance task.	在执行维护任务前，先检查 PostgreSQL 元数据及 PDF 文件健康状况。	執行維護工作前，先檢查 PostgreSQL 中繼資料及 PDF 檔案健康狀況。
+Run the same full-library PDFCraft sweep used on the host: process every PDF not yet marked as optimized, write verified DOI into the compressed PDF when possible, and update PostgreSQL SHA-256, file size and storage path. Previously optimized PDFs are skipped. This does not invent DOI identities or automatically fill Crossref bibliography fields.	执行与服务器相同的 PDFCraft 全库扫描：处理尚未标记为已优化的 PDF，条件允许时将核验的 DOI 写入压缩版 PDF，并同步 PostgreSQL 中的 SHA-256、大小和路径。已优化的文件会跳过。不会猜测 DOI，也不会自动填补 Crossref 书目字段。	執行與伺服器相同的 PDFCraft 全庫掃描：處理尚未標記完成最佳化的 PDF，符合條件時將經驗證的 DOI 寫入壓縮版 PDF，並同步 PostgreSQL 中的 SHA-256、大小與路徑。已最佳化的檔案會略過。不會猜測 DOI，也不會自動補齊 Crossref 書目欄位。
+I understand this changes production PDFs and PostgreSQL, removes old PDF objects after verified replacement, and creates no backup.	我了解此操作会修改生产 PDF 和 PostgreSQL，验证替换成功后删除旧 PDF 文件，且不会创建备份。	我了解此操作會修改正式環境 PDF 與 PostgreSQL，驗證取代成功後刪除舊 PDF 檔案，且不會建立備份。
+Read-only PostgreSQL scan of pending optimization, missing bibliography and DOI health. No PDF bytes or records are changed.	以只读方式检查 PostgreSQL 中待优化文件、缺失书目信息和 DOI 状态，不会修改 PDF 或数据库记录。	以唯讀方式檢查 PostgreSQL 中待最佳化檔案、缺漏書目資訊及 DOI 狀態，不會修改 PDF 或資料庫紀錄。
+Use DOI registry data and PDF title evidence to propose missing metadata. Only verified fill-only proposals can be approved.	根据 DOI 注册机构与 PDF 标题证据提出缺失元数据建议；只有经核验且仅填补空字段的变更才能批准。	根據 DOI 註冊機構與 PDF 標題證據提出缺漏中繼資料建議；只有通過驗證且僅補空白欄位的變更才能核准。
+Limited write approvals require a recent verified backup and reviewed document IDs/hashes. The separate full-library command above intentionally creates no backup, and may irreversibly replace source PDFs. Both paths require explicit administrator confirmation. No destructive cleanup or free-form SQL is available here.	小批量写入需要近期验证的备份及已审核的文献编号和哈希。上方全库命令不会创建备份，可能不可逆地替换源 PDF。两种模式均须管理员明确确认。此界面不提供破坏性清理或任意 SQL。	小批次寫入須具備近期已驗證的備份，以及已審核的文獻編號與雜湊。上方全庫命令不會建立備份，可能不可逆地取代來源 PDF。兩種模式都須管理員明確確認。此介面不提供破壞性清理或任意 SQL。
+Limited-batch write approvals require a complete verified backup. The full-library operation is a separate, explicitly acknowledged no-backup workflow.	小批量写入须有完整且已验证的备份；全库操作则是单独确认的无备份流程。	小批次寫入須有完整且已驗證的備份；全庫操作則是另外確認的無備份流程。
+Jobs survive browser closure and server restarts. The host executes one task at a time.	关闭浏览器或重启服务不影响任务记录；主机每次只执行一个任务。	關閉瀏覽器或重新啟動服務不影響工作紀錄；主機每次只執行一項工作。
+Install the lightweight local CLI, then keep it current from GitHub. This server runs NetVault v	安装轻量级本地 CLI，并通过 GitHub 保持更新。当前服务器 NetVault 版本 v	安裝輕量級本機 CLI，並透過 GitHub 保持更新。目前伺服器 NetVault 版本 v
+Replace the example username and password with your own credentials. Your login is saved locally. Run	将示例用户名和密码替换为自己的凭据；登录信息保存在本地。运行	請將範例使用者名稱與密碼換成自己的憑證；登入資訊會儲存在本機。執行
+to enter them when prompted.	并根据提示输入凭据。	並依提示輸入憑證。
+A unique DOI in PDF Document Info takes priority over cached hints, download indexes, manual DOI hints, filenames and page text. NetVault fetches metadata for that DOI and binds the PDF to it; unavailable metadata does not change its identity. Conflicting Document Info DOIs require correction. Without an Info DOI, the existing resolver applies.	PDF 文档信息中唯一的 DOI 优先于缓存提示、下载索引、手动 DOI、文件名和页面文字。NetVault 获取该 DOI 的元数据并绑定到 PDF；即使元数据不可用，也不会改变其身份。冲突的 DOI 必须先更正；若文档信息没有 DOI，则使用现有识别流程。	PDF 文件資訊中唯一的 DOI 優先於快取提示、下載索引、手動 DOI、檔名與頁面文字。NetVault 取得該 DOI 的中繼資料並綁定至 PDF；即使中繼資料無法取得，也不會改變其身分。衝突的 DOI 必須先更正；若文件資訊沒有 DOI，則使用現有識別程序。
+Without a Document Info DOI, NetVault automatically looks for	如果文档信息没有 DOI，NetVault 会自动查找	若文件資訊沒有 DOI，NetVault 會自動尋找
+in the folder. PDF filenames stay unchanged.	文件夹中的文件。PDF 文件名不会改变。	資料夾中的檔案。PDF 檔名不會變更。
+Ordinary uploads leave local PDF bytes unchanged. To automatically add a missing DOI before uploading, opt in with	普通上传不会修改本地 PDF。如需在上传前自动补写缺失 DOI，请使用	一般上傳不會修改本機 PDF。如需在上傳前自動補寫缺漏 DOI，請使用
+. Existing unique Info DOIs are left unchanged.	。已有的唯一文档 DOI 不会修改。	。既有的唯一文件 DOI 不會修改。
+The preview runs locally without online verification or PDF changes. It cannot confirm that a DOI is verified. The live command independently checks each eligible missing-DOI PDF on the server before writing.	预览在本地运行，不联网核验或修改 PDF；预览结果不等于 DOI 已被核实。实际命令会在写入前由服务器独立核验每个候选 PDF。	預覽在本機執行，不連線驗證或修改 PDF；預覽結果不代表 DOI 已確認。正式命令會在寫入前由伺服器獨立驗證每份候選 PDF。
+Writing requires exactly one explicit first-page article DOI, an exact Crossref DOI match, title similarity of at least 0.98, and independent first-page author and year evidence. Reference-list DOIs, download URLs and journal, issue or volume DOIs are excluded. Title search alone, other metadata providers, filenames, cached hints, CSV pairs and successful uploads cannot authorize a write. This conservative rule can still require review for preprints or version ambiguity.	写入要求首页恰好一个明确的论文 DOI、Crossref DOI 精确匹配、标题相似度不低于 0.98，以及首页作者和年份的独立证据。参考文献 DOI、下载链接和期刊/期卷 DOI 不算。仅凭标题搜索、其他元数据服务、文件名、缓存、CSV 或上传成功都不能授权写入；预印本或版本不明确时仍需人工复核。	寫入須首頁恰有一個明確的論文 DOI、Crossref DOI 完全相符、標題相似度至少 0.98，以及首頁作者與年份的獨立證據。參考文獻 DOI、下載連結及期刊／卷期 DOI 均不算。僅靠標題搜尋、其他中繼資料來源、檔名、快取、CSV 或上傳成功都不能授權寫入；預印本或版本不明時仍須人工複核。
+An existing unique Info DOI is unchanged and follows ordinary upload rules, including signed PDFs. Conflicting or invalid DOI fields, encrypted or signed files needing a DOI, insufficient evidence and verification failures preserve the source and stop that file's upload.	已有唯一 DOI 的 PDF 保持原样并按正常规则上传，包括已签名文件。若 DOI 冲突或无效、文件加密/签名且需要补写 DOI、证据不足或核验失败，则保留源文件并停止该文件上传。	已有唯一 DOI 的 PDF 保持原樣並依一般規則上傳，包括已簽署檔案。若 DOI 衝突或無效、檔案加密／簽署且需要補寫 DOI、證據不足或驗證失敗，則保留來源檔並停止該檔案上傳。
+A successful write creates	成功写入会在源文件旁创建	成功寫入會在來源檔旁建立
+beside the source, validates an incremental temporary file and the unchanged source hash, then atomically replaces the source. Upload uses the new SHA-256. The report records verification, original/new hashes and the backup path. Write failures stop that file's upload.	，验证增量临时文件及原始哈希后原子替换源文件。上传使用新的 SHA-256，报告记录核验结果、新旧哈希及备份路径；写入失败则停止该文件上传。	，驗證增量暫存檔與原始雜湊後原子取代來源檔。上傳使用新的 SHA-256，報告記錄驗證結果、新舊雜湊及備份路徑；寫入失敗即停止該檔案上傳。
+cannot be combined with	不可与以下参数同时使用	不可與以下參數同時使用
+. Ordinary deduplication retains an existing same-DOI server copy, so downloads may differ from the locally tagged PDF. Add	。普通去重会保留服务器已存在的同 DOI 文件，因此下载的版本可能与本地加标记的 PDF 不同。添加	。一般去重會保留伺服器既有的同 DOI 檔案，因此下載版本可能與本機加標記的 PDF 不同。加入
+to request canonical replacement; successful registry metadata is still required.	可请求替换正式副本，但仍需要有效的注册机构元数据。	可要求取代正式副本，但仍須有有效的註冊機構中繼資料。
+Run the same upload command to continue. NetVault saves	重复运行同一上传命令即可继续，NetVault 会保存	重複執行相同上傳命令即可繼續，NetVault 會儲存
+beside the PDFs, skips files already on the server and remembers confirmed DOI/title rejections. New or changed files are processed; temporary errors can retry. Keep this hidden file when copying a folder. Full run results are saved in	于 PDF 旁，跳过服务器已有文件并记录确定的 DOI/标题拒绝结果。新文件或变更文件会继续处理，临时错误可重试。复制文件夹时请保留该隐藏文件。完整运行结果会保存到	於 PDF 旁，略過伺服器既有檔案並記錄確認的 DOI／標題拒絕結果。新檔或變更檔會繼續處理，暫時性錯誤可重試。複製資料夾時請保留此隱藏檔。完整執行結果儲存至
+shows individual errors.	显示单项错误。	顯示各項錯誤。
+selects failed, pending and review files from directory state, with the upload report as a fallback for older records.	会从目录状态选择失败、待处理及需审核的文件，旧记录则回退到上传报告。	會從目錄狀態挑選失敗、待處理與需審核的檔案，舊紀錄則回退至上傳報告。
+resolves automatic DOI identities again and retries rejections while keeping user-confirmed hints. Document Info retains priority over those hints. Use it after correcting DOI evidence or changing server verification rules.	会重新解析自动 DOI 身份并重试被拒文件，同时保留用户确认的提示。文档信息始终优先；更正 DOI 证据或修改服务器核验规则后使用。	會重新解析自動 DOI 身分並重試被拒檔案，同時保留使用者確認的提示。文件資訊始終優先；更正 DOI 證據或修改伺服器驗證規則後使用。
+PaperDock reads this state when preparing a download list and checks which DOI/PDF hashes are already on the server. No extra command is needed. A server lookup failure is shown as unavailable rather than treated as a missing PDF.	PaperDock 准备下载列表时会读取该状态，检查服务器已有的 DOI/PDF 哈希，无需额外命令。服务器查询失败会显示不可用，而不会误判为缺失文件。	PaperDock 準備下載清單時會讀取此狀態，檢查伺服器既有的 DOI/PDF 雜湊，無需額外命令。伺服器查詢失敗會顯示無法使用，不會誤判為缺漏檔案。
+After an interruption, run the same command with the same	中断后，使用相同	中斷後，使用相同
+directory. Verified complete files are skipped and	目录重新执行命令。已验证的完整文件会跳过，	目錄重新執行命令。已驗證的完整檔案會略過，
+files resume with checksum verification.	文件可在校验哈希后续传。	檔案可在驗證雜湊後續傳。
+to apply.	以应用更改。	以套用變更。
+from any example to preview. Matched PDFs get DOI filenames. Extra identical copies go into	从示例命令去掉该参数可预览。匹配 PDF 将按 DOI 命名，多余的相同副本放入	從範例命令移除該參數可預覽。符合的 PDF 會按 DOI 命名，多餘的相同副本放入
+beside each source PDF. Full-vault misses go into that PDF's	原 PDF 同目录下。库中未找到的文件会放入该 PDF 的	原 PDF 同目錄下。庫中找不到的檔案會放入該 PDF 的
+. Existing files are never overwritten.	。已有文件绝不会覆盖。	。既有檔案絕不覆寫。
+downloads one journal index once. Files absent from that index stay in place; check them later without	会下载一次期刊索引。索引中不存在的文件保留原位，之后可不带该参数重新检查。	會下載一次期刊索引。索引中不存在的檔案保留原位，之後可不帶此參數重新檢查。
+Index misses stay in place. Exports include accepted file aliases; add --primary-only for retained hashes. Exports keep existing CSVs and add a number to the filename if needed. Use the actual exported filename with	索引未命中的文件保留原位。导出包含已接受的文件别名，可用 --primary-only 仅保留主哈希；导出不会覆盖已有 CSV，而会在文件名后添加数字。后续请使用实际导出的文件名。	索引未命中的檔案保留原位。匯出包含已接受的檔案別名，可用 --primary-only 僅保留主要雜湊；匯出不會覆寫既有 CSV，而會在檔名後加上數字。後續請使用實際匯出的檔名。
+For files with the same page content but different PDF bytes, add	对页面内容相同但 PDF 字节不同的文件，请使用	對頁面內容相同但 PDF 位元組不同的檔案，請使用
+. This takes longer:	。这会花费更长时间：	。這會花費較長時間：
+Each run writes a new	每次运行都会生成新的	每次執行都會產生新的
+report in the scanned folder. Use	报告于扫描文件夹中。使用	報告於掃描資料夾中。使用
+to choose a different new report.	可以指定其他报告文件名。	可指定其他報告檔名。
+is a separate trusted import mode that uses the CSV's DOI/PDF pairs, including scanned PDFs without readable text, instead of PDF DOI extraction. Files must match one CSV record by SHA-256 or filename and byte size. Unmatched or ambiguous files are reported as failures. Ordinary	是独立的受信任导入模式：使用 CSV 中的 DOI/PDF 配对，而不是从 PDF 提取 DOI；即使扫描版无法读取文字也可使用。文件必须通过 SHA-256 或文件名与大小唯一匹配 CSV 记录，否则报告失败。普通	是獨立的可信任匯入模式：使用 CSV 中的 DOI/PDF 配對，而非從 PDF 擷取 DOI；即使掃描版無法讀取文字也適用。檔案必須透過 SHA-256 或檔名與大小唯一符合 CSV 紀錄，否則報告失敗。一般
+hints apply only when Document Info has no DOI.	提示只会在文档信息没有 DOI 时生效。	提示只會在文件資訊沒有 DOI 時生效。
+supports renamed files. Preview with	支持重命名的文件，先使用	支援重新命名的檔案，先使用
+before uploading. CSV imports cannot use	预览后再上传。CSV 导入不能使用	預覽後再上傳。CSV 匯入不能使用
+to keep the original. Correcting an existing different DOI requires	可保留原文件；修改已有不同 DOI 需要	可保留原檔案；修改既有不同 DOI 需要
+. This offline command records the supplied DOI without independently verifying the article. Writing changes the file hash;	。此离线命令不会独立验证论文身份，只会记录提供的 DOI。写入会改变文件哈希；	。此離線命令不會獨立驗證論文身分，只會記錄提供的 DOI。寫入會改變檔案雜湊；
+changes only a local hint and leaves PDF bytes unchanged. Use the verified missing-DOI upload option above for automatic supplementation.	只改变本地提示，不会修改 PDF 字节。自动补写请使用上方已验证的缺失 DOI 上传选项。	只變更本機提示，不會修改 PDF 位元組。自動補寫請使用上方已驗證的缺漏 DOI 上傳選項。
+Enter one journal per line. Names become uppercase and sort A–Z after editing.	每行输入一个期刊名称，编辑后名称会转为大写并按 A–Z 排序。	每行輸入一個期刊名稱，編輯後名稱會轉為大寫並按 A–Z 排序。
+Matching ignores case, punctuation, “The”, and “&” versus “and”.	匹配时忽略大小写、标点、冠词 The 以及 & 与 and 的差异。	比對時忽略大小寫、標點、冠詞 The，以及 & 與 and 的差異。
+Changes are private to your account and sync across devices. A saved list shows all journal names, including journals without any PDFs (0). Saving a default list creates an editable copy; an empty list matches no journals.	改动仅对自己的账号可见，并在设备间同步。保存的列表包含所有期刊名称，包括目前无 PDF 的期刊（0）。修改默认列表时会创建可编辑副本；空列表不匹配任何期刊。	變更僅對自己的帳號可見，並在裝置間同步。儲存的清單包含所有期刊名稱，包括目前沒有 PDF 的期刊（0）。修改預設清單時會建立可編輯副本；空清單不符合任何期刊。
+Export a text backup before major changes. If someone else edited this list, saving will ask you to reload rather than overwrite their changes.	重大修改前请先导出文本备份。如果其他人同时编辑，保存时会提示重新加载以免覆盖对方改动。	重大修改前請先匯出文字備份。若其他人同時編輯，儲存時會提示重新載入，避免覆蓋對方的變更。
+is an internal research collaboration platform for managing reference PDFs through both a command-line interface (CLI) and a web interface. Users can upload local reference collections to the cloud without manually preparing or maintaining the original PDF metadata. The platform extracts identifiers such as DOIs, while its automated processing pipeline handles metadata cross-checking, file validation, normalization, and ingestion. Authorized team members can later locate literature with a single command or a web search and retrieve selected files through high-concurrency downloads, streamlining document archiving, sharing, and collaborative use.	是内部科研协作平台，通过命令行（CLI）和网页管理参考文献 PDF。用户可以直接上传本地文献集，无需手动维护原始 PDF 元数据。平台可提取 DOI 等标识，并自动完成元数据交叉核对、文件校验、标准化和入库。授权成员随后可以通过命令或网页搜索快速查找文献，并以高并发方式下载所选文件，方便存档、共享与协作。	是內部研究協作平台，透過命令列（CLI）和網頁管理參考文獻 PDF。使用者可直接上傳本機文獻集，不必手動維護原始 PDF 中繼資料。平台可擷取 DOI 等識別碼，自動進行中繼資料交叉核對、檔案驗證、標準化與入庫。經授權的成員隨後可透過命令或網頁搜尋快速尋找文獻，以高並行方式下載所選檔案，便於封存、分享與協作。
+NetVault is intended exclusively for authorized members of the team and must not be made publicly accessible. Every PDF made available through the platform must be lawfully obtained by an individual user from a legitimate academic institution or authorized scholarly source for personal academic and research use. Bulk redistribution, forwarding, resale, commercial exploitation, automated mass downloading, and any unlawful or unlicensed distribution are strictly prohibited. Users must comply with the applicable publisher licences, copyright requirements, and institutional access and subscription terms governing each document, and any downloaded PDF must be deleted within 24 hours after use. NetVault provides internal document-management and collaboration capabilities only; it does not grant or transfer copyright, access rights, or redistribution rights. Each user remains solely responsible for the legality and compliance of their actions and document use.	NetVault 仅供授权团队成员内部使用，不得公开开放。平台中的每份 PDF 都必须由用户通过合法学术机构或授权学术渠道取得，并仅用于个人学术研究。严禁批量再分发、转发、转售、商业利用、自动化大规模下载及任何非法或未经授权的传播。用户必须遵守适用的出版商许可、版权规定和机构访问或订阅条款，并在使用后 24 小时内删除下载的 PDF。NetVault 仅提供内部文件管理与协作能力，不授予或转让版权、访问权或再分发权；每位用户须自行确保使用行为合法合规。	NetVault 僅供經授權的團隊成員內部使用，不得公開開放。平台中的每份 PDF 都必須由使用者透過合法學術機構或授權學術來源取得，且僅供個人學術研究。嚴禁大量再散布、轉寄、轉售、商業利用、自動化大規模下載及任何非法或未授權的散布。使用者必須遵守適用的出版者授權、著作權規定，以及機構存取或訂閱條款，並在使用後 24 小時內刪除下載的 PDF。NetVault 僅提供內部檔案管理與協作功能，不授予或轉讓著作權、存取權或再散布權；每位使用者須自行確保使用行為合法合規。
+
+# Dynamic fragments from admin reports, client status and accessible hints
+to optimize; to review	待优化；待检查	待最佳化；待檢查
+to optimize	待优化	待最佳化
+to review	待检查	待檢查
+verified;	已核验；	已驗證；
+applied	已写入	已寫入
+verified or reviewed	已核验或检查	已驗證或檢查
+eligible PDFs attempted	份待处理 PDF 已尝试	份待處理 PDF 已嘗試
+optimized;	已优化；	已最佳化；
+DOI embedded;	DOI 已嵌入；	DOI 已嵌入；
+failed;	失败；	失敗；
+saved	已节省	已節省
+processed	已处理	已處理
+Admin-only	仅管理员	僅管理員
+active	启用	啟用
+inactive	停用	停用
+activeinactive	启用 / 停用	啟用 / 停用
+Search a journal name or initials, such as IJIR.	按期刊名或缩写搜索，例如 IJIR。	依期刊名稱或縮寫搜尋，例如 IJIR。
+Show journal rankings when hovering over journal names	鼠标悬停于期刊名时显示排名	游標移至期刊名稱時顯示排名
+Close journal list editor	关闭期刊列表编辑器	關閉期刊清單編輯器
+Search failed	搜索失败	搜尋失敗
+No DOIs found.	未找到 DOI。	找不到 DOI。
+Enter at least one DOI.	请至少输入一个 DOI。	請至少輸入一個 DOI。
+Availability check failed.	可用性检查失败。	可用性檢查失敗。
+Checking server availability…	正在检查服务器可用性…	正在檢查伺服器可用性…
+Ready to download as ZIP.	已准备好下载 ZIP。	已準備好下載 ZIP。
+Could not check the DOI list.	无法检查 DOI 列表。	無法檢查 DOI 清單。
+All DOIs matched.	所有 DOI 均已匹配。	所有 DOI 均已比對成功。
+Could not search the DOI list.	无法搜索 DOI 列表。	無法搜尋 DOI 清單。
+Invalid batch search destination.	批量搜索目标无效。	批次搜尋目的地無效。
+The DOI results tab was closed before the search finished.	DOI 结果标签页在搜索完成前被关闭。	DOI 結果分頁在搜尋完成前被關閉。
+Search failed (HTTP	搜索失败（HTTP	搜尋失敗（HTTP
+Checking list rankings in the background:	正在后台检查期刊排名：	正在背景檢查期刊排名：
+Ranking check	排名检查	排名檢查
+finished with errors	完成，但存在错误	完成，但有錯誤
+Retrying status check...	正在重试状态检查…	正在重試狀態檢查…
+The server retained	服务器保留了	伺服器保留了
+journal names. Review your list or export a backup before closing.	个期刊名称。关闭前请检查列表或导出备份。	個期刊名稱。關閉前請檢查清單或匯出備份。
+Please allow pop-ups for NetVault to open DOI results in a new tab.	请允许 NetVault 弹出新标签页来显示 DOI 结果。	請允許 NetVault 彈出新分頁以顯示 DOI 結果。
+# Remaining tooltips, split template fragments, and progress labels
+Maintenance database overview	维护数据库概览	維護資料庫概覽
+Metadata verification progress	元数据核验进度	中繼資料驗證進度
+Full-library optimization progress	全库优化进度	全庫最佳化進度
+Compression progress	压缩进度	壓縮進度
+Open PostgreSQL and document maintenance	打开 PostgreSQL 与文献维护	開啟 PostgreSQL 與文獻維護
+Open Admin Console	打开管理控制台	開啟管理控制台
+Previous page	上一页	上一頁
+Next page	下一页	下一頁
+NetVault CLI workflow	NetVault 命令行操作流程	NetVault 命令列操作流程
+Extract DOI patterns from pasted text	从粘贴内容中提取 DOI 模式	從貼上的內容中擷取 DOI 模式
+Normalize and remove duplicate DOIs	标准化并删除重复 DOI	標準化並移除重複 DOI
+Journal actions	期刊操作	期刊操作
+DOI batch ·	DOI 批次 ·	DOI 批次 ·
+DOIs	个 DOI	個 DOI
+PDFs per selection;	份 PDF；每个文件	份 PDF；每個檔案
+Files over 32 MiB are checked after transfer.	超过 32 MiB 的文件将在传输后检查。	超過 32 MiB 的檔案將在傳輸後檢查。
+/ verified or reviewed	/ 已核验或检查	/ 已驗證或檢查
+/ eligible PDFs attempted	/ 待处理 PDF 已尝试	/ 待處理 PDF 已嘗試
+/ processed	/ 已处理	/ 已處理
+verified; applied	已核验；已写入	已驗證；已寫入
+optimized; DOI embedded; failed; saved	已优化；DOI 已嵌入；失败；节省	已最佳化；DOI 已嵌入；失敗；節省
+optimized; saved	已优化；节省	已最佳化；節省
+0 journals	0 种期刊	0 種期刊
+0 selected	已选择 0 项	已選取 0 項
+No PDF records found.	没有找到 PDF 记录。	找不到 PDF 紀錄。
+# Admin Console sections and activity cards
+Overview	数据概览	數據總覽
+Maintenance	文献维护	文獻維護
+Task history	任务记录	工作紀錄
+People	人员管理	人員管理
+WORKSPACE	工作空间	工作空間
+Workspace	工作空间	工作空間
+Admin sections	管理员页面	管理員頁面
+Admin navigation	管理员导航	管理員導覽
+Administrator access only	仅管理员可访问	僅管理員可存取
+Document storage, PostgreSQL health and current activity.	文献存储、PostgreSQL 健康状态与当前任务。	文獻儲存、PostgreSQL 健康狀態與目前工作。
+Verify documents and manage library optimization.	核验文献并管理文献库优化。	驗證文獻並管理文獻庫最佳化。
+Execution status, progress and reports.	任务状态、执行进度与报告。	工作狀態、執行進度與報告。
+Create accounts, assign roles and manage access.	创建账号、分配角色并管理权限。	建立帳號、指派角色並管理權限。
+Run maintenance	运行维护任务	執行維護工作
+View tasks	查看任务	查看工作
+New task	新建任务	新增工作
+Current activity	当前任务	目前工作
+Current maintenance activity	当前维护任务	目前維護工作
+Active task	正在运行的任务	執行中的工作
+Active maintenance task	正在运行维护任务	維護工作執行中
+No active tasks	没有运行中的任务	沒有執行中的工作
+Maintenance tasks are not currently queued or running.	当前没有排队或运行中的维护任务。	目前沒有排隊或執行中的維護工作。
+Waiting for the host worker to report progress.	等待后台执行器报告进度。	等待背景執行器回報進度。
+Active maintenance progress	当前任务进度	目前工作進度
+View task details	查看任务详情	查看工作詳情
+Open maintenance	打开维护页面	開啟維護頁面
+Library statistics	文献库统计	文獻庫統計
+Live PostgreSQL and storage data	实时 PostgreSQL 与存储数据	即時 PostgreSQL 與儲存數據
+Recent tasks	最近任务	最近工作
+All tasks	全部任务	全部工作
+Task history pages	任务历史分页	工作歷史分頁
+Create, manage and secure user accounts.	创建、管理并保护用户账号。	建立、管理並保護使用者帳號。
+Team accounts	团队账号	團隊帳號
+Journal ranking sidebar	期刊等级侧栏	期刊等級側欄
+Rankings	等级信息	等級資訊
+Expand journal rankings	展开期刊等级	展開期刊等級
+Collapse journal rankings	收起期刊等级	收合期刊等級
+Retry ranking lookup	重试期刊等级查询	重試期刊等級查詢
+Hover over a journal to view its rankings.	悬停在期刊名称上查看等级信息。	將游標停留在期刊名稱上查看等級資訊。
+Right-click a journal to view its rankings.	右键点击期刊以查看等级信息。	在期刊上按右鍵以查看等級資訊。

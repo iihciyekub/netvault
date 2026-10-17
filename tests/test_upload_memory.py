@@ -184,7 +184,7 @@ def test_one_progress_task_counts_final_outcomes_and_keeps_total_fixed(setup_upl
         def update(self, task_id, **kwargs):
             result = super().update(task_id, **kwargs)
             task = self.tasks[task_id]
-            if task.description == "Processing uploads":
+            if task.description == "Checking / uploading PDFs":
                 snapshots.append((len(self.tasks), task.total, task.completed))
             return result
 

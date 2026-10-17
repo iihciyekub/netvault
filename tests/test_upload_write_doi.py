@@ -77,6 +77,7 @@ def configured(tmp_path, monkeypatch):
     monkeypatch.setattr(user, "verify_pdf_doi", verify)
     monkeypatch.setattr(user, "write_verified_pdf_doi", write)
     monkeypatch.setattr(user, "get_existing_pdfs_by_sha256", existing)
+    monkeypatch.setattr(user, "get_existing_pdfs_by_doi", lambda *a, **k: {})
     monkeypatch.setattr(user, "upload_pdf", upload)
     return tmp_path, calls
 

@@ -4,13 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="{{ path_for('/static/theme.js') }}?v={{ asset_version }}"></script>
+    <script src="{{ path_for('/static/i18n.js') }}?v={{ asset_version }}&amp;h={{ i18n_script_hash }}" defer></script>
     <title>{% block title %}NetVault{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='7' fill='%23000'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='12' font-weight='700' fill='%23fff'%3ENV%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ path_for('/static/vendor/fontawesome/css/fontawesome.min.css') }}?v=7.3.0">
     <link rel="stylesheet" href="{{ path_for('/static/vendor/fontawesome/css/solid.min.css') }}?v=7.3.0">
-    <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}?v={{ asset_version }}">
+    <link rel="stylesheet" href="{{ path_for('/static/styles.css') }}?v={{ asset_version }}&amp;h={{ css_asset_hash }}">
   </head>
-  <body class="{% block body_class %}{% endblock %}{% if user %} with-sidebar{% endif %}">
+  <body class="{% block body_class %}{% endblock %}{% if user %} with-sidebar{% endif %}" data-user-id="{{ user.id if user else '' }}">
     <a class="skip-link" href="#app-main">Skip to content</a>
     <div class="top-loader" aria-hidden="true"></div>
     {% if user %}
@@ -21,14 +22,26 @@
       <nav class="sidebar-nav" aria-label="Main navigation">
         <a class="sidebar-icon {% if request.url.path == '/web' %}active{% endif %}" href="{{ path_for('/web') }}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} data-tooltip="Home" aria-label="Home"><i class="fa-solid fa-chart-column fa-fw" aria-hidden="true"></i></a>
         <a class="sidebar-icon {% if request.url.path == '/web/pdfs' %}active{% endif %}" href="{{ path_for('/web/pdfs') }}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} data-tooltip="Search" aria-label="Search"><i class="fa-solid fa-magnifying-glass fa-fw" aria-hidden="true"></i></a>
-        <a class="sidebar-icon {% if request.url.path == '/web/download' %}active{% endif %}" href="{{ path_for('/web/download') }}" {% if request.url.path == '/web/download' %}aria-current="page"{% endif %} data-tooltip="Download" aria-label="Download"><i class="fa-solid fa-cloud-arrow-down fa-fw" aria-hidden="true"></i></a>
         <a class="sidebar-icon {% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}" {% if request.url.path == '/web/cli' %}aria-current="page"{% endif %} data-tooltip="CLI" aria-label="CLI"><i class="fa-solid fa-terminal fa-fw" aria-hidden="true"></i></a>
         {% if user.role.value == "admin" %}
-        <a class="sidebar-icon {% if request.url.path == '/web/admin' %}active{% endif %}" href="{{ path_for('/web/admin') }}" {% if request.url.path == '/web/admin' %}aria-current="page"{% endif %} data-tooltip="Admin" aria-label="Admin"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i></a>
+        {% set in_admin_console = request.url.path.startswith('/web/admin') or request.url.path.startswith(path_for('/web/admin')) %}
+        <a class="sidebar-icon sidebar-admin-link {% if in_admin_console %}active{% endif %}" href="{{ path_for('/web/admin') }}" data-no-pjax {% if in_admin_console %}aria-current="page"{% endif %} data-tooltip="Admin Console" aria-label="Admin Console"><i class="fa-solid fa-user-shield fa-fw" aria-hidden="true"></i><span class="sidebar-admin-caption">Admin</span></a>
         {% endif %}
       </nav>
       <div class="sidebar-bottom">
         <button type="button" class="sidebar-icon theme-toggle" data-theme-toggle aria-label="Switch to dark theme" aria-pressed="false"><i class="fa-solid fa-moon fa-fw" aria-hidden="true"></i></button>
+        <div class="language-switcher" data-language-switcher>
+          <button type="button" class="sidebar-icon language-toggle" data-language-toggle
+                  data-tooltip="Language" aria-label="Choose language" aria-controls="sidebar-language-menu"
+                  aria-haspopup="menu" aria-expanded="false">
+            <i class="fa-solid fa-language fa-fw" aria-hidden="true"></i>
+          </button>
+          <div id="sidebar-language-menu" class="language-menu" role="menu" aria-label="Choose language" data-language-menu hidden>
+            <button type="button" role="menuitemradio" aria-checked="false" data-language-option="en" lang="en">English</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-language-option="zh-CN" lang="zh-CN">简体中文</button>
+            <button type="button" role="menuitemradio" aria-checked="false" data-language-option="zh-TW" lang="zh-TW">繁體中文</button>
+          </div>
+        </div>
         <a class="sidebar-icon {% if request.url.path == '/web/info' %}active{% endif %}" href="{{ path_for('/web/info') }}" {% if request.url.path == '/web/info' %}aria-current="page"{% endif %} data-tooltip="Help" aria-label="Help"><i class="fa-solid fa-circle-question fa-fw" aria-hidden="true"></i></a>
         <span class="sidebar-icon sidebar-account" data-tooltip="Signed in as {{ user.username }}" aria-label="Signed in as {{ user.username }}"><i class="fa-solid fa-circle-user fa-fw" aria-hidden="true"></i></span>
         <form method="post" action="{{ path_for('/web/logout') }}" class="sidebar-logout">
@@ -45,12 +58,26 @@
       </a>
     </header>
     {% endif %}
-    {% if not user %}<div class="theme-toggle-floating"><button type="button" class="sidebar-icon theme-toggle" data-theme-toggle aria-label="Switch to dark theme" aria-pressed="false"><i class="fa-solid fa-moon fa-fw" aria-hidden="true"></i></button></div>{% endif %}
+    {% if not user %}<div class="theme-toggle-floating">
+      <button type="button" class="sidebar-icon theme-toggle" data-theme-toggle aria-label="Switch to dark theme" aria-pressed="false"><i class="fa-solid fa-moon fa-fw" aria-hidden="true"></i></button>
+      <div class="language-switcher" data-language-switcher>
+        <button type="button" class="sidebar-icon language-toggle" data-language-toggle
+                aria-label="Choose language" aria-controls="login-language-menu"
+                aria-haspopup="menu" aria-expanded="false">
+          <i class="fa-solid fa-language fa-fw" aria-hidden="true"></i>
+        </button>
+        <div id="login-language-menu" class="language-menu" role="menu" aria-label="Choose language" data-language-menu hidden>
+          <button type="button" role="menuitemradio" aria-checked="false" data-language-option="en" lang="en">English</button>
+          <button type="button" role="menuitemradio" aria-checked="false" data-language-option="zh-CN" lang="zh-CN">简体中文</button>
+          <button type="button" role="menuitemradio" aria-checked="false" data-language-option="zh-TW" lang="zh-TW">繁體中文</button>
+        </div>
+      </div>
+    </div>{% endif %}
     <main class="page" id="app-main" tabindex="-1">
       <h1 class="sr-only">{% block heading %}NetVault{% endblock %}</h1>
       {% block content %}{% endblock %}
     </main>
-    <script src="{{ path_for('/static/app.js') }}?v={{ asset_version }}" defer></script>
+    <script src="{{ path_for('/static/app.js') }}?v={{ asset_version }}&amp;h={{ app_script_hash }}" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

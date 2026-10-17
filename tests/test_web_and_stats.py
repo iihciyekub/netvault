@@ -29,12 +29,29 @@ def test_web_ui_source_contains_no_chinese_text() -> None:
     ui_files.extend([server_root / "static" / "app.js", server_root / "static" / "styles.css"])
     chinese = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
+    # Canonical UI markup and feature scripts remain English. The trilingual
+    # glossary is managed separately. Only the native labels inside the
+    # language chooser (and the pre-existing journal rank taxonomy data) are
+    # allowed in normal English-authored templates/scripts.
+    def visible_ui_copy(path: Path) -> str:
+        content = path.read_text(encoding="utf-8")
+        if path.name == "base.html":
+            content = content.replace("简体中文", "").replace("繁體中文", "")
+        if path.name == "app.js":
+            content = re.sub(
+                r"  const rankDatasetLabels = new Map\(Object\.entries\(\{.*?"
+                r"  const rankDatasetOrder = new Map\(\);",
+                "  const rankDatasetOrder = new Map();",
+                content, flags=re.DOTALL,
+            )
+        return content
+
     violations = [
         str(path.relative_to(server_root))
         for path in ui_files
-        if chinese.search(path.read_text(encoding="utf-8"))
+        if chinese.search(visible_ui_copy(path))
     ]
-    assert violations == [], f"Web UI text must be English-only: {violations}"
+    assert violations == [], f"Canonical web UI copy must use the translation catalog: {violations}"
 
 
 def test_dashboard_number_format_uses_thousands_separators() -> None:
@@ -423,7 +440,10 @@ def test_stats_api_requires_auth_and_groups_data(client: TestClient) -> None:
     assert utd_summary.json()["active_pdfs"] == 1
     assert utd_summary.json()["total_size"] == 100
     utd_heatmap = client.get("/stats/by-journal-year", params={"filter": "utd24"}, headers=headers)
-    assert [row["journal"] for row in utd_heatmap.json()["rows"]] == ["THE JOURNAL OF FINANCE"]
+    utd_rows = utd_heatmap.json()["rows"]
+    assert len(utd_rows) == 24
+    assert next(row for row in utd_rows if row["journal"] == "THE JOURNAL OF FINANCE")["total"] == 1
+    assert any(row["total"] == 0 for row in utd_rows)
 
     abs4star_summary = client.get("/stats/summary", params={"filter": "4*"}, headers=headers)
     assert abs4star_summary.status_code == 200
@@ -527,12 +547,15 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert "data-journal-limit-status" in limit_form
     assert '<i class="fa-solid fa-eye" aria-hidden="true"></i>' in limit_form
     assert "<span>Show</span>" not in limit_form
-    assert normal.text.index('aria-label="Heatmap legend"') < normal.text.index(
+    assert normal.text.index('class="heatmap-filter-field"') < normal.text.index(
         'class="heatmap-limit-form"'
-    )
+    ) < normal.text.index('aria-label="Heatmap legend"')
+    assert '<div class="dashboard-toolbar">' not in normal.text
+    assert 'class="dashboard-admin-console"' not in normal.text
     assert 'id="journal-heatmap-sort" data-journal-sort aria-label="Sort journals" hidden>' in normal.text
     assert 'data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>' in normal.text
-    assert 'data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name">Journal</button>' in normal.text
+    assert 'data-journal-sort-toggle="name" data-journal-library-sort' in normal.text
+    assert 'data-journal-library-items' in normal.text
     assert '<option value="name-asc">Journal A–Z</option>' in normal.text
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
@@ -564,8 +587,8 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert 'class="heatmap-limit-form"' in filtered.text
     assert 'name="active_filter" value="utd24"' in filtered.text
     assert 'name="journal_limit" type="number" min="1" max="200" value="21"' in filtered.text
-    assert '<div class="summary-tags" aria-label="Vault summary">' in filtered.text
-    assert '<span class="summary-count"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>231</span>' in filtered.text
+    assert '<div class="summary-tags" aria-label="Vault summary">' not in filtered.text
+    assert 'class="dashboard-admin-console"' not in filtered.text
     assert '<span class="heatmap-filter-pdf-count" aria-label="PDFs in current journal filter"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i>21</span>' in filtered.text
     filtered_update = client.post(
         "/web/preferences/all-journal-limit",
@@ -635,7 +658,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "fa-chart-column" in dashboard.text
     assert "fa-magnifying-glass" in dashboard.text
     assert "fa-cloud-arrow-up" not in dashboard.text
-    assert "fa-cloud-arrow-down" in dashboard.text
+    assert "fa-cloud-arrow-down" not in dashboard.text
     assert "fa-quote-left" in dashboard.text
     assert "fa-box-archive" not in dashboard.text
     assert "app-sidebar" in dashboard.text
@@ -655,12 +678,7 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "data-upload-form" in upload_page.text
     assert "data-precheck-url=\"/web/pdfs/exists\"" in upload_page.text
     assert "upload-progress" in upload_page.text
-    download_page = client.get("/web/download")
-    assert download_page.status_code == 200
-    assert '<h1 class="sr-only">Download PDFs</h1>' in download_page.text
-    assert "nv download --file ./dois.txt --to ./downloads" not in download_page.text
-    assert "app.js" in download_page.text
-    assert "clipboard.js" not in download_page.text
+    assert client.get("/web/download").status_code == 404
     cli_page = client.get("/web/cli")
     assert cli_page.status_code == 200
     assert '<h1 class="sr-only">NetVault command-line interface</h1>' in cli_page.text
@@ -817,9 +835,18 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "primary pdf-action" in pdfs_with_query.text
     assert "/web/pdfs/download?pdf_id=" in pdfs_with_query.text
     assert "data-no-pjax" in pdfs_with_query.text
-    assert "Correct DOI" in pdfs_with_query.text
-    assert "data-doi-correct" in pdfs_with_query.text
-    assert "data-doi-dialog" in pdfs_with_query.text
+    assert "Correct DOI" not in pdfs_with_query.text
+    assert "data-doi-correct" not in pdfs_with_query.text
+    assert "data-doi-dialog" not in pdfs_with_query.text
+    assert 'data-pdf-select-checkbox' in pdfs_with_query.text
+    assert 'name="pdf_ids"' in pdfs_with_query.text
+    assert 'data-pdf-select-toggle' in pdfs_with_query.text
+    assert 'aria-pressed="false"' in pdfs_with_query.text
+    assert "0 selected" in pdfs_with_query.text
+    assert 'data-pdf-selected-zip disabled' in pdfs_with_query.text
+    assert 'form="selected-pdf-zip-form"' in pdfs_with_query.text
+    assert 'action="/web/pdfs/download-all"' in pdfs_with_query.text
+    assert 'data-native-submit' in pdfs_with_query.text
     assert "doi-copy-button" in pdfs_with_query.text
     assert 'class="paper-id"' in pdfs_with_query.text
     assert "PDF ID " in pdfs_with_query.text
@@ -838,24 +865,22 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert font.status_code == 200
     assert font.headers["cache-control"] == "public, max-age=31536000, immutable"
 
-    lookup = client.post(
-        "/web/download",
-        data={"csrf_token": client.cookies["netvault_csrf"], "doi_text": "https://doi.org/10.1234/web.test"},
+    dashboard = client.get("/web")
+    assert "data-doi-batch-check" in dashboard.text
+    assert "data-doi-batch-download" in dashboard.text
+    assert "data-doi-batch-search" in dashboard.text
+    batch = client.post(
+        "/web/pdfs/batch",
+        json={"dois": ["10.1234/web.test", "10.1234/not-in-vault"]},
+        headers={"x-csrf-token": client.cookies["netvault_csrf"]},
     )
-    assert lookup.status_code == 200
-    assert "Download" in lookup.text
-    assert "Download All ZIP" in lookup.text
-    assert "results-header" in lookup.text
-    assert "data-native-submit" in lookup.text
-    assert "/web/pdfs/preview?pdf_id=" in lookup.text
-    assert "table-scroll download-results-scroll" in lookup.text
-    assert "results download-results" in lookup.text
-    assert "pdf-actions row-actions" in lookup.text
-    assert "primary pdf-action" in lookup.text
-    assert "/web/pdfs/download?pdf_id=" in lookup.text
-    assert "data-no-pjax" in lookup.text
-
-    pdf_id = int(lookup.text.split("/web/pdfs/download?pdf_id=", 1)[1].split('"', 1)[0])
+    assert batch.status_code == 200
+    assert batch.json()["count"] == 2
+    assert batch.json()["available_count"] == 1
+    assert batch.json()["storage_missing_count"] == 0
+    assert batch.json()["zip_ready"] is True
+    assert batch.json()["url"].startswith("/web/pdfs?batch=")
+    pdf_id = batch.json()["pdf_ids"][0]
     previewed = client.get(
         "/web/pdfs/preview",
         params={"pdf_id": pdf_id},
@@ -895,6 +920,62 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
         assert names == ["10.1234_web.test.pdf", "netvault-manifest.tsv"]
         assert hashlib.sha256(archive.read(names[0])).hexdigest() == hashlib.sha256(PDF_BYTES).hexdigest()
         assert b"10.1234/web.test" in archive.read("netvault-manifest.tsv")
+
+
+def test_search_selects_individual_pdf_ids_for_an_existing_zip_endpoint(client: TestClient) -> None:
+    headers = login_headers(client)
+    first = client.post(
+        "/pdfs/upload", headers=headers,
+        files={"file": ("first.pdf", PDF_BYTES, "application/pdf")},
+    )
+    second_bytes = PDF_BYTES.replace(b"web.test", b"web.second")
+    second = client.post(
+        "/pdfs/upload", headers=headers,
+        files={"file": ("second.pdf", second_bytes, "application/pdf")},
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    first_id = first.json()["pdf"]["id"]
+    second_id = second.json()["pdf"]["id"]
+
+    web_login(client)
+    page = client.get("/web/pdfs", params={"q": "Grace Hopper"})
+    assert page.status_code == 200
+    assert page.text.count("data-pdf-select-checkbox") == 2
+    for pdf_id in (first_id, second_id):
+        assert f'name="pdf_ids" value="{pdf_id}" form="selected-pdf-zip-form"' in page.text
+    assert 'data-pdf-selected-zip disabled' in page.text
+    assert 'data-pdf-select-toggle aria-pressed="false"' in page.text
+    assert 'name="csrf_token" value="' in page.text
+
+    # The browser submits just the checked, form-associated inputs. The server
+    # must use those IDs rather than zipping the entire search result.
+    csrf = client.cookies["netvault_csrf"]
+    only_second = client.post(
+        "/web/pdfs/download-all",
+        data={"csrf_token": csrf, "pdf_ids": [str(second_id)]},
+    )
+    assert only_second.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(only_second.content)) as archive:
+        assert archive.namelist() == ["10.1234_web.second.pdf", "netvault-manifest.tsv"]
+        assert archive.read("10.1234_web.second.pdf") == second_bytes
+        assert b"10.1234/web.test" not in archive.read("netvault-manifest.tsv")
+
+    both = client.post(
+        "/web/pdfs/download-all",
+        data={"csrf_token": csrf, "pdf_ids": [str(first_id), str(second_id)]},
+    )
+    assert both.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(both.content)) as archive:
+        assert set(archive.namelist()) == {
+            "10.1234_web.test.pdf", "10.1234_web.second.pdf", "netvault-manifest.tsv",
+        }
+    none = client.post("/web/pdfs/download-all", data={"csrf_token": csrf})
+    assert none.status_code == 400
+    bad_csrf = client.post(
+        "/web/pdfs/download-all", data={"csrf_token": "wrong", "pdf_ids": str(first_id)},
+    )
+    assert bad_csrf.status_code == 403
 
 
 def test_web_admin_can_preview_and_apply_doi_correction(client: TestClient) -> None:
@@ -1100,9 +1181,297 @@ def test_web_journal_filter_lists_are_editable_and_user_scoped(client: TestClien
         assert [(row.user.username, row.filter_key) for row in overrides] == [("admin", "custom")]
 
 
+def test_dashboard_remembers_selected_list_without_get_prefetch_side_effects(client: TestClient) -> None:
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    created = client.post(
+        "/web/journal-filters",
+        headers={"x-csrf-token": csrf},
+        json={"name": "Intercultural"},
+    )
+    assert created.status_code == 200
+    key = created.json()["key"]
+    names = [
+        "COMPUTER ASSISTED LANGUAGE LEARNING",
+        "SYSTEM",
+        "JOURNAL WITH NO PDF UPLOADED YET",
+    ]
+    saved = client.post(
+        f"/web/journal-filters/{key}",
+        headers={"x-csrf-token": csrf},
+        json={"name": "Intercultural", "journals": names},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["count"] == 3
+
+    # A dashboard with an explicit filter is safe to prefetch. GET never
+    # changes the preferred filter, whereas the CSRF-protected POST does.
+    explicit = client.get("/web", params={"filter": key})
+    assert explicit.status_code == 200
+    assert f'data-dashboard-filter="{key}"' in explicit.text
+    assert sorted(dashboard_journal_names(explicit)) == sorted(names)
+    assert "netvault-list" not in explicit.text
+    assert 'data-journal-list-export' in explicit.text
+    assert 'data-user-id="1"' in explicit.text
+    assert 'data-dashboard-preference-status' in explicit.text
+    assert 'data-dashboard-preference-url="/web/preferences/dashboard-filter"' in explicit.text
+    assert re.search(r'class="active"\s+href="/web\?filter=utd24"', client.get("/web").text)
+
+    unauthorized = client.post("/web/preferences/dashboard-filter", data={"filter": key})
+    assert unauthorized.status_code == 403
+    updated = client.post(
+        "/web/preferences/dashboard-filter", data={"filter": key, "csrf_token": csrf},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["filter"] == key
+    root = client.get("/web")
+    assert f'data-dashboard-filter="{key}"' in root.text
+    assert 'class="journal-list-group active"' in root.text
+    assert 'data-journal-list-group="custom" open' in root.text
+    assert sorted(dashboard_journal_names(root)) == sorted(names)
+
+    # Hover prefetches, explicit URL links and a fresh login must not reset
+    # the server-side preference back to UTD24.
+    client.get("/web", params={"filter": "ft50"}, headers={"x-requested-with": "fetch"})
+    assert f'data-dashboard-filter="{key}"' in client.get("/web").text
+    client.cookies.clear()
+    web_login(client)
+    assert f'data-dashboard-filter="{key}"' in client.get("/web").text
+
+    no_such_list = client.post(
+        "/web/preferences/dashboard-filter",
+        data={"filter": "custom_abcdef123456", "csrf_token": client.cookies["netvault_csrf"]},
+    )
+    assert no_such_list.status_code == 400
+    client.delete(f"/web/journal-filters/{key}", headers={"x-csrf-token": client.cookies["netvault_csrf"]})
+    assert 'data-dashboard-filter="all"' in client.get("/web").text
+
+
+def test_left_journal_list_picker_can_create_switch_and_delete_only_custom_lists(
+    client: TestClient,
+) -> None:
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    headers = {"x-csrf-token": csrf}
+
+    initial = client.get("/web").text
+    assert '<section class="journal-library-collections" aria-label="Journal lists">' in initial
+    assert 'data-journal-library-menu-toggle' not in initial
+    assert '<details class="filter-menu' not in initial
+    assert 'data-journal-list-group="abs" open' in initial
+    assert 'data-journal-list-group="custom" open' in initial
+    assert '<span>ABS</span>' in initial
+    assert '<span>My lists</span>' in initial
+    assert '<div class="journal-library-collections-head">Lists</div>' not in initial
+    assert 'data-journal-create-form' in initial
+    assert initial.index('data-custom-list-create') > initial.index('class="journal-library-footer"')
+    assert 'data-journal-library-items' in initial
+    assert 'data-custom-list-create' in initial
+    assert 'data-journal-custom-delete' not in initial
+    assert initial.index('<div class="filter-tabs"') > initial.index('<aside class="journal-library"')
+    title = re.search(r'<h2 data-journal-library-title title="([^"]+)">([^<]+)</h2>', initial)
+    assert title is not None and title.group(1) == title.group(2)
+    assert 'data-rank-workspace data-rank-layout="docked"' in initial
+
+    created = client.post(
+        "/web/journal-filters", headers=headers,
+        json={"name": "Intercultural work"},
+    )
+    assert created.status_code == 200, created.text
+    key = created.json()["key"]
+    assert key.startswith("custom_")
+    saved = client.post(
+        f"/web/journal-filters/{key}", headers=headers,
+        json={"name": "Intercultural work", "journals": ["SOCIAL SEMIOTICS"]},
+    )
+    assert saved.status_code == 200, saved.text
+    selected = client.get("/web", params={"filter": key})
+    assert selected.status_code == 200, selected.text
+    assert 'data-journal-library-title title="Intercultural work">Intercultural work</h2>' in selected.text
+    assert f'data-list-key="{key}"' in selected.text
+    assert f'data-endpoint="/web/journal-filters/{key}"' in selected.text
+    assert 'data-journal-custom-delete' in selected.text
+    assert 'href="/web?filter=all"' in selected.text
+    assert 'href="/web?filter=utd24"' in selected.text
+    assert 'href="/web?filter=ft50"' in selected.text
+
+    assert client.delete(f"/web/journal-filters/{key}").status_code == 403
+    deleted = client.delete(f"/web/journal-filters/{key}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted"] is True
+    updated = client.get("/web", params={"filter": "all"})
+    assert updated.status_code == 200
+    assert f'data-list-key="{key}"' not in updated.text
+    assert 'data-journal-library-title title="All">All</h2>' in updated.text
+
+
+def test_creating_categorized_list_keeps_dashboard_stats_cached_and_can_edit_metadata(
+    client: TestClient,
+) -> None:
+    from netvault_server.server import stats
+
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    headers = {"x-csrf-token": csrf}
+    page = client.get("/web", params={"filter": "all"})
+    assert page.status_code == 200
+    cached = {
+        key: value[1] for key, value in stats._dashboard_cache.items()
+        if key[1] == "all"
+    }
+    assert cached
+
+    invalid = client.post("/web/journal-filters", headers=headers, json={
+        "name": "Invalid", "category": "A" * 41, "kind": "Theme",
+    })
+    assert invalid.status_code == 400
+
+    created = client.post("/web/journal-filters", headers=headers, json={
+        "name": "Languages & Cultures", "category": "Education",
+        "kind": "Research area",
+        "journals": ["LANGUAGE AWARENESS", "LANGUAGE AWARENESS", "SOCIAL SEMIOTICS"],
+    })
+    assert created.status_code == 200, created.text
+    payload = created.json()
+    assert payload["category"] == "Education"
+    assert payload["kind"] == "Research area"
+    assert payload["journals"] == ["LANGUAGE AWARENESS", "SOCIAL SEMIOTICS"]
+    key = payload["key"]
+    for cached_key, cached_stats in cached.items():
+        assert stats._dashboard_cache[cached_key][1] is cached_stats
+        assert any(item["key"] == key for item in cached_stats["custom_journal_filters"])
+
+    refreshed = client.get("/web", params={"filter": "all"})
+    assert refreshed.status_code == 200
+    assert 'data-journal-custom-category="Education"' in refreshed.text
+    assert 'data-list-kind="Research area"' in refreshed.text
+    assert refreshed.text.index('data-journal-custom-category="Education"') > refreshed.text.index(
+        'data-journal-list-group="custom"'
+    )
+
+    edited = client.post(f"/web/journal-filters/{key}", headers=headers, json={
+        "name": "Language journal set", "journals": payload["journals"],
+        "category": "Applied linguistics", "kind": "Topic",
+        "expected_updated_at": payload["updated_at"],
+    })
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["category"] == "Applied linguistics"
+    assert edited.json()["kind"] == "Topic"
+    state = client.get(f"/web/journal-filters/{key}")
+    assert state.json()["category"] == "Applied linguistics"
+    assert state.json()["kind"] == "Topic"
+    without_meta = client.post(f"/web/journal-filters/{key}", headers=headers, json={
+        "name": "Language journal set", "journals": ["SOCIAL SEMIOTICS"],
+    })
+    assert without_meta.status_code == 200
+    assert without_meta.json()["category"] == "Applied linguistics"
+    assert without_meta.json()["kind"] == "Topic"
+    assert client.delete(f"/web/journal-filters/{key}", headers=headers).json()["deleted"] is True
+    assert all(item["key"] != key for stats_record in (item[1] for item in stats._dashboard_cache.values())
+               for item in stats_record["custom_journal_filters"])
+
+
+def test_journal_list_save_requires_current_revision_to_prevent_lost_edits(client: TestClient) -> None:
+    web_login(client)
+    csrf = client.cookies["netvault_csrf"]
+    state = client.get("/web/journal-filters/custom").json()
+    assert state["updated_at"] is None
+    first = client.post(
+        "/web/journal-filters/custom",
+        headers={"x-csrf-token": csrf},
+        json={
+            "journals": ["SYSTEM", "COMPUTER ASSISTED LANGUAGE LEARNING"],
+            "name": "Intercultural",
+            "expected_updated_at": None,
+        },
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["count"] == 2
+    assert isinstance(first.json()["updated_at"], str)
+    stale = client.post(
+        "/web/journal-filters/custom",
+        headers={"x-csrf-token": csrf},
+        json={
+            "journals": ["OVERWRITTEN JOURNAL"], "name": "Overwritten",
+            "expected_updated_at": None,
+        },
+    )
+    assert stale.status_code == 409
+    assert "changed in another session" in stale.json()["detail"]
+    unchanged = client.get("/web/journal-filters/custom").json()
+    assert unchanged["count"] == 2
+    assert set(unchanged["journals"]) == {
+        "SYSTEM", "COMPUTER ASSISTED LANGUAGE LEARNING",
+    }
+
+
+def test_journal_list_add_and_remove_are_persisted_and_dashboard_refreshes(client: TestClient) -> None:
+    web_login(client)
+    headers = {"x-csrf-token": client.cookies["netvault_csrf"]}
+    created = client.post("/web/journal-filters", headers=headers, json={"name": "Intercultural"})
+    assert created.status_code == 200
+    key = created.json()["key"]
+
+    initial = ["SYSTEM", "CULTURAL STUDIES", "JOURNAL OF SOCIOLINGUISTICS"]
+    added = client.post(
+        f"/web/journal-filters/{key}",
+        headers=headers,
+        json={
+            "name": "Intercultural",
+            "journals": [*initial, "NEW JOURNAL WITH NO PDF"],
+            "expected_updated_at": created.json()["updated_at"],
+        },
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["count"] == 4
+    first_revision = added.json()["updated_at"]
+
+    # Reopening the editor must read the freshly committed list, not the
+    # previous cached 3-journal response.
+    reopened = client.get(f"/web/journal-filters/{key}", headers={"cache-control": "no-store"})
+    assert reopened.status_code == 200
+    assert reopened.json()["count"] == 4
+    assert first_revision == reopened.json()["updated_at"]
+    assert set(reopened.json()["journals"]) == {*initial, "NEW JOURNAL WITH NO PDF"}
+    assert "NEW JOURNAL WITH NO PDF" in dashboard_journal_names(
+        client.get("/web", params={"filter": key})
+    )
+
+    # Edit the textarea again, removing a saved row. Saving its new complete
+    # contents replaces the prior list instead of appending or ignoring edits.
+    remaining = ["CULTURAL STUDIES", "JOURNAL OF SOCIOLINGUISTICS", "NEW JOURNAL WITH NO PDF"]
+    removed = client.post(
+        f"/web/journal-filters/{key}",
+        headers=headers,
+        json={
+            "name": "Intercultural",
+            "journals": remaining,
+            "expected_updated_at": first_revision,
+        },
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["count"] == 3
+    assert set(removed.json()["journals"]) == set(remaining)
+    assert removed.json()["updated_at"] != first_revision
+
+    database = importlib.import_module("netvault_server.server.database")
+    models = importlib.import_module("netvault_server.server.models")
+    with database.SessionLocal() as db:
+        override = db.query(models.UserJournalFilter).filter_by(filter_key=key).one()
+        assert set(json.loads(override.journals_json)["journals"]) == set(remaining)
+    reopened = client.get(f"/web/journal-filters/{key}")
+    assert reopened.json()["count"] == 3
+    assert set(reopened.json()["journals"]) == set(remaining)
+    assert "SYSTEM" not in dashboard_journal_names(
+        client.get("/web", params={"filter": key})
+    )
+    assert "NEW JOURNAL WITH NO PDF" in dashboard_journal_names(
+        client.get("/web", params={"filter": key})
+    )
+
 def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> None:
     web_login(client)
-    admin_page = client.get("/web/admin")
+    admin_page = client.get("/web/admin/users")
     assert admin_page.status_code == 200
     assert "Create User" in admin_page.text
     assert "Reset Password" in admin_page.text
@@ -1152,7 +1521,7 @@ def test_web_admin_can_manage_users_and_is_admin_only(client: TestClient) -> Non
     )
     assert login.status_code == 200
     user_home = client.get("/web")
-    assert "Admin" not in user_home.text
+    assert 'href="/web/admin"' not in user_home.text
     assert client.get("/web/admin").status_code == 403
 
 
@@ -1316,10 +1685,12 @@ def test_web_exact_doi_search_falls_back_to_related_identifier(client: TestClien
     assert 'class="paper-result"' in result.text
 
 
-def test_static_assets_are_long_cached(client: TestClient) -> None:
+def test_static_assets_revalidate_first_party_ui_and_long_cache_vendor(client: TestClient) -> None:
+    for path in ("/static/styles.css", "/static/app.js", "/static/theme.js"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "public, no-cache, must-revalidate"
     for path in (
-        "/static/styles.css",
-        "/static/app.js",
         "/static/vendor/fontawesome/css/fontawesome.min.css",
         "/static/vendor/fontawesome/css/solid.min.css",
         "/static/vendor/fontawesome/webfonts/fa-solid-900.woff2",
@@ -1327,6 +1698,19 @@ def test_static_assets_are_long_cached(client: TestClient) -> None:
         response = client.get(path)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_current_release_version_is_used_for_browser_asset_urls(client: TestClient) -> None:
+    from netvault_server import __version__
+
+    page = client.get("/web/login")
+    assert page.status_code == 200
+    assert f'/static/theme.js?v={__version__}"' in page.text
+    for asset in ("styles.css", "app.js", "i18n.js"):
+        assert re.search(
+            rf'/static/{re.escape(asset)}\?v={re.escape(__version__)}&amp;h=[0-9a-f]{{12}}"',
+            page.text,
+        ), asset
 
 
 def test_root_package_is_cli_only() -> None:
@@ -1396,7 +1780,8 @@ def test_journal_rank_requires_login_and_returns_normalized_data(client, monkeyp
     def fail(*args, **kwargs):
         raise ValueError('Unable to reach easyScholar. Please try again later.')
     monkeypatch.setattr(ranks, 'lookup', fail)
-    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 502
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 200
+    assert client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'}).status_code == 502
 
 
 def test_easyscholar_official_custom_cache_and_redacted_failure(monkeypatch):
@@ -1426,6 +1811,308 @@ def test_easyscholar_official_custom_cache_and_redacted_failure(monkeypatch):
         ranks.lookup('Nature', refresh=True)
     assert ranks.BUNDLED_API_KEY not in str(error.value)
 
+
+def test_journal_ranks_are_globally_persisted_and_manual_refresh_replaces_them(
+    client, monkeypatch,
+):
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 401
+    web_login(client)
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    rank_store = importlib.import_module('netvault_server.server.journal_ranks')
+    models = importlib.import_module('netvault_server.server.models')
+    database = importlib.import_module('netvault_server.server.database')
+    calls = []
+
+    def lookup(name, refresh=False):
+        calls.append((name, refresh))
+        return {'journal_name': name, 'queried_at': 1792000000 + len(calls),
+                'rows': [{'key': 'sciUp', 'name': '中科院升级版分区-中科院',
+                          'rank': '3区' if not refresh else '2区',
+                          'source': 'Official datasets', 'selected': True}]}
+
+    monkeypatch.setattr(provider, 'lookup', lookup)
+    first = client.get('/web/journal-rank', params={'name': 'Nature'})
+    assert first.status_code == 200
+    assert first.json()['rows'][0]['rank'] == '3区'
+    assert first.json()['cached'] is False
+    assert client.get('/web/journal-rank', params={'name': ' nature '}).json()['cached'] is True
+    assert calls == [('Nature', False)]
+
+    refreshed = client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'})
+    assert refreshed.status_code == 200
+    assert refreshed.json()['rows'][0]['rank'] == '2区'
+    assert calls == [('Nature', False), ('Nature', True)]
+    with database.SessionLocal() as db:
+        persisted = db.get(models.JournalRankCache, 'nature')
+        assert json.loads(persisted.rows_json)[0]['rank'] == '2区'
+        assert persisted.queried_at == 1792000002
+        assert rank_store.cached_rank(db, 'NATURE')['rows'][0]['rank'] == '2区'
+
+    def provider_error(*args, **kwargs):
+        raise ValueError('Provider temporarily unavailable.')
+    monkeypatch.setattr(provider, 'lookup', provider_error)
+    assert client.get('/web/journal-rank', params={'name': 'Nature', 'refresh': 'true'}).status_code == 502
+    saved = client.get('/web/journal-rank', params={'name': 'Nature'}).json()
+    assert saved['cached'] is True
+    assert saved['rows'][0]['rank'] == '2区'
+
+
+def test_shared_postgresql_rank_cache_is_reused_by_another_user_without_provider(
+    client, monkeypatch,
+):
+    endpoint = '/web/journal-ranks/cached'
+    assert client.post(endpoint, json={'names': ['Nature']}).status_code == 401
+    web_login(client)
+    csrf = client.cookies['netvault_csrf']
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    database = importlib.import_module('netvault_server.server.database')
+    accounts = importlib.import_module('netvault_server.server.accounts')
+    schemas = importlib.import_module('netvault_server.server.schemas')
+    calls = []
+
+    def lookup(name, refresh=False):
+        calls.append((name, refresh))
+        return {
+            'journal_name': name, 'queried_at': 1792000000,
+            'rows': [{
+                'key': 'sciUpTop', 'name': '中科院升级版Top分区', 'rank': '1区 TOP',
+                'source': 'Official datasets', 'selected': True,
+            }],
+        }
+
+    monkeypatch.setattr(provider, 'lookup', lookup)
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 200
+    assert calls == [('Nature', False)]
+    assert client.post(endpoint, json={'names': ['Nature']}).status_code == 403
+    with database.SessionLocal() as db:
+        accounts.create_user(
+            db, schemas.UserCreateRequest(
+                username='viewer', password='viewer-pass', role='user',
+            ),
+        )
+    logout = client.post('/web/logout', data={'csrf_token': csrf})
+    assert logout.status_code == 200
+    login_page = client.get('/web/login')
+    csrf = login_page.cookies['netvault_csrf']
+    login = client.post('/web/login', data={
+        'username': 'viewer', 'password': 'viewer-pass', 'csrf_token': csrf,
+    })
+    assert login.status_code == 200
+    response = client.post(
+        endpoint, headers={'X-CSRF-Token': client.cookies['netvault_csrf']},
+        json={'names': ['NATURE', 'Nature', 'Unqueried Journal']},
+    )
+    assert response.status_code == 200, response.text
+    assert len(response.json()['ranks']) == 1
+    assert response.json()['ranks'][0]['rows'][0]['rank'] == '1区 TOP'
+    assert response.json()['ranks'][0]['cache_scope'] == 'server'
+    assert calls == [('Nature', False)], 'A second user must not query the provider'
+    assert client.get('/web/journal-rank', params={'name': 'nature'}).json()['cached']
+    assert calls == [('Nature', False)]
+    assert client.post(endpoint, headers={'X-CSRF-Token': client.cookies['netvault_csrf']},
+                       json={'names': ['bad\u0000name']}).status_code == 400
+    assert client.post(endpoint, headers={'X-CSRF-Token': client.cookies['netvault_csrf']},
+                       json={'names': ['Nature'] * 61}).status_code == 422
+
+
+def test_background_rank_batch_progress_retry_and_restart_resume(client, monkeypatch):
+    web_login(client)
+    csrf = client.cookies['netvault_csrf']
+    headers = {'x-csrf-token': csrf}
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    ranks = importlib.import_module('netvault_server.server.journal_ranks')
+    models = importlib.import_module('netvault_server.server.models')
+    database = importlib.import_module('netvault_server.server.database')
+    announced = []
+    monkeypatch.setattr(ranks, 'wake_worker', lambda: announced.append(True))
+    monkeypatch.setattr(ranks.time, 'sleep', lambda seconds: None)
+
+    new_list = client.post('/web/journal-filters', headers=headers, json={'name': 'Intercultural'})
+    assert new_list.status_code == 200
+    key = new_list.json()['key']
+    names = ['SYSTEM', 'CULTURAL STUDIES', 'FOREIGN LANGUAGE ANNALS']
+    assert client.post(f'/web/journal-filters/{key}', headers=headers, json={
+        'name': 'Intercultural', 'journals': names,
+        'expected_updated_at': new_list.json()['updated_at'],
+    }).status_code == 200
+    endpoint = '/web/journal-rank-batches'
+    assert client.post(endpoint, json={'filter': key}).status_code == 403
+    first = client.post(endpoint, headers=headers, json={'filter': key})
+    assert first.status_code == 202, first.text
+    job_id = first.json()['id']
+    assert first.json()['status'] == 'queued'
+    assert first.json()['total'] == 3
+    assert first.json()['processed'] == 0
+    second = client.post(endpoint, headers=headers, json={'filter': key})
+    assert second.status_code == 202
+    assert second.json()['id'] == job_id, 'Repeat clicks must not queue the same list twice'
+    assert announced == [True, True]
+
+    counter = []
+    def lookup(name, refresh=False):
+        counter.append((name, refresh))
+        if name == 'SYSTEM' and not refresh:
+            raise ValueError('Temporary provider problem.')
+        return {'journal_name': name, 'queried_at': 1792000000 + len(counter),
+                'rows': [{'key': 'sci', 'name': 'SCI分区-JCR', 'rank': 'Q1' if not refresh else 'Q2',
+                          'source': 'Official datasets', 'selected': True}]}
+    monkeypatch.setattr(provider, 'lookup', lookup)
+    assert ranks._claim_job() == job_id
+    ranks.process_batch(job_id)
+    status_payload = client.get(endpoint + '/latest', params={'filter': key}).json()['job']
+    assert status_payload['status'] == 'partial'
+    assert status_payload['processed'] == 3
+    assert status_payload['failed'] == 1
+    assert status_payload['fetched'] == 2
+
+    # A manual retry bypasses the server cache and persists replacement ranks.
+    retry = client.post(endpoint, headers=headers, json={'filter': key, 'refresh': True})
+    assert retry.status_code == 202
+    assert retry.json()['refresh'] is True
+    assert ranks._claim_job() == retry.json()['id']
+    ranks.process_batch(retry.json()['id'])
+    done = client.get(endpoint + '/latest', params={'filter': key}).json()['job']
+    assert done['status'] == 'completed'
+    assert done['fetched'] == 3
+    assert done['failed'] == 0
+    with database.SessionLocal() as db:
+        assert db.query(models.JournalRankCache).count() == 3
+        assert all(json.loads(row.rows_json)[0]['rank'] == 'Q2'
+                   for row in db.query(models.JournalRankCache))
+
+    # Simulate a restart in the middle of another task. The committed offset
+    # survives and only the remaining journal is processed.
+    another = client.post(endpoint, headers=headers, json={'filter': key, 'refresh': True}).json()
+    with database.SessionLocal() as db:
+        pending = db.get(models.JournalRankBatchJob, another['id'])
+        pending.status = 'running'
+        pending.processed = 2
+        db.commit()
+    ranks.recover_ranking_batches()
+    with database.SessionLocal() as db:
+        pending = db.get(models.JournalRankBatchJob, another['id'])
+        assert pending.status == 'queued'
+        assert pending.processed == 2
+    before = len(counter)
+    assert ranks._claim_job() == another['id']
+    ranks.process_batch(another['id'])
+    assert len(counter) == before + 1
+    assert client.get(endpoint + '/latest', params={'filter': key}).json()['job']['status'] == 'completed'
+
+
+def test_any_authenticated_user_can_start_shared_rank_batch(client, monkeypatch):
+    web_login(client)
+    ranks = importlib.import_module('netvault_server.server.journal_ranks')
+    database = importlib.import_module('netvault_server.server.database')
+    models = importlib.import_module('netvault_server.server.models')
+    security = importlib.import_module('netvault_server.server.security')
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    monkeypatch.setattr(ranks, 'wake_worker', lambda: None)
+    lookups = []
+    def fake_lookup(name, refresh=False):
+        lookups.append((name, refresh))
+        return {'journal_name': name, 'queried_at': 1792000001,
+                'rows': [{'key': 'sci', 'name': 'SCI分区-JCR',
+                          'rank': 'Q1', 'source': 'Official datasets'}]}
+    monkeypatch.setattr(provider, 'lookup', fake_lookup)
+    assert client.get('/web/journal-rank', params={'name': 'Nature'}).status_code == 200
+    with database.SessionLocal() as db:
+        db.add(models.User(username='rankreader', password_hash=security.hash_password('ranks-pass')))
+        db.commit()
+    client.cookies.clear()
+    login_page = client.get('/web/login')
+    assert login_page.status_code == 200
+    csrf = client.cookies['netvault_csrf']
+    logged_in = client.post('/web/login', data={
+        'username': 'rankreader', 'password': 'ranks-pass', 'csrf_token': csrf,
+    })
+    assert logged_in.status_code in (200, 303)
+    csrf = client.cookies['netvault_csrf']
+    # Ranking data is shared globally, not tied to the admin who fetched it.
+    cached = client.get('/web/journal-rank', params={'name': 'NATURE'})
+    assert cached.status_code == 200
+    assert cached.json()['cached'] is True
+    assert cached.json()['rows'][0]['rank'] == 'Q1'
+    assert lookups == [('Nature', False)]
+    endpoint = '/web/journal-rank-batches'
+    assert client.post(endpoint, json={'filter': 'utd24'}, headers={'x-csrf-token': csrf}).status_code == 202
+    assert client.get(endpoint + '/latest', params={'filter': 'utd24'}).json()['job']['total'] == 24
+    assert client.post(endpoint, json={'filter': 'all'}, headers={'x-csrf-token': csrf}).status_code == 400
+    assert client.post(endpoint, json={'filter': 'custom_abcdef123456'},
+                       headers={'x-csrf-token': csrf}).status_code == 400
+
+
+def test_rank_batch_identifies_list_contents_not_only_user_filter_name(client, monkeypatch):
+    web_login(client)
+    ranks = importlib.import_module('netvault_server.server.journal_ranks')
+    filters = importlib.import_module('netvault_server.server.journal_filters')
+    database = importlib.import_module('netvault_server.server.database')
+    models = importlib.import_module('netvault_server.server.models')
+    security = importlib.import_module('netvault_server.server.security')
+    monkeypatch.setattr(ranks, 'wake_worker', lambda: None)
+    with database.SessionLocal() as db:
+        admin = db.query(models.User).filter_by(username='admin').one()
+        other = models.User(username='different', password_hash=security.hash_password('password'))
+        db.add(other)
+        db.commit()
+        filters.save_user_journal_filter(db, admin.id, 'utd24', ['SYSTEM'])
+        admin_job = ranks.enqueue_batch(db, admin.id, 'utd24')
+        other_job = ranks.enqueue_batch(db, other.id, 'utd24')
+        assert admin_job['total'] == 1
+        assert other_job['total'] == 24
+        assert admin_job['id'] != other_job['id']
+        assert ranks.latest_batch(db, admin.id, 'utd24')['id'] == admin_job['id']
+        assert ranks.latest_batch(db, other.id, 'utd24')['id'] == other_job['id']
+
+
+def test_ranking_batch_returns_immediately_while_worker_is_waiting(client, monkeypatch):
+    import threading
+    import time
+
+    web_login(client)
+    token = client.cookies['netvault_csrf']
+    provider = importlib.import_module('netvault_server.server.easyscholar')
+    started, release = threading.Event(), threading.Event()
+    def slow_lookup(name, refresh=False):
+        started.set()
+        assert release.wait(timeout=8), 'Test worker was not released'
+        return {'journal_name': name, 'queried_at': time.time(),
+                'rows': [{'key': 'sci', 'name': 'SCI分区-JCR',
+                          'rank': 'Q1', 'source': 'Official datasets'}]}
+    monkeypatch.setattr(provider, 'lookup', slow_lookup)
+    try:
+        start = time.monotonic()
+        response = client.post(
+            '/web/journal-rank-batches',
+            headers={'x-csrf-token': token},
+            json={'filter': 'custom'},
+        )
+        # An empty custom list must fail explicitly without scheduling work.
+        assert response.status_code == 400
+        created = client.post('/web/journal-filters', headers={'x-csrf-token': token},
+                              json={'name': 'Worker test'})
+        key = created.json()['key']
+        stored = client.post(f'/web/journal-filters/{key}', headers={'x-csrf-token': token},
+                             json={'name': 'Worker test', 'journals': ['SYSTEM'],
+                                   'expected_updated_at': created.json()['updated_at']})
+        assert stored.status_code == 200
+        start = time.monotonic()
+        response = client.post('/web/journal-rank-batches',
+                               headers={'x-csrf-token': token}, json={'filter': key})
+        assert response.status_code == 202
+        assert time.monotonic() - start < 1.5
+        assert started.wait(timeout=3)
+        assert client.get('/web/journal-rank-batches/latest',
+                          params={'filter': key}).json()['job']['status'] == 'running'
+    finally:
+        release.set()
+    for _ in range(60):
+        status_data = client.get('/web/journal-rank-batches/latest', params={'filter': key}).json()
+        if status_data['job']['status'] == 'completed':
+            break
+        time.sleep(0.05)
+    assert status_data['job']['status'] == 'completed'
+    assert status_data['job']['fetched'] == 1
 
 
 def test_dashboard_defaults_to_utd24_and_all_remains_explicit(client):

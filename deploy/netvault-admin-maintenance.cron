@@ -1,0 +1,5 @@
+# Host-side admin task queue worker: no automatic PDF/SQL modifications.
+# Only exact CSRF-protected admin-approved jobs in the durable database queue.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root cd /root/iiaide/netvault && /usr/bin/flock -n /var/lock/netvault-admin-worker-cron.lock /root/iiaide/netvault/.venv/bin/python scripts/run_admin_maintenance_worker.py >> /var/log/netvault-admin-maintenance.log 2>&1
