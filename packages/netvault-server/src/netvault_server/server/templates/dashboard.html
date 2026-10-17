@@ -127,11 +127,6 @@
    The same filtered/sorted/paged rows feed it and the year/count heatmap. #}
 <aside class="journal-library" data-journal-library id="journal-library"
        aria-label="Journal list">
-  {% set active_filter_options = (journal_filters + abs_journal_filters + custom_journal_filters)|selectattr('key', 'equalto', journal_filter)|list %}
-  {% set current_list_name = active_filter_options[0].label if active_filter_options else 'All' %}
-  <header class="journal-library-head">
-    <h2 data-journal-library-title title="{{ current_list_name }}">{{ current_list_name }}</h2>
-  </header>
   <section class="journal-library-collections" aria-label="Journal lists">
     <div class="filter-tabs" aria-label="Journal filters">
       {% for option in journal_filters %}
@@ -168,6 +163,11 @@
         <summary class="journal-list-group-heading">
           <span>My lists</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
         </summary>
+        <button type="button" class="journal-library-create" data-custom-list-create
+                data-endpoint="{{ path_for('/web/journal-filters') }}"
+                aria-label="New list" title="New list">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i>
+        </button>
         <div class="filter-menu-popover custom-list-menu">
           {% for category, options in custom_journal_filters|groupby('category') %}
           <div class="journal-custom-category-group" data-journal-custom-category="{{ category }}">
@@ -198,28 +198,7 @@
       </details>
     </div>
   </section>
-  <section class="journal-library-section" aria-label="Visible journals">
-    <span>Journals</span><span data-journal-library-count>0</span>
-    <button type="button" data-journal-sort-toggle="name" data-journal-library-sort
-            aria-label="Sort journals by name" title="Sort by journal name">
-      <i class="fa-solid fa-arrow-down-a-z" aria-hidden="true"></i>
-    </button>
-  </section>
-  <div class="journal-library-items" aria-hidden="true"></div>
   <p class="journal-library-notice" data-journal-library-notice aria-live="polite" hidden></p>
-  <footer class="journal-library-footer">
-    <span data-journal-library-range>0–0 of 0</span>
-    <div class="journal-library-footer-actions">
-      <button type="button" data-journal-library-prev aria-label="Previous journal page"
-              title="Previous page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
-      <button type="button" data-journal-library-next aria-label="Next journal page"
-              title="Next page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-    </div>
-  </footer>
-  <button type="button" class="journal-library-create" data-custom-list-create
-          data-endpoint="{{ path_for('/web/journal-filters') }}">
-    <i class="fa-solid fa-plus" aria-hidden="true"></i><span>New list</span>
-  </button>
 </aside>
 
 <div class="dashboard-workspace" data-rank-workspace data-rank-layout="docked">
@@ -301,7 +280,7 @@
       <div class="heatmap-fixed-viewport" data-heatmap-fixed-viewport>
         <div class="heatmap-fixed-heading">
           <button type="button" class="heat-total-head" data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>
-          <span class="heat-corner">Journal</span>
+          <button type="button" class="heat-corner" data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name">Journal</button>
         </div>
         <div class="heatmap-fixed-body-viewport">
           <div class="heatmap-fixed-body" data-heatmap-fixed-body></div>

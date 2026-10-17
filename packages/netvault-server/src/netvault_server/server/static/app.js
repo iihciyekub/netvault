@@ -1543,13 +1543,6 @@
       if (next) next.disabled = page >= pageCount;
       pager.hidden = matches.length === 0;
     }
-    const libraryRange = qs("[data-journal-library-range]", panel.closest(".page"));
-    if (libraryRange) libraryRange.textContent =
-      (matches.length ? offset + 1 : 0) + "–" + (offset + shown.length) + " of " + matches.length;
-    const libraryPrev = qs("[data-journal-library-prev]", panel.closest(".page"));
-    const libraryNext = qs("[data-journal-library-next]", panel.closest(".page"));
-    if (libraryPrev) libraryPrev.disabled = page <= 1;
-    if (libraryNext) libraryNext.disabled = page >= pageCount;
     const fixedBody = qs("[data-heatmap-fixed-body]", panel);
     if (!fixedBody) return;
     const yearNodes = document.createDocumentFragment();
@@ -1563,8 +1556,6 @@
       }));
     heatmap.replaceChildren(yearNodes);
     fixedBody.replaceChildren(fixedNodes);
-    const journalCount = qs("[data-journal-library-count]", panel.closest(".page"));
-    if (journalCount) journalCount.textContent = String(matches.length);
     // When search, sort, or pagination rebuilds the fixed journal column,
     // keep the highlight on the journal currently shown in the rank panel.
     highlightRankJournal(qs("[data-rank-panel]")?.dataset.journalName);
@@ -2362,12 +2353,6 @@
       qs("[data-journal-create-dialog]")?.close();
       return;
     }
-    const prev = event.target.closest?.("[data-journal-library-prev]");
-    const next = event.target.closest?.("[data-journal-library-next]");
-    if (prev || next) {
-      const panel = qs(".heatmap-panel");
-      if (panel) goToJournalPage(panel, Number(panel.dataset.journalPage || 1) + (next ? 1 : -1));
-    }
   });
   const initHeatmap = (root = document) => {
     initJournalLibrary(root);
@@ -3115,7 +3100,10 @@
       const select = qs("[data-journal-sort]", panel);
       if (!select) return;
       const field = sortHeading.dataset.journalSortToggle;
-      select.value = field + "-" + (select.value === field + "-desc" ? "asc" : "desc");
+      const direction = select.value === field + "-asc" ? "desc"
+        : select.value === field + "-desc" ? "asc"
+        : field === "name" ? "asc" : "desc";
+      select.value = field + "-" + direction;
       saveJournalSort(select.value);
       sortJournalRows(select);
       return;

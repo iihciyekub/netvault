@@ -5268,3 +5268,58 @@ body.dashboard-body:has([data-journal-library]) {
   border-radius: 8px;
   background: var(--soft);
 }
+
+/* Compact journal-list navigation; no duplicate title, journal list, or footer. */
+.dashboard-body .journal-library-collections {
+  flex: 1 1 auto;
+  max-height: none;
+  height: auto;
+  min-height: 0;
+  padding-top: 9px;
+  border-bottom: 0;
+}
+.dashboard-body .journal-library .journal-list-group[data-journal-list-group="custom"] {
+  position: relative;
+}
+.dashboard-body .journal-library .journal-list-group[data-journal-list-group="custom"] > .journal-list-group-heading {
+  padding-right: 62px;
+}
+.dashboard-body .journal-library .journal-list-group[data-journal-list-group="custom"] > .journal-list-group-heading > i {
+  position: absolute;
+  right: 40px;
+  top: 10px;
+}
+.dashboard-body .journal-library .journal-list-group[data-journal-list-group="custom"] > .journal-library-create {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 7px;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  min-height: 29px;
+  min-width: 29px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.dashboard-body .journal-library .journal-list-group[data-journal-list-group="custom"] > .journal-library-create:is(:hover, :focus-visible) {
+  background: var(--soft);
+  color: var(--fg);
+}
+.dashboard-body .heatmap-fixed-heading button.heat-corner {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.dashboard-body .heatmap-fixed-heading button.heat-corner:is(:hover, :focus-visible) {
+  color: var(--fg);
+}
