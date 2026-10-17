@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.78 — 2026-10-17
+
+- Simplify the public README to focus on the `nv` CLI and web management.
+- Release the consolidated NetVault CLI, server and web UI as one matching version.
+
 ## 0.7.77 — 2026-10-17
 
 - Merge the VPS NetVault functionality with the GitHub 0.7.76 release without replacing remote history.
