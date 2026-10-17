@@ -4555,16 +4555,7 @@ body.dashboard-body:has([data-journal-library]) {
   font-variant-numeric: tabular-nums;
 }
 .dashboard-body .journal-library-footer button:disabled { opacity: .25; cursor: default; }
-.dashboard-body .heatmap-fixed-viewport {
-  flex: 0 0 var(--heat-total-width);
-  width: var(--heat-total-width);
-}
-.dashboard-body .heatmap-fixed-heading,
-.dashboard-body .heatmap-fixed-body {
-  grid-template-columns: var(--heat-total-width);
-  column-gap: 0;
-}
-.dashboard-body .heatmap-fixed-heading .heat-corner { display: none; }
+/* Keep Total and Journal as two adjacent fixed columns. */
 @media (max-width: 1120px) {
   body.dashboard-body:has([data-journal-library]) {
     padding-left: var(--sidebar-width);
@@ -5236,4 +5227,13 @@ body.dashboard-body:has([data-journal-library]) {
 .dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh]:disabled {
   opacity: .5;
   cursor: wait;
+}
+
+/* Muted empty journal rail, as in the original split-view design. */
+.dashboard-body .journal-library-scroll-indicator {
+  display: block;
+  width: 18px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--soft);
 }

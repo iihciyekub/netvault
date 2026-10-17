@@ -1543,23 +1543,26 @@
       if (next) next.disabled = page >= pageCount;
       pager.hidden = matches.length === 0;
     }
+    const libraryRange = qs("[data-journal-library-range]", panel.closest(".page"));
+    if (libraryRange) libraryRange.textContent =
+      (matches.length ? offset + 1 : 0) + "–" + (offset + shown.length) + " of " + matches.length;
+    const libraryPrev = qs("[data-journal-library-prev]", panel.closest(".page"));
+    const libraryNext = qs("[data-journal-library-next]", panel.closest(".page"));
+    if (libraryPrev) libraryPrev.disabled = page <= 1;
+    if (libraryNext) libraryNext.disabled = page >= pageCount;
     const fixedBody = qs("[data-heatmap-fixed-body]", panel);
     if (!fixedBody) return;
     const yearNodes = document.createDocumentFragment();
     const fixedNodes = document.createDocumentFragment();
-    const journalNodes = document.createDocumentFragment();
-    const journalNav = qs("[data-journal-library-items]", panel.closest(".page"));
     qsa(".heat-year", heatmap).forEach((node) => yearNodes.append(node));
     shown.forEach((row) => renderJournalRow(row, years, panel.dataset.pdfSearchUrl)
       .forEach((node, index) => {
         if (index < years.length) yearNodes.append(node);
         else if (index === years.length) fixedNodes.append(node);
-        else if (journalNav) journalNodes.append(node);
         else fixedNodes.append(node);
       }));
     heatmap.replaceChildren(yearNodes);
     fixedBody.replaceChildren(fixedNodes);
-    if (journalNav) journalNav.replaceChildren(journalNodes);
     const journalCount = qs("[data-journal-library-count]", panel.closest(".page"));
     if (journalCount) journalCount.textContent = String(matches.length);
     // When search, sort, or pagination rebuilds the fixed journal column,
