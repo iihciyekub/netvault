@@ -379,8 +379,9 @@ def test_chat_style_journal_library_and_centered_table_both_show_names(tmp_path:
     assert opened["journalRows"] == opened["fixedRows"] == 7
     assert abs(opened["journalItem"]["height"] - 29) < 1
     assert abs(opened["library"]["right"] - opened["page"]["left"]) < 20
-    assert closed["libraryDisplay"] == "none"
-    assert closed["page"]["left"] < opened["page"]["left"] - 180
+    # The journal navigator is permanent; the legacy collapsed flag must not hide it.
+    assert closed["libraryDisplay"] == "flex"
+    assert abs(closed["page"]["left"] - opened["page"]["left"]) < 1
     # Names are deliberately in BOTH the left list and the chart's fixed
     # Journal column; neither duplicates a year cell or changes cell width.
     assert opened["year"]["width"] == closed["year"]["width"]
