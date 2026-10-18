@@ -35,3 +35,11 @@ Run `nv --help` for all commands.
 ## Web management
 
 Open **[NetVault Web](https://iiaide.com/nv/web)** to search and manage PDFs, journal lists, and account/admin settings.
+
+### Offline folder cleanup
+
+Preview recursively with `nv tidy .` and apply with `nv tidy . --apply`. Only confirmed duplicates in the same directory are deleted; PDFs without a DOI in Document Info or pages 1-2 move into each parent's `unidentifys/`. The command never accesses the server.
+
+### Single operation journal
+
+All local CLI operation history lives in `.netvault/history.jsonl` at the chosen root. Read-only previews write nothing; applied file changes and unresolved upload outcomes use the hidden JSONL. A completed upload removes resolved per-PDF entries from the active log after verifying the server result. `nv upload --retry-failed` reads the journal; historical SQLite and JSON records are retained, not overwritten or deleted. Add `--report custom.json` (upload) only when an external consumer needs a legacy export.

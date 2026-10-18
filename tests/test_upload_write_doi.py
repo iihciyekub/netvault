@@ -83,7 +83,12 @@ def configured(tmp_path, monkeypatch):
 
 
 def invoke(path, *options):
-    return CliRunner().invoke(user.app, ["upload", str(path), *options])
+    # Exercise opt-in legacy JSON export compatibility.
+    report_dir = path if path.is_dir() else path.parent
+    return CliRunner().invoke(
+        user.app, ["upload", str(path), "--report",
+                   str(report_dir / "nv-upload-report.json"), *options]
+    )
 
 
 def report(path):

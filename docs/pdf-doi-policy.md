@@ -173,7 +173,8 @@ successful-metadata requirement still applies.
 | `nv doi` | Inspect resolver evidence or manage a local SHA-bound identity hint with `--set`, `--show-cache` or `--remove`. | No |
 | `nv upload` | Apply the identity policy, enrich metadata when enabled, deduplicate and bind/store the PDF on the server. | No local PDF change |
 | `nv upload --write-doi` | Independently verify an eligible missing DOI, safely append it locally, then apply upload/deduplication policy using the resulting hash. | Yes, only after all write checks pass; `--dry-run` never writes |
-| `nv identify` | Match local SHA-256 values to existing server hashes/aliases or an exported inventory, with optional renaming/organization. It does not infer a new DOI from metadata or page text. | No byte changes; `--rename` can move files |
+| `nv tidy` | Organize local PDFs offline by Document Info and pages 1–2 DOI; remove only same-directory confirmed duplicates and collect missing DOI files under each `unidentifys/`. | `--apply` can move or delete files; never stamps `/DOI` |
+| `nv upload --doi DOI` / `--csv mappings.csv` | Explicitly trust the DOI/PDF pairing (including scanned PDFs); skip CSL-vs-PDF title checks, but validate DOI format and server upload safety; stamp server-side saved PDF `/DOI`. | No change to local PDF |
 | `nv check-pdfs` | Check whether PDFs can be opened and optionally move damaged files into `error/`. It does not validate DOI identity or metadata. | No byte changes; damaged files can move |
 | `nv correct-doi` | Administratively correct an existing server identity and registry metadata after preview and confirmation. | No byte changes |
 

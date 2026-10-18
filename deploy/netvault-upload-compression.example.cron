@@ -1,0 +1,9 @@
+# OPTIONAL: enable only after the matching NetVault server/CLI release is
+# deployed and the administrator approves unattended PDF object modifications.
+# Bounded, single-worker PDFCraft sweep; never blocks nv upload.
+# It also processes previously unoptimized PDFs, not only brand-new uploads.
+# Existing object/DOI validation and no-growth rules remain authoritative.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+*/10 * * * * root cd /root/iiaide/netvault && /usr/bin/flock -n /var/lock/netvault-upload-compression.lock /root/iiaide/netvault/.venv/bin/python scripts/compress_pdfs_parallel.py --all --jobs 1 --max-files 8 >> /var/log/netvault-upload-compression.log 2>&1

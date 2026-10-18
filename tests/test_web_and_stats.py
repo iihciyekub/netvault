@@ -554,8 +554,8 @@ def test_dashboard_can_include_a_pinned_journal_outside_top_twenty(client: TestC
     assert 'class="dashboard-admin-console"' not in normal.text
     assert 'id="journal-heatmap-sort" data-journal-sort aria-label="Sort journals" hidden>' in normal.text
     assert 'data-journal-sort-toggle="total" aria-pressed="true" title="Sort by total">Total</button>' in normal.text
-    assert 'data-journal-sort-toggle="name" data-journal-library-sort' in normal.text
-    assert 'data-journal-library-items' in normal.text
+    assert 'data-journal-sort-toggle="name" aria-pressed="false" title="Sort by journal name"' in normal.text
+    assert 'data-journal-list-group="custom"' in normal.text
     assert '<option value="name-asc">Journal A–Z</option>' in normal.text
     assert '<option value="name-desc">Journal Z–A</option>' in normal.text
     assert '<option value="total-desc" selected>Total: High to Low</option>' in normal.text
@@ -647,11 +647,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'data-journal-list-edit-trigger' in dashboard.text
     assert "Changes are private to your account and sync across devices." in dashboard.text
     assert 'title="Click to filter; right-click to edit UTD24"' in dashboard.text
-    assert "summary-count" in dashboard.text
+    assert 'class="journal-library" data-journal-library' in dashboard.text
     assert ">0</span>" in dashboard.text
     assert "0 PDFs" not in dashboard.text
     assert "1974-" not in dashboard.text
-    assert "Vault summary" in dashboard.text
+    assert 'aria-label="Journal list"' in dashboard.text
     assert "<span>Users</span>" not in dashboard.text
     assert "Admin" in dashboard.text
     assert "Help" in dashboard.text
@@ -696,13 +696,13 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "nv upload ./papers --dry-run" in cli_page.text
     assert 'data-copy="nv upload ./papers --retry-failed"' in cli_page.text
     assert 'data-copy="nv upload ./papers --refresh-doi"' in cli_page.text
-    assert ".netvault-upload.sqlite3" in cli_page.text
+    assert ".netvault/history.jsonl" in cli_page.text
     assert "PaperDock" in cli_page.text
     assert cli_page.headers["cache-control"] == "no-store"
     assert "nv upload ./papers --csv ./cli-downloads.csv --dry-run" in cli_page.text
     assert "NetVault automatically looks for" in cli_page.text
-    assert "Unmatched or ambiguous files are reported as failures" in cli_page.text
-    assert "status=downloaded" in cli_page.text
+    assert "Scanned PDFs are supported" in cli_page.text
+    assert "file,doi" in cli_page.text
     assert "data-copy" in cli_page.text
     assert 'class="command-timeline"' in cli_page.text
     assert cli_page.text.count('class="timeline-node"') == 5
@@ -712,13 +712,12 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert '<h2>Advanced Management</h2>' in cli_page.text
     management = re.search(r'<details class="command-management"([^>]*)>', cli_page.text)
     assert management and "open" not in management.group(1)
-    assert '<h3>Literature Management</h3>' in cli_page.text
-    assert 'data-copy="nv identify ./papers"' in cli_page.text
-    assert 'data-copy="nv identify ./papers --rename"' in cli_page.text
-    assert 'data-copy="nv identify ./papers --issn 0025-1909 --rename"' in cli_page.text
-    assert 'data-copy="nv identify ./papers --index ./netvault-0025-1909.csv --rename"' in cli_page.text
-    assert 'data-copy="nv identify ./papers --check-content --rename"' in cli_page.text
-    assert "Files absent from that index stay in place" in cli_page.text
+    assert '<h3>Offline PDF Tidy</h3>' in cli_page.text
+    assert 'data-copy="nv tidy ./papers"' in cli_page.text
+    assert 'data-copy="nv tidy ./papers --apply"' in cli_page.text
+    assert 'data-copy="nv upload ./papers --csv ./cli-downloads.csv --dry-run"' in cli_page.text
+    assert 'data-copy="nv identify' not in cli_page.text
+    assert "local SHA-256 matching has been removed" in cli_page.text
     assert "nv rename" not in cli_page.text
     assert "fa-cloud-arrow-down" in cli_page.text
     assert "data-copy-label" in cli_page.text
@@ -1267,13 +1266,12 @@ def test_left_journal_list_picker_can_create_switch_and_delete_only_custom_lists
     assert '<span>My lists</span>' in initial
     assert '<div class="journal-library-collections-head">Lists</div>' not in initial
     assert 'data-journal-create-form' in initial
-    assert initial.index('data-custom-list-create') > initial.index('class="journal-library-footer"')
-    assert 'data-journal-library-items' in initial
+    assert initial.index('data-custom-list-create') > initial.index('data-journal-list-group="custom"')
+    assert 'data-journal-list-group="custom"' in initial
     assert 'data-custom-list-create' in initial
     assert 'data-journal-custom-delete' not in initial
     assert initial.index('<div class="filter-tabs"') > initial.index('<aside class="journal-library"')
-    title = re.search(r'<h2 data-journal-library-title title="([^"]+)">([^<]+)</h2>', initial)
-    assert title is not None and title.group(1) == title.group(2)
+    assert '<summary class="journal-list-group-heading">' in initial
     assert 'data-rank-workspace data-rank-layout="docked"' in initial
 
     created = client.post(
@@ -1290,7 +1288,7 @@ def test_left_journal_list_picker_can_create_switch_and_delete_only_custom_lists
     assert saved.status_code == 200, saved.text
     selected = client.get("/web", params={"filter": key})
     assert selected.status_code == 200, selected.text
-    assert 'data-journal-library-title title="Intercultural work">Intercultural work</h2>' in selected.text
+    assert '>Intercultural work</span>' in selected.text
     assert f'data-list-key="{key}"' in selected.text
     assert f'data-endpoint="/web/journal-filters/{key}"' in selected.text
     assert 'data-journal-custom-delete' in selected.text
@@ -1305,7 +1303,7 @@ def test_left_journal_list_picker_can_create_switch_and_delete_only_custom_lists
     updated = client.get("/web", params={"filter": "all"})
     assert updated.status_code == 200
     assert f'data-list-key="{key}"' not in updated.text
-    assert 'data-journal-library-title title="All">All</h2>' in updated.text
+    assert 'href="/web?filter=all"' in updated.text
 
 
 def test_creating_categorized_list_keeps_dashboard_stats_cached_and_can_edit_metadata(

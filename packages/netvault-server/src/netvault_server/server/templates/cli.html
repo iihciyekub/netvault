@@ -61,7 +61,7 @@
     </header>
     <div class="command-card-body">
       <p><strong>Preview first, then upload.</strong> Folders include all subfolders.</p>
-      <p>A unique DOI in PDF Document Info takes priority over cached hints, download indexes, manual DOI hints, filenames and page text. NetVault fetches metadata for that DOI and binds the PDF to it; unavailable metadata does not change its identity. Conflicting Document Info DOIs require correction. Without an Info DOI, the existing resolver applies.</p>
+      <p>Ordinary uploads check server DOIs before hashing or transferring PDFs. A unique Document Info DOI is trusted; text-derived DOIs use pdftotext pages 1-2 and exact CSL title confirmation for new records. Explicit --doi and --csv mappings take priority and bypass PDF identity/title checks. Ambiguous automatic identities need review.</p>
       <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--dry-run</span></code>
@@ -92,7 +92,7 @@
         <p>A successful write creates <code>filename.pdf.nv-doi-&lt;original-sha256&gt;.bak</code> beside the source, validates an incremental temporary file and the unchanged source hash, then atomically replaces the source. Upload uses the new SHA-256. The report records verification, original/new hashes and the backup path. Write failures stop that file's upload.</p>
         <p><code>--write-doi</code> cannot be combined with <code>--csv</code>, <code>--no-crossref</code> or <code>--doi</code>. Ordinary deduplication retains an existing same-DOI server copy, so downloads may differ from the locally tagged PDF. Add <code>--force</code> to request canonical replacement; successful registry metadata is still required.</p>
       </details>
-      <p>Run the same upload command to continue. NetVault saves <code>.netvault-upload.sqlite3</code> beside the PDFs, skips files already on the server and remembers confirmed DOI/title rejections. New or changed files are processed; temporary errors can retry. Keep this hidden file when copying a folder. Full run results are saved in <code>nv-upload-report.json</code>; <code>--verbose</code> shows individual errors.</p>
+      <p>Run the same upload command to continue. NetVault appends meaningful uploads and failures to <code>.netvault/history.jsonl</code> under the selected root; the default upload creates neither SQLite nor JSON reports. Legacy upload SQLite files are read-only for recovery. Use <code>--retry-failed</code> for rejected files or <code>--report custom.json</code> for an explicit legacy export.</p>
       <details class="command-advanced">
         <summary>Retry files and PaperDock integration</summary>
         <div class="command-list">
@@ -130,7 +130,7 @@
         </div>
       </div>
       <p class="command-help-gap">After an interruption, run the same command with the same <code>--to</code> directory. Verified complete files are skipped and <code>.part</code> files resume with checksum verification.</p>
-      <p class="command-help-gap">Downloads use 8 parallel workers by default. Admin downloads have no hourly count limit; regular users keep the server limit. If the limit is reached, run the same command later. Failure and pending details are saved to <code>nv-download-report.json</code>.</p>
+      <p class="command-help-gap">Downloads use 8 parallel workers by default. Admin downloads have no hourly count limit; regular users keep the server limit. If the limit is reached, run the same command later. New downloads and errors append to <code>.netvault/history.jsonl</code> in the destination.</p>
     </div>
   </article>
 
@@ -142,57 +142,23 @@
         <h2>Advanced Management</h2>
       </summary>
       <div class="command-card-body">
-        <h3>Literature Management</h3>
-      <p>One command for local PDFs: <strong>preview first, add <code>--rename</code> to apply.</strong> Subfolders are included and no PDFs are uploaded.</p>
-      <p><strong>1. Preview any folder — no ISSN needed:</strong></p>
-      <div class="command-list">
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">identify</span> <span class="syntax-path">./papers</span></code>
-          <button class="copy-button" type="button" data-copy="nv identify ./papers" aria-label="Copy literature preview command"><span data-copy-label>Copy</span></button>
-        </div>
-      </div>
-      <p class="command-help-gap"><strong>2. Rename and organize:</strong></p>
-      <div class="command-list">
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">identify</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--rename</span></code>
-          <button class="copy-button" type="button" data-copy="nv identify ./papers --rename" aria-label="Copy literature organize command"><span data-copy-label>Copy</span></button>
-        </div>
-      </div>
-      <p class="command-help-gap"><strong>Know the journal? Add <code>--issn</code> for fast local matching:</strong></p>
-      <div class="command-list">
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">identify</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--issn</span> <span class="syntax-doi">0025-1909</span> <span class="syntax-option">--rename</span></code>
-          <button class="copy-button" type="button" data-copy="nv identify ./papers --issn 0025-1909 --rename" aria-label="Copy journal literature command"><span data-copy-label>Copy</span></button>
-        </div>
-      </div>
-      <p>Omit <code>--rename</code> from any example to preview. Matched PDFs get DOI filenames. Extra identical copies go into <code>duplicates/</code> beside each source PDF. Full-vault misses go into that PDF's <code>unidentifys/</code>. Existing files are never overwritten.</p>
-      <p><code>--issn</code> downloads one journal index once. Files absent from that index stay in place; check them later without <code>--issn</code>.</p>
-      <details class="command-advanced">
-        <summary>Offline index and content duplicates</summary>
-        <p>Export once, then reuse the CSV without login or network requests:</p>
+        <h3>Offline PDF Tidy</h3>
+        <p>Preview recursive PDF cleanup offline: only confirmed duplicates in the same directory can be removed, and PDFs with no DOI in Document Info or pages 1-2 move into that directory's unidentifys/ folder. Other folders are never deduplicated against one another.</p>
         <div class="command-list">
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">export</span> <span class="syntax-option">--issn</span> <span class="syntax-doi">0025-1909</span></code>
-          <button class="copy-button" type="button" data-copy="nv export --issn 0025-1909" aria-label="Copy journal inventory export command"><span data-copy-label>Copy</span></button>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">tidy</span> <span class="syntax-path">./papers</span></code>
+            <button class="copy-button" type="button" data-copy="nv tidy ./papers" aria-label="Copy local PDF tidy preview command"><span data-copy-label>Copy</span></button>
+          </div>
+          <div class="command-row">
+            <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">tidy</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--apply</span></code>
+            <button class="copy-button" type="button" data-copy="nv tidy ./papers --apply" aria-label="Copy local PDF tidy apply command"><span data-copy-label>Copy</span></button>
+          </div>
         </div>
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">identify</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--index</span> <span class="syntax-path">./netvault-0025-1909.csv</span> <span class="syntax-option">--rename</span></code>
-          <button class="copy-button" type="button" data-copy="nv identify ./papers --index ./netvault-0025-1909.csv --rename" aria-label="Copy offline literature command"><span data-copy-label>Copy</span></button>
-        </div>
-        </div>
-        <p>Index misses stay in place. Exports include accepted file aliases; add --primary-only for retained hashes. Exports keep existing CSVs and add a number to the filename if needed. Use the actual exported filename with <code>--index</code>.</p>
-        <p class="command-help-gap">For files with the same page content but different PDF bytes, add <code>--check-content</code>. This takes longer:</p>
-        <div class="command-list">
-        <div class="command-row">
-          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">identify</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--check-content</span> <span class="syntax-option">--rename</span></code>
-          <button class="copy-button" type="button" data-copy="nv identify ./papers --check-content --rename" aria-label="Copy content duplicate check command"><span data-copy-label>Copy</span></button>
-        </div>
-        </div>
-        <p>Each run writes a new <code>netvault-index.csv</code> report in the scanned folder. Use <code>--report ./report.csv</code> to choose a different new report.</p>
-      </details>
+        <p>With --apply, confirmed duplicates are deleted permanently; differing content is retained. Changes and failures append to <code>.netvault/history.jsonl</code> under the scanned root. Preview writes nothing. Recursive nv upload scans skip unidentifys/ and duplicates/.</p>
+        <p>Server PDFs can be recompressed: local SHA-256 matching has been removed. Use <code>nv tidy</code> for local cleanup, and DOI-first <code>nv upload</code> for online library matching.</p>
       <details class="command-advanced">
         <summary>CSV uploads and manual DOI</summary>
-        <p>Explicit <code>--csv</code> is a separate trusted import mode that uses the CSV's DOI/PDF pairs, including scanned PDFs without readable text, instead of PDF DOI extraction. Files must match one CSV record by SHA-256 or filename and byte size. Unmatched or ambiguous files are reported as failures. Ordinary <code>--doi</code> hints apply only when Document Info has no DOI.</p>
+        <p>Trusted <code>--doi</code> or <code>--csv file,doi</code> mappings work for scanned, image-only PDFs: the server looks up CSL bibliographic metadata but does not compare its title with the PDF text. The stored PDF receives canonical <code>/DOI</code> Document Info metadata; the original local PDF is unchanged. PDFs already stored under that DOI are skipped by default; use <code>--force</code> only for an intentional replacement. Invalid PDFs or conflicting DOI assignments can still be rejected.</p>
         <div class="command-list">
         <div class="command-row">
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">upload</span> <span class="syntax-path">./papers</span> <span class="syntax-option">--csv</span> <span class="syntax-path">./cli-downloads.csv</span> <span class="syntax-option">--dry-run</span></code>
@@ -207,7 +173,7 @@
           <button class="copy-button" type="button" data-copy="nv upload ./paper.pdf --doi 10.1234/example" aria-label="Copy manual DOI upload command"><span data-copy-label>Copy</span></button>
         </div>
         </div>
-        <p>CSV rows need <code>file</code> or <code>filename</code>, <code>doi</code>, <code>bytes</code> or <code>size</code>, and <code>status=downloaded</code>. Optional <code>sha256</code> supports renamed files. Preview with <code>--dry-run</code> before uploading. CSV imports cannot use <code>--write-doi</code>.</p>
+        <p>A minimal CSV needs only <code>file,doi</code> headers and one DOI per file. Files match by relative path or unambiguous filename; byte size and SHA-256 are not required. Scanned PDFs are supported. Preview with <code>--dry-run</code>. Explicit CSV imports cannot use <code>--write-doi</code>.</p>
       </details>
       <details class="command-advanced">
         <summary>Read and write PDF DOI metadata</summary>

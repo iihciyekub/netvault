@@ -114,19 +114,30 @@ def move_without_overwrite(source: Path, destination: Path, sha256: str,
         raise
 
 
+class _DiscardReport:
+    """CSV writer target that stores no report rows and allocates no files."""
+    def write(self, value: str) -> int:
+        return len(value)
+
+    def flush(self) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+
 def open_report(directory: Path, requested: Path | None):
+    if requested is None:
+        return None, _DiscardReport()
+
     if requested is not None:
         if requested.suffix.lower() != ".csv":
             raise ValueError("--report must name a .csv file")
         return requested, requested.open("x", encoding="utf-8-sig", newline="")
-    index = 1
-    while True:
-        suffix = "" if index == 1 else f"-{index}"
-        path = directory / f"netvault-index{suffix}.csv"
-        try:
-            return path, path.open("x", encoding="utf-8-sig", newline="")
-        except FileExistsError:
-            index += 1
+    raise ValueError("Explicit --report CSV must be a writable new file")
 
 
 def scan_for_collections(
@@ -175,7 +186,8 @@ def identify_pdfs(
     collect_by_parent: bool = False,
     collect_unidentified: bool = True,
     progress: Callable[[str, int, int], None] | None = None,
-) -> tuple[Path, dict[str, int]]:
+    audit: Callable[[dict], None] | None = None,
+) -> tuple[Path | None, dict[str, int]]:
     directory = directory.expanduser().resolve()
     duplicates_to = duplicates_to.expanduser().resolve() if duplicates_to else None
     unidentified_to = unidentified_to.expanduser().resolve() if unidentified_to else None
@@ -272,7 +284,8 @@ def identify_pdfs(
         writer = csv.DictWriter(report, fieldnames=CSV_FIELDS)
         writer.writeheader()
         report.flush()
-        os.fsync(report.fileno())
+        if report_path is not None:
+            os.fsync(report.fileno())
         for index, pdf in enumerate(ordered, 1):
             duplicate_directory = duplicates_to
             unidentified_directory = unidentified_to
@@ -372,20 +385,25 @@ def identify_pdfs(
                     status, error = "error", str(exc)
             match_status = ("error" if pdf.error else "matched" if pdf.doi
                             else "not_found" if collect_unidentified else "not_in_index")
-            writer.writerow({
+            row = {
                 "sha256": pdf.sha256, "doi": pdf.doi,
                 "directory": str(current.parent), "original_filename": pdf.path.name,
                 "filename": current.name, "original_path": str(pdf.path),
                 "path": str(current), "proposed_path": str(proposed), "status": status,
                 "match_status": match_status,
                 "duplicate_of": duplicate_of, "conflict_with": conflict_with,
-                "conflict_with_sha256": conflict_with_sha256, "error": error,
+                "conflict_with_sha256": conflict_with_sha256,
                 "content_sha256": pdf.content_sha256,
                 "content_duplicate_of": content_duplicate_of,
                 "content_duplicate_of_sha256": content_duplicate_of_sha256,
-            })
+                "error": error,
+            }
+            writer.writerow(row)
+            if audit is not None:
+                audit(row)
             report.flush()
-            os.fsync(report.fileno())
+            if report_path is not None:
+                os.fsync(report.fileno())
             counts[status] = counts.get(status, 0) + 1
             if progress:
                 progress("Processing PDFs", index, len(ordered))

@@ -85,6 +85,46 @@ def test_server_csv_scan_accepts_without_pdf_identity_or_metadata_gate(
         assert evidence["verification"][0]["pdf_content_verified"] is False
 
 
+@pytest.mark.parametrize("source", ["csv-trusted", "manual-trusted"])
+def test_trusted_explicit_doi_scanned_pdf_stamps_metadata_without_title_check(
+    client, monkeypatch, source,
+):
+    """Scanned PDFs with trusted DOI upload even if CSL title is unrelated."""
+    helpers = importlib.import_module("netvault_server.server.main_helpers")
+    crossref = importlib.import_module("netvault_server.server.crossref")
+    storage = importlib.import_module("netvault_server.server.storage")
+    forbid_pdf_identity(helpers, monkeypatch)
+    calls = []
+
+    def csl(doi):
+        calls.append(doi)
+        return crossref.CrossrefMetadata(
+            status="ok", title="CSL title deliberately different from scanned PDF",
+            authors="Example Author", container_title="Example Journal",
+        )
+
+    monkeypatch.setattr(helpers, "fetch_doi_metadata", csl)
+    original = scanned_pdf()
+    assert (PdfReader(io.BytesIO(original)).metadata or {}).get("/DOI") is None
+    response = upload(
+        client, login(client, "admin", "admin-pass"),
+        content=original, doi=DOI, doi_source=source,
+    )
+    assert response.status_code == 200, response.text
+    item = response.json()["pdf"]
+    assert item["doi"] == DOI
+    assert item["doi_source"] == source
+    assert item["crossref_status"] == "ok"
+    assert calls == [DOI]
+    saved = storage.object_path(item["sha256"])
+    assert saved.is_file()
+    doc = PdfReader(str(saved))
+    assert doc.metadata.get("/DOI") == DOI
+    assert len(doc.pages) == 1
+    assert doc.pages[0].extract_text() == ""
+    assert saved.read_bytes() != original  # server stamped; local bytes unchanged
+
+
 def test_automatic_csv_scan_still_requires_title_verification(client, monkeypatch):
     helpers = importlib.import_module("netvault_server.server.main_helpers")
     monkeypatch.setattr(helpers, "extract_pdf_text", lambda path: "")
@@ -112,11 +152,12 @@ def test_csv_aliases_deduplicate_but_never_reassign_existing_hash(client, monkey
     models = importlib.import_module("netvault_server.server.models")
     with database.SessionLocal() as db:
         assert db.query(models.Pdf).count() == 1
-        assert db.query(models.PdfFileAlias).one().source == "csv-trusted"
+        sources = {alias.source for alias in db.query(models.PdfFileAlias).all()}
+        assert "csv-trusted" in sources and "upload-input" in sources
 
 
 @pytest.mark.parametrize("available", [True, False])
-def test_csv_force_skips_pdf_identity_but_requires_metadata(client, monkeypatch, available):
+def test_csv_force_skips_identity_even_when_metadata_unavailable(client, monkeypatch, available):
     helpers = importlib.import_module("netvault_server.server.main_helpers")
     crossref = importlib.import_module("netvault_server.server.crossref")
     forbid_pdf_identity(helpers, monkeypatch)
@@ -127,11 +168,8 @@ def test_csv_force_skips_pdf_identity_but_requires_metadata(client, monkeypatch,
                         crossref.CrossrefMetadata(status="ok" if available else "unavailable"))
     result = upload(client, headers, content=scanned_pdf(b"\xff\x00\x00"), doi=DOI,
                     doi_source="csv-trusted", force=True)
-    assert result.status_code == (200 if available else 503), result.text
-    if available:
-        assert result.json()["replaced"] is True
-    else:
-        assert client.get("/pdfs", headers=headers).json()[0]["sha256"] == first.json()["pdf"]["sha256"]
+    assert result.status_code == 200, result.text
+    assert result.json()["replaced"] is True
 
 
 @pytest.mark.parametrize("content,doi", [
@@ -189,7 +227,10 @@ def test_cli_explicit_csv_trust_never_persists_and_does_not_skip_hash_conflicts(
     digest = user.file_sha256(pdf)
     monkeypatch.setattr(user, "get_existing_pdfs_by_sha256", lambda *a, **k:
                         {digest: {"doi": "10.1234/previous", "original_name": pdf.name}})
-    result = CliRunner().invoke(user.app, ["upload", str(pdf), "--csv", str(csv_path)])
+    result = CliRunner().invoke(user.app, [
+        "upload", str(pdf), "--csv", str(csv_path),
+        "--report", str(pdf.parent / "nv-upload-report.json"),
+    ])
     assert result.exit_code == 0, result.output
     assert calls[0]["doi_source"] == "csv-trusted"  # Must reach the server's conflict check.
     assert not user.IDENTITY_CACHE_PATH.exists()
@@ -225,14 +266,26 @@ def test_cli_explicit_csv_unmatched_never_uses_cached_or_pdf_identity(cli_setup,
     user.save_identity_cache({digest: user.identity_from_evidence(
         DoiEvidence("ok", DOI, "pdf-content", [])
     )})
-    result = CliRunner().invoke(user.app, ["upload", str(pdf), "--csv", str(csv_path)])
+    result = CliRunner().invoke(user.app, [
+        "upload", str(pdf), "--csv", str(csv_path),
+        "--report", str(pdf.parent / "nv-upload-report.json"),
+    ])
+    if mode in {"wrong-size", "wrong-hash"}:
+        # A trusted DOI mapping survives recompression and metadata updates.
+        assert result.exit_code == 0, result.output
+        assert len(calls) == 1 and calls[0]["doi"] == DOI
+        return
+    if mode == "ambiguous":
+        assert result.exit_code != 0
+        assert "Conflicting DOI CSV entries" in str(result.exception)
+        assert not calls
+        return
     assert result.exit_code == 1, result.output
     saved = json.loads((root / "nv-upload-report.json").read_text())
-    assert "PDF fallback is disabled" in saved["files"][0]["error"]
+    assert "No unambiguous file/DOI match" in saved["files"][0]["error"]
     assert not calls
-    report = json.loads((root / "nv-upload-report.json").read_text())
-    assert report["summary"]["failed"] == 1
-    assert report["summary"]["pending"] == 0
+    assert saved["summary"]["failed"] == 1
+    assert saved["summary"]["pending"] == 0
 
 
 def test_explicit_csv_hash_ambiguity_cannot_fall_back_to_original_name(tmp_path):
@@ -256,7 +309,10 @@ def test_identical_files_cannot_have_different_csv_dois(cli_setup):
     second.write_bytes(first.read_bytes())
     csv_path = root / "cli-downloads.csv"
     write_csv(csv_path, [csv_row(first), csv_row(second, doi="10.1234/different")])
-    result = CliRunner().invoke(user.app, ["upload", str(docs), "--csv", str(csv_path)])
+    result = CliRunner().invoke(user.app, [
+        "upload", str(docs), "--csv", str(csv_path),
+        "--report", str(root / "nv-upload-report.json"),
+    ])
     assert result.exit_code == 1, result.output
     saved = json.loads((root / "nv-upload-report.json").read_text())
     assert all("different DOIs to identical PDFs" in row["error"] for row in saved["files"])
@@ -275,7 +331,7 @@ def test_explicit_csv_preview_does_not_read_pdf_for_title_only_match(cli_setup):
                                title="An Article Title Long Enough for Automatic Matching")])
     result = CliRunner().invoke(user.app, ["upload", str(pdf), "--csv", str(csv_path), "--dry-run"])
     assert result.exit_code == 0, result.output
-    assert "PDF fallback is disabled" in " ".join(result.output.split())
+    assert "No unambiguous file/DOI match" in " ".join(result.output.split())
     assert not calls
     assert not user.HASH_CACHE_PATH.exists()
     assert not user.IDENTITY_CACHE_PATH.exists()

@@ -1,5 +1,4 @@
 import hashlib
-import json
 import threading
 from types import SimpleNamespace
 
@@ -317,9 +316,11 @@ def test_download_limit_stops_queue_and_saves_pending_report(tmp_path, monkeypat
     assert 'Server download limit reached' in result.output
     assert 'HTTPConnectionPool' not in result.output
     assert all(doi not in result.output for doi in dois)
-    report = json.loads((tmp_path / 'nv-download-report.json').read_text())
-    assert set(report['pending']) == set(dois)
-    assert report['failed'] == []
+    from netvault.cli.history import History
+    events = list(History(tmp_path, "download").records())
+    assert {event["doi"] for event in events if event["result"] == "pending"} == set(dois)
+    assert not [event for event in events if event["result"] == "failed"]
+    assert not (tmp_path / "nv-download-report.json").exists()
 
 
 def test_real_download_failure_is_saved_without_terminal_spam(tmp_path, monkeypatch, download_auth):
@@ -333,8 +334,11 @@ def test_real_download_failure_is_saved_without_terminal_spam(tmp_path, monkeypa
     assert '1 failed' in result.output
     assert doi not in result.output
     assert 'checksum mismatch' not in result.output
-    report = json.loads((tmp_path / 'nv-download-report.json').read_text())
-    assert report['failed'] == [{'doi': doi, 'error': 'checksum mismatch'}]
+    from netvault.cli.history import History
+    events = list(History(tmp_path, "download").records())
+    assert any(row["doi"] == doi and row["reason"] == "checksum mismatch"
+               and row["result"] == "failed" for row in events)
+    assert not (tmp_path / "nv-download-report.json").exists()
 
 
 def test_download_429_is_returned_without_adapter_retry(tmp_path, monkeypatch):

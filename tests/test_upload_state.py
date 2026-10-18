@@ -1,7 +1,6 @@
 import json
 import shutil
 
-import pytest
 
 from netvault.cli import user
 from netvault.cli.sync import synchronize
@@ -47,7 +46,7 @@ def test_folder_copy_keeps_rejection_on_another_machine(setup_upload, monkeypatc
     target.mkdir()
     copied = target / "renamed.pdf"
     shutil.copy2(pdf, copied)
-    shutil.copy2(pdf.parent / STATE_NAME, target / STATE_NAME)
+    shutil.copytree(pdf.parent / ".netvault", target / ".netvault")
     (pdf.parent / "identity-cache.json").unlink()
     monkeypatch.chdir(target)
     result = run_upload(copied)
@@ -58,14 +57,15 @@ def test_folder_copy_keeps_rejection_on_another_machine(setup_upload, monkeypatc
 def test_legacy_global_rejection_is_imported_without_uploading_again(setup_upload):
     pdf, state = setup_upload
     assert run_upload(pdf).exit_code == 1
-    (pdf.parent / STATE_NAME).unlink()
+    assert not (pdf.parent / STATE_NAME).exists()
     cache = user.load_identity_cache()
     sha = user.file_sha256(pdf)
     cache[sha]["upload_rejections"][state["server"]]["context"]["client_version"] = "0.0.1"
     user.save_identity_cache(cache)
     assert run_upload(pdf).exit_code == 0
     assert len(state["uploads"]) == 1
-    assert (pdf.parent / STATE_NAME).exists()
+    assert not (pdf.parent / STATE_NAME).exists()
+    assert (pdf.parent / ".netvault" / "history.jsonl").exists()
 
 
 def test_sync_distinguishes_doi_presence_from_exact_hash_and_accepts_aliases(tmp_path):
@@ -86,20 +86,20 @@ def test_sync_distinguishes_doi_presence_from_exact_hash_and_accepts_aliases(tmp
     assert second["files"][0]["sha256"] == sha
     assert second["files"][0]["server_present"] is True
     with UploadState() as state:
-        assert state.get(pdf, sha, second["server"])["pdf"]["sha256"] == "f" * 64
+        assert state.get(pdf, sha, second["server"]) is None
+        assert state.papers(tmp_path, second["server"], ["10.1234/article"])["10.1234/article"]["present"]
 
 
 def test_sync_outage_does_not_turn_cached_success_into_absence(tmp_path):
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4\narticle\n%%EOF")
-    sha = user.file_sha256(pdf)
     with UploadState() as state:
-        state.hash_file(pdf, user.file_sha256)
-        state.record(pdf, sha, "https://vault.example/nv", "uploaded", pdf={"doi": "10.1234/article"})
+        state.set_papers(tmp_path, "https://vault.example/nv",
+                         {"10.1234/article": {"doi": "10.1234/article"}})
     def unavailable(*args, **kwargs):
         raise TimeoutError("temporary outage")
-    result = synchronize([tmp_path], [pdf], [], "https://vault.example/nv",
-                         api_post=unavailable, hash_file=lambda p: pytest.fail("unchanged file rehashed"))
+    result = synchronize([tmp_path], [pdf], ["10.1234/article"], "https://vault.example/nv",
+                         api_post=unavailable, hash_file=user.file_sha256)
     assert result["status"] == "offline"
     assert result["files"][0]["server_present"] is None
     assert result["doi"]["10.1234/article"]["present"] is True
@@ -127,4 +127,6 @@ def test_report_links_directory_state(setup_upload):
     pdf, _ = setup_upload
     assert run_upload(pdf).exit_code == 1
     report = json.loads((pdf.parent / "nv-upload-report.json").read_text())
-    assert report["state_files"] == [str(pdf.resolve().parent / STATE_NAME)]
+    assert "state_files" not in report
+    assert not (pdf.parent / STATE_NAME).exists()
+    assert (pdf.parent / ".netvault" / "history.jsonl").exists()

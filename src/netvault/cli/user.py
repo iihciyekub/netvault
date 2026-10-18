@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import tempfile
 from threading import Event
 from time import monotonic, sleep, time_ns
 from typing import Iterable
@@ -57,12 +56,12 @@ from netvault.cli.pdf_meta import (
 from netvault.cli.cache import CacheWriter, load_cache, save_cache
 from netvault.cli.update import update_from_github
 from netvault.cli.export import default_export_destination, normalize_export_issn, save_issn_export
-from netvault.cli.identify import identify_pdfs
-from netvault.cli.hash_index import RunHashCache, index_lookup, load_hash_index
-from netvault.cli.identify_fast import fast_identify_pdfs
 from netvault.cli.upload_pipeline import UploadPipeline, UploadRateColumn, UploadStats
-from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexResolver
+from netvault.cli.upload_index import DownloadIndexMatch, DownloadIndexRecord, DownloadIndexResolver
+from netvault.cli.trusted_csv import TrustedDoiCsv
+from netvault.cli.upload_fast import FastIdentity, probe_pdf, confirms_existing, check_new_titles
 from netvault.cli.upload_report import UploadReport, failed_paths
+from netvault.cli.history import History, run_root
 from netvault.cli.upload_state import UploadState, RETRY_STATUSES, stable_context
 from netvault.doi import (
     DOI_RESOLVER_VERSION,
@@ -96,6 +95,9 @@ DEFAULT_UPLOAD_EXCLUDED_DIRS = {
     "Library",
     "node_modules",
     "output",
+    # Offline tidy collection folders are never bulk-uploaded.
+    "duplicates",
+    "unidentifys",
 }
 
 
@@ -116,11 +118,10 @@ Examples:
   nv login https://iiaide.com/nv
   nv upload ./paper.pdf ./papers
   nv check-pdfs ./papers
+  nv tidy ./papers --apply
   nv doi ./paper.pdf --verbose
   nv pdf-meta read ./paper.pdf
   nv pdf-meta write ./paper.pdf --doi 10.1234/example
-  nv identify ./papers --rename
-  nv identify ./papers --issn 0025-1909 --rename
   nv download 10.1016/j.ijpe.2018.04.006 --to ./downloads
   nv download --file ./dois.txt --to ./downloads
   nv export --issn 0025-1909
@@ -264,6 +265,49 @@ def collect_pdf_paths(
 def has_pdf_header(path: Path) -> bool:
     with path.open("rb") as handle:
         return handle.read(len(PDF_MAGIC)) == PDF_MAGIC
+
+
+def doi_scan_workers(file_count: int) -> int:
+    """Choose modest PDF extraction concurrency from this machine's CPU count.
+
+    On Linux prefer the current process affinity (including containers);
+    on macOS/Windows fall back to logical CPU count. Never create more than
+    six workers, and avoid extra threads for a one-file upload.
+    """
+    try:
+        logical_cpus = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        logical_cpus = os.cpu_count() or 1
+    return max(1, min(file_count, 6, (logical_cpus + 1) // 2))
+
+
+def scan_upload_dois(
+    paths: list[Path], *, for_tidy: bool = False,
+) -> list[tuple[FastIdentity | None, str | None]]:
+    """Reuse one bounded, ordered PDF probe for upload, preview and tidy.
+
+    Preserve per-file errors so one unusual PDF does not abort the batch.
+    File fingerprints, hashes, and network calls are intentionally excluded.
+    """
+    def inspect(path: Path) -> tuple[FastIdentity | None, str | None]:
+        try:
+            if for_tidy and (path.is_symlink() or not path.is_file()):
+                raise ValueError("Symlink or non-regular PDF is not modified")
+            if not has_pdf_header(path):
+                if for_tidy:
+                    raise ValueError("Invalid PDF header")
+                return None, None
+            if for_tidy:
+                return probe_pdf(path, allow_filename=False, strict=True), None
+            return probe_pdf(path), None
+        except (OSError, ValueError) as exc:
+            return None, str(exc)
+
+    workers = doi_scan_workers(len(paths))
+    if workers == 1:
+        return [inspect(path) for path in paths]
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="nv-doi") as executor:
+        return list(executor.map(inspect, paths))
 
 
 def pdf_open_error(path: Path) -> str | None:
@@ -898,124 +942,87 @@ def logout() -> None:
 
 
 @app.command(
-    "identify",
+    "tidy",
     epilog="""\b
 Examples:
-  nv identify ~/Downloads/papers
-  nv identify ~/Downloads/papers --rename
-  nv identify ~/Downloads/papers --rename --duplicates-to ~/Downloads/duplicates
-  nv identify ./papers --issn 0025-1909 --rename
-  nv identify ./papers --index ./netvault-0025-1909.csv --rename
-  nv identify ./papers --check-content --rename
-  nv identify ./papers --report ./report.csv
+  nv tidy .
+  nv tidy ./papers --apply
 
 \b
 Notes:
-  Scans recursively with parallel SHA-256 readers; no uploads or PDF page parsing by default.
-  Without --issn or --index, uses the server's bulk hash lookup, including aliases.
-  --issn downloads one journal inventory once; --index uses an exported CSV offline.
-  Choose --issn or --index, not both. Index misses stay in place (not_in_index).
-  Without --rename, only writes a CSV preview; no PDFs are renamed or moved.
-  --rename names matched PDFs by DOI, moves identical copies,
-  and same-DOI filename conflicts with different hashes to duplicates/,
-  and moves full-vault unmatched PDFs to unidentifys/, under each PDF's original parent directory.
-  Both collection folder names are excluded at every depth. --duplicates-to overrides duplicates.
-  --check-content additionally compares PDF pages for equivalent content; this is slower.
-  Existing PDFs and reports are never overwritten. CSV paths are absolute.
+  Offline, recursive and read-only by default. Use --apply to remove only
+  same-parent confirmed duplicates and move DOI-less PDFs into each parent's
+  unidentifys/ folder. Distinct page content is retained and reported.
+  No files are renamed, no server is queried and no PDF is uploaded.
 """,
 )
-def identify_command(
+def tidy_command(
     directory: Path = typer.Argument(
-        Path("."), exists=True, file_okay=False, readable=True,
-        help="Directory of PDFs to scan recursively.",
+        Path("."), exists=True, file_okay=False, dir_okay=True, readable=True,
+        help="Parent directory to organize recursively (default: current directory).",
     ),
-    rename: bool = typer.Option(
-        False, "--rename", help="Rename by DOI; collect duplicates and unidentified PDFs automatically.",
-    ),
-    duplicates_to: Path | None = typer.Option(
-        None, "--duplicates-to",
-        help="Optional shared duplicate destination (default: duplicates/ beside each source PDF).",
-    ),
-    csv_path: Path | None = typer.Option(
-        None, "--report", "--csv", help="New CSV report path (default: netvault-index.csv in the scan directory).",
-    ),
-    index_path: Path | None = typer.Option(
-        None, "--index", exists=True, dir_okay=False, readable=True,
-        help="Exported doi,sha256 CSV for offline matching; index misses stay in place.",
-    ),
-    issn: str | None = typer.Option(
-        None, "--issn", "-i", help="Download one journal inventory once for fast local matching.",
-    ),
-    workers: int = typer.Option(4, "--workers", min=1, max=32, help="Parallel hash readers in fast mode."),
-    check_content: bool = typer.Option(
-        False, "--check-content", help="Also compare PDF pages for content duplicates (slower).",
+    apply: bool = typer.Option(
+        False, "--apply", help="Remove confirmed duplicate PDFs and move unidentified PDFs.",
     ),
 ) -> None:
-    """Identify local PDFs; add --rename to apply changes."""
-    if index_path is not None and issn is not None:
-        raise typer.BadParameter("Choose --index or --issn, not both")
+    """Organize PDFs offline, removing only confirmed same-directory duplicates."""
+    from netvault.cli.tidy import apply_tidy, plan_tidy, preview_counts
+
+    directory = directory.expanduser().resolve()
     try:
-        scoped = index_path is not None or issn is not None
-        if index_path is not None:
-            records = load_hash_index(index_path)
-            lookup = index_lookup(records)
-            console.print(f"Offline index: {len(records):,} hashes from {index_path}", markup=False)
-        elif issn is not None:
-            normalized = normalize_export_issn(issn)
-            ensure_logged_in()
-            with tempfile.TemporaryDirectory(prefix="nv-identify-index-") as temporary:
-                path = Path(temporary) / "index.csv"
-                save_issn_export(normalized, path)
-                records = load_hash_index(path)
-            lookup = index_lookup(records)
-            console.print(f"ISSN {normalized}: {len(records):,} hashes downloaded once")
-        else:
-            ensure_logged_in()
-            lookup = None
-        hash_cache = RunHashCache(file_sha256)
-        with Progress(
-            SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
-            TextColumn("{task.completed:.0f}/{task.total:.0f}"), TimeElapsedColumn(),
-            console=console, transient=True,
-        ) as progress:
-            task = progress.add_task("Scanning PDFs", total=0)
-
-            def update_progress(stage: str, completed: int, total: int) -> None:
-                progress.update(task, description=stage, completed=completed, total=total)
-
-            def server_lookup(hashes: Iterable[str]) -> dict[str, dict]:
-                values = list(hashes)
-                total = len(set(values))
-                update_progress("Querying server hashes", 0, total)
-                return get_existing_pdfs_by_sha256(
-                    values,
-                    progress_callback=lambda completed: update_progress(
-                        "Querying server hashes", completed, total,
-                    ),
-                    fallback=False,
-                )
-
-            options = dict(
-                rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
-                hash_file=hash_cache, lookup=lookup or server_lookup, progress=update_progress,
-                collect_unidentified=not scoped,
-            )
-            if check_content:
-                report, counts = identify_pdfs(directory, collect_by_parent=True, **options)
-            else:
-                report, counts = fast_identify_pdfs(
-                    directory, workers=workers, batch_size=1 if scoped else 500, **options,
-                )
-    except (OSError, ValueError, RuntimeError, requests.RequestException) as exc:
-        console.print(f"identify failed: {exc}", markup=False)
+        rows = plan_tidy(
+            directory,
+            lambda paths: scan_upload_dois(paths, for_tidy=True),
+            file_sha256,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        console.print(f"tidy failed: {exc}", highlight=False, markup=False)
         raise typer.Exit(1) from exc
-    console.print("done: " + ("; ".join(f"{count} {status}" for status, count in counts.items())
-                              or "0 PDFs"))
-    console.print(f"CSV: {report}", markup=False)
-    console.print(f"Hash reads: {hash_cache.reads:,}; unchanged hashes reused: {hash_cache.hits:,}")
-    if not rename:
-        console.print("Preview only. Add --rename to apply renames and collection moves.")
-    if counts.get("error") or counts.get("conflict"):
+    if not rows:
+        console.print("No PDFs found outside collection folders.")
+        return
+
+    summary = preview_counts(rows)
+    for row in rows:
+        if row.action == "duplicate":
+            console.print(
+                f"duplicate: {row.path} (keep {row.keeper})",
+                highlight=False, markup=False,
+            )
+        elif row.action == "unidentified":
+            console.print(
+                f"unidentified: {row.path} -> {row.path.parent / 'unidentifys'}",
+                highlight=False, markup=False,
+            )
+        elif row.action in {"conflict", "error"}:
+            console.print(
+                f"{row.action}: {row.path}: {row.error}",
+                highlight=False, markup=False,
+            )
+    console.print(
+        f"Scanned {len(rows)} PDFs; confirmed duplicates {summary.get('duplicate', 0)}; "
+        f"unidentified {summary.get('unidentified', 0)}; "
+        f"conflicts {summary.get('conflict', 0)}; errors {summary.get('error', 0)}",
+        highlight=False,
+    )
+    if not apply:
+        console.print("Preview only. Run nv tidy . --apply to remove and move these files.")
+        return
+
+    try:
+        report, counts = apply_tidy(directory, rows, file_sha256)
+    except (OSError, ValueError, RuntimeError) as exc:
+        console.print(f"tidy failed: {exc}", highlight=False, markup=False)
+        raise typer.Exit(1) from exc
+    console.print(
+        f"done: {counts.get('removed_duplicate', 0)} duplicates removed; "
+        f"{counts.get('moved_unidentified', 0)} PDFs moved to unidentifys/; "
+        f"{counts.get('conflict', 0)} retained conflicts; "
+        f"{counts.get('error', 0)} errors",
+        highlight=False,
+    )
+    console.print(f"History: {report}", highlight=False, markup=False)
+    if counts.get("error"):
         raise typer.Exit(1)
 
 
@@ -1126,10 +1133,11 @@ Examples:
 \b
 Notes:
   Directories are scanned recursively for .pdf/.PDF files.
-  Existing PDFs are checked by sha256 before uploading.
-  File hashes are cached locally in ~/.config/netvault/hash-cache.json.
-  A unique PDF Document Info DOI takes priority over DOI hints, indexes and caches.
-  Conflicting Document Info DOI values require correction; no DOI is guessed.
+  Ordinary uploads check DOI presence before full-file hashing or transfer.
+  SHA-256 protects uploaded bytes and storage; it does not define paper identity.
+  A unique PDF Document Info DOI is trusted in automatic mode.
+  --doi and explicit --csv always override PDF DOI/title evidence.
+  Conflicting automatic Document Info DOI values require review.
   Without a Document Info DOI, existing DOI/index/cache extraction rules apply.
   --write-doi independently verifies missing DOI against Crossref before local writeback.
   It backs up each changed original, writes incrementally, and uploads using the new hash.
@@ -1137,21 +1145,21 @@ Notes:
   Existing unique Info DOI values are retained; this mode never corrects them automatically.
   A sibling cli-downloads.csv is also recognized; --csv works across subdirectories.
   Explicit --csv trusts matched DOI/PDF pairs and bypasses embedded DOI/content checks.
-  It matches SHA-256 or filename and size; unmatched/ambiguous files fail without PDF fallback.
+  Simple file,doi mappings match relative paths or unique filenames, ignoring byte changes.
+  Old download CSV files may also match renamed PDFs by their legacy index.
   Automatic CSV discovery still requires server title verification.
   Metadata lookup continues; ordinary CSV uploads do not require metadata availability.
-  Upload state is committed beside PDFs in .netvault-upload.sqlite3.
-  Identity rejections survive cache/report removal and ordinary release upgrades.
-  Run the same command to continue; keep the hidden state file when copying a folder.
-  --refresh-doi retries identities; --retry-failed selects failed, pending and review files.
-  PaperDock reads the same directory state automatically when preparing download lists.
-  Errors are saved in --report; --verbose shows individual errors and detailed timings.
-  unidentifys/ means absent from the vault, not rejected; exclude it only intentionally.
+  Changes and failures append to .netvault/history.jsonl at the scan root.
+  No new SQLite or per-command report is created; old records remain readable.
+  --retry-failed selects failures/review from history; --report exports optional legacy JSON.
+  Confirmed DOI identities are also cached; --refresh-doi rechecks rejected identities.
+  --verbose shows individual errors and detailed timings.
+  Recursive uploads skip unidentifys/ and duplicates/; pass an explicit PDF path to upload from them.
 """,
 )
 def upload_command(
     paths: list[Path] = typer.Argument(..., exists=True, readable=True),
-    doi: str | None = typer.Option(None, "--doi", help="Use this DOI when PDF Document Info has no DOI."),
+    doi: str | None = typer.Option(None, "--doi", help="Trust this DOI for one PDF; skip article identity/title validation."),
     no_crossref: bool = typer.Option(False, "--no-crossref", help="Skip online DOI/title verification and metadata lookup."),
     write_doi: bool = typer.Option(
         False, "--write-doi",
@@ -1191,7 +1199,7 @@ def upload_command(
     ),
     csv_file: Path | None = typer.Option(
         None, "--csv", exists=True, file_okay=True, dir_okay=False, readable=True,
-        help="Trust DOI/PDF pairs in this cli-downloads.csv; bypass embedded DOI/content checks. Match by hash or filename and size.",
+        help="Trust file,doi CSV mappings by relative path or unique filename (legacy index fallback).",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Preview local DOI matching without login, uploads or writes.",
@@ -1201,26 +1209,36 @@ def upload_command(
         "--no-index",
         help="Ignore download index files and use cached or PDF-derived DOI identities.",
     ),
-    report: Path = typer.Option(Path("nv-upload-report.json"), "--report", help="Save incremental results and failures."),
-    retry_failed: bool = typer.Option(False, "--retry-failed", help="Only retry failed, pending or review files from directory state; fall back to --report."),
+    report: Path | None = typer.Option(None, "--report", help="Optional legacy JSON export; normal operations use .netvault/history.jsonl."),
+    retry_failed: bool = typer.Option(False, "--retry-failed", help="Retry failed/review entries from the local history, with legacy report fallback."),
     verbose: bool = typer.Option(False, "--verbose", help="Show individual errors, cache statistics and upload timings."),
 ) -> None:
     if write_doi and (csv_file is not None or no_crossref or doi is not None):
         raise typer.BadParameter("--write-doi cannot be combined with --csv, --no-crossref or --doi")
     excluded_dir_names = DEFAULT_UPLOAD_EXCLUDED_DIRS | set(exclude_dir or [])
     pdfs = collect_pdf_paths(paths, excluded_dir_names=excluded_dir_names)
+    history_root = run_root(paths)
     if retry_failed and not (write_doi and dry_run):
         retry_server = str(load_credentials().get("server_url") or DEFAULT_SERVER_URL).rstrip("/")
-        with UploadState() as state:
-            statuses = {path: state.path_status(path, retry_server, hash_file=file_sha256) for path in pdfs}
+        with UploadState(root=history_root, record_events=False) as state:
+            statuses = {path: state.path_status(path, retry_server) for path in pdfs}
         retry_paths = set()
-        if report.is_file() and any(value is None for value in statuses.values()):
+        if report is not None and report.is_file() and any(value is None for value in statuses.values()):
             try:
                 retry_paths = failed_paths(report)
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 raise typer.BadParameter(f"Could not read upload report: {exc}") from exc
         elif not any(value is not None for value in statuses.values()):
-            raise typer.BadParameter("No directory upload state or upload report to retry")
+            # Read the previous default JSON for compatibility, without creating
+            # or extending one. New executions never write per-command reports.
+            previous_report = history_root / "nv-upload-report.json"
+            if previous_report.is_file():
+                try:
+                    retry_paths = failed_paths(previous_report)
+                except (OSError, ValueError, KeyError, TypeError):
+                    retry_paths = set()
+            if not retry_paths:
+                raise typer.BadParameter("No failed/review upload state in history or legacy reports")
         selected_statuses = RETRY_STATUSES
         pdfs = [path for path in pdfs if statuses[path] in selected_statuses
                 or (statuses[path] is None and path.resolve() in retry_paths)]
@@ -1230,8 +1248,8 @@ def upload_command(
 
     if doi and len(pdfs) != 1:
         raise typer.BadParameter("--doi can only be used when uploading one PDF file")
-    if force and no_crossref:
-        raise typer.BadParameter("--force cannot be combined with --no-crossref")
+    if force and no_crossref and not (doi or csv_file):
+        raise typer.BadParameter("--force with automatic DOI requires Crossref verification")
     if index_file is not None and no_index:
         raise typer.BadParameter("--index-file cannot be combined with --no-index")
     if csv_file is not None and (index_file is not None or no_index):
@@ -1249,6 +1267,40 @@ def upload_command(
         if verbose or dry_run:
             console.print(f"warning: {message}", style="yellow", highlight=False, markup=False)
 
+    trusted_csv = TrustedDoiCsv(csv_file) if csv_file is not None else None
+    csv_roots = [
+        selected.resolve() if selected.is_dir() else selected.resolve().parent
+        for selected in paths
+    ]
+    if csv_file is not None:
+        csv_roots.append(csv_file.resolve().parent)
+    trusted_by_path: dict[Path, str] = {}
+    trusted_csv_errors: dict[Path, str] = {}
+    if trusted_csv is not None:
+        for pdf_path in pdfs:
+            try:
+                mapped = trusted_csv.resolve(pdf_path, csv_roots, pdfs)
+                if mapped:
+                    trusted_by_path[pdf_path] = mapped
+            except ValueError as exc:
+                trusted_csv_errors[pdf_path] = str(exc)
+
+    def trusted_match(pdf_path: Path) -> DownloadIndexMatch | None:
+        mapped = trusted_by_path.get(pdf_path)
+        if not mapped:
+            return None
+        record = DownloadIndexRecord(
+            doi=mapped, filename=pdf_path.name,
+            size=pdf_path.stat().st_size, last_modified=0,
+            sha256="", downloaded_at="", source_url="",
+            validation_status="valid", validation_checked_at="",
+            validation_method="download-record-filename", validation_reason=None,
+        )
+        return DownloadIndexMatch(
+            index_path=csv_file, index_version=0, index_updated_at="",
+            record=record, renamed=False, source="csv-trusted",
+        )
+
     index_resolver = DownloadIndexResolver(
         index_names,
         explicit_path=index_file,
@@ -1261,7 +1313,14 @@ def upload_command(
     if dry_run:
         counts = {"sha256": 0, "filename-size": 0, "title": 0, "pdf-metadata": 0,
                   "json-index": 0, "pdf-extraction": 0, "needs-review": 0}
-        console.print("Dry run: local DOI matching only; no login, server requests, or files written.")
+        # Ordinary preview and live upload use the same DOI probe. Keep the
+        # legacy index/writeback preview for their explicit special modes.
+        fast_preview = (
+            dict(zip(pdfs, scan_upload_dois(pdfs)))
+            if not (doi or csv_file is not None or index_file is not None or write_doi)
+            else {}
+        )
+        console.print("Dry run: local DOI matching only; no login, server requests or files written.")
         if write_doi:
             console.print("DOI writeback preview: online verification was not performed; "
                           "local DOI candidates are not approved for writeback.")
@@ -1269,13 +1328,28 @@ def upload_command(
                 console.print("Dry run previews all selected PDFs without updating retry state.")
         for pdf_path in pdfs:
             try:
+                if pdf_path in fast_preview:
+                    fast_identity, fast_error = fast_preview[pdf_path]
+                    if fast_error is not None:
+                        raise ValueError(fast_error)
+                    if fast_identity is not None:
+                        kind = ("pdf-metadata" if fast_identity.source == "pdf-metadata"
+                                else "pdf-extraction")
+                        counts[kind] += 1
+                        console.print(
+                            f"{pdf_path}: {fast_identity.doi} [{fast_identity.source}]",
+                            highlight=False, markup=False,
+                        )
+                        continue
                 if not has_pdf_header(pdf_path):
                     raise ValueError("invalid PDF header")
-                sha256 = file_sha256(pdf_path)
-                embedded = None if csv_file is not None else extract_document_info_evidence(pdf_path)
-                match = None if doi or embedded is not None else index_resolver.resolve(
-                    pdf_path, sha256, pdf_path.stat().st_size
-                )
+                sha256 = None if doi or pdf_path in trusted_by_path else file_sha256(pdf_path)
+                embedded = None if csv_file is not None or doi else extract_document_info_evidence(pdf_path)
+                match = trusted_match(pdf_path) if csv_file is not None else None
+                if match is None and not doi and embedded is None:
+                    match = index_resolver.resolve(
+                        pdf_path, sha256 or file_sha256(pdf_path), pdf_path.stat().st_size
+                    )
                 if embedded is not None:
                     resolved = embedded.doi
                     kind = "pdf-metadata" if embedded.status == "ok" else "needs-review"
@@ -1287,11 +1361,11 @@ def upload_command(
                     kind = match.record.validation_method if match.index_version == 0 else "json-index"
                     if match.index_version == 0:
                         method = kind.removeprefix("download-record-")
-                        counts[method] += 1
+                        counts[method] = counts.get(method, 0) + 1
                     else:
                         counts["json-index"] += 1
                 elif csv_file is not None:
-                    raise ValueError("No unique filename/size or SHA-256 match in the specified CSV; PDF fallback is disabled")
+                    raise ValueError("No unambiguous file/DOI match in the specified CSV")
                 else:
                     evidence = extract_doi_evidence(pdf_path)
                     resolved = evidence.doi if evidence.status == "ok" else None
@@ -1309,7 +1383,10 @@ def upload_command(
         return
 
     ensure_logged_in()
-    upload_report = UploadReport(report, pdfs, warnings=index_warnings)
+    total_pdf_count = len(pdfs)
+    upload_report = UploadReport(
+        report, pdfs, history=History(history_root, "upload"), warnings=index_warnings,
+    )
     if write_doi:
         for pdf_path in pdfs:
             upload_report.record_metadata_writeback(pdf_path, {
@@ -1330,6 +1407,7 @@ def upload_command(
     hash_cache = load_hash_cache()
     identity_cache = load_identity_cache()
     upload_server = str(load_credentials().get("server_url") or DEFAULT_SERVER_URL).rstrip("/")
+    upload_report.server = upload_server
     upload_server_version = None
     upload_contexts: dict[Path, dict] = {}
     cache_changed = False
@@ -1364,12 +1442,12 @@ def upload_command(
     if verbose:
         progress_columns.append(UploadRateColumn(stats))
     identity_writer = CacheWriter(lambda: save_identity_cache(identity_cache))
-    with UploadState() as upload_state, upload_report, identity_writer, Progress(
+    with UploadState(root=history_root) as upload_state, upload_report, identity_writer, Progress(
         *progress_columns,
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("Hashing PDFs", total=len(pdfs), outcomes="")
+        task = progress.add_task("DOI preflight", total=len(pdfs), outcomes="")
 
         def state_paths(path, sha):
             return {sibling.resolve().parent: sibling
@@ -1416,6 +1494,113 @@ def upload_command(
         def remember_server_version(version):
             nonlocal upload_server_version
             upload_server_version = version
+
+        # Determine DOI and query the server before the first full-file hash.
+        # Unknown/ambiguous identities keep the existing full resolver.
+        fast_identities: dict[Path, FastIdentity] = {}
+        fast_skips: list[tuple[Path, dict]] = []
+        fast_reviews: list[tuple[Path, str]] = []
+        if (skip_existing_doi and not (force or write_doi or retry_failed or
+                refresh_doi or no_crossref or index_file is not None)):
+            found: dict[Path, FastIdentity] = {}
+            fallbacks: set[Path] = set()
+            if doi or csv_file is not None:
+                # Explicit identities are cheap and require no PDF text scan.
+                for pdf_path in pdfs:
+                    try:
+                        if pdf_path in trusted_csv_errors:
+                            raise ValueError(trusted_csv_errors[pdf_path])
+                        if doi:
+                            identity = FastIdentity(normalize_doi(doi), "user")
+                        else:
+                            mapped = trusted_by_path.get(pdf_path)
+                            if not mapped:
+                                if trusted_csv is not None and trusted_csv.has_legacy_columns:
+                                    fallbacks.add(pdf_path)
+                                    continue
+                                raise ValueError("No file/DOI entry in the specified CSV")
+                            identity = FastIdentity(mapped, "csv-trusted")
+                        found[pdf_path] = identity
+                    except (OSError, ValueError) as exc:
+                        fast_reviews.append((pdf_path, str(exc)))
+            else:
+                # pypdf and pdftotext are independent for each PDF; bounded
+                # threading overlaps their I/O and process startup costs.
+                workers = doi_scan_workers(len(pdfs))
+                if verbose:
+                    console.print(
+                        f"DOI scan: {len(pdfs)} PDFs, {workers} auto-selected workers",
+                        highlight=False,
+                    )
+                for pdf_path, (identity, error) in zip(pdfs, scan_upload_dois(pdfs)):
+                    progress.advance(task)
+                    if error is not None:
+                        fast_reviews.append((pdf_path, error))
+                    elif identity is None:
+                        fallbacks.add(pdf_path)
+                    else:
+                        found[pdf_path] = identity
+
+            # A lookup outage must never be treated as a missing DOI.
+            by_doi = (
+                get_existing_pdfs_by_doi(identity.doi for identity in found.values())
+                if found else {}
+            )
+            new_automatic: dict[Path, FastIdentity] = {}
+            for pdf_path, identity in found.items():
+                existing_pdf = by_doi.get(identity.doi)
+                if existing_pdf is not None:
+                    if identity.source in {"user", "csv-trusted"} or confirms_existing(
+                        identity, existing_pdf
+                    ):
+                        fast_skips.append((pdf_path, existing_pdf))
+                    else:
+                        fallbacks.add(pdf_path)
+                elif identity.source in {"user", "csv-trusted", "pdf-metadata"}:
+                    # An unambiguous Document Info DOI is authoritative; a
+                    # provider outage must not block this existing workflow.
+                    fast_identities[pdf_path] = identity
+                else:
+                    new_automatic[pdf_path] = identity
+            accepted = check_new_titles(new_automatic)
+            for pdf_path, identity in new_automatic.items():
+                if accepted[pdf_path]:
+                    fast_identities[pdf_path] = identity
+                else:
+                    fast_reviews.append((
+                        pdf_path,
+                        "CSL title unavailable or absent from PDF pages 1-2; "
+                        "confirm with --doi DOI or --csv file.csv",
+                    ))
+            # One upload task per DOI per invocation. Identical papers with
+            # different compressed PDF hashes must not be sent repeatedly.
+            seen_dois: set[str] = set()
+            for pdf_path, identity in list(fast_identities.items()):
+                if identity.doi in seen_dois:
+                    upload_report.record(pdf_path, "local-duplicate")
+                    local_duplicate_paths += 1
+                    del fast_identities[pdf_path]
+                else:
+                    seen_dois.add(identity.doi)
+            for pdf_path, existing_pdf in fast_skips:
+                skipped += 1
+                skipped_by_doi += 1
+                latest_pdf = existing_pdf
+                upload_report.record(pdf_path, "existing", pdf=existing_pdf)
+            for pdf_path, error in fast_reviews:
+                record_failure(pdf_path, error, review=True)
+            pdfs = [
+                pdf_path for pdf_path in pdfs
+                if pdf_path in fast_identities or pdf_path in fallbacks
+            ]
+            if verbose:
+                console.print(
+                    f"DOI preflight: {len(fast_skips)} existing, "
+                    f"{len(fast_identities)} selected, {len(fast_reviews)} review, "
+                    f"{len(fallbacks)} legacy fallback",
+                    highlight=False,
+                )
+        progress.reset(task, total=len(pdfs), completed=0, description="Hashing upload candidates")
 
         hash_started = monotonic()
         for pdf_path in pdfs:
@@ -1481,9 +1666,11 @@ def upload_command(
                         pdf_path, lambda path: cached_file_sha256(path, hash_cache)[0])
                 cache_changed = cache_changed or not from_cache
                 if csv_file is not None:
-                    match = index_resolver.resolve(pdf_path, sha256, pdf_path.stat().st_size)
+                    match = trusted_match(pdf_path) or index_resolver.resolve(
+                        pdf_path, sha256, pdf_path.stat().st_size
+                    )
                     if match is None:
-                        raise ValueError("No unique filename/size or SHA-256 match in the specified CSV; PDF fallback is disabled")
+                        raise ValueError("No unambiguous file/DOI match in the specified CSV")
                     csv_matches_by_path[pdf_path] = match
                 hashes_by_path[pdf_path] = sha256
                 upload_state.pending(pdf_path, sha256, upload_server)
@@ -1514,7 +1701,7 @@ def upload_command(
                         record_failure(path, "Specified CSV assigns different DOIs to identical PDFs")
                     del pdf_paths_by_sha[sha256]
         unique_pdf_paths = [paths[0] for paths in pdf_paths_by_sha.values()]
-        local_duplicate_paths = sum(len(paths) - 1 for paths in pdf_paths_by_sha.values())
+        local_duplicate_paths += sum(len(paths) - 1 for paths in pdf_paths_by_sha.values())
         for sha, paths_for_hash in pdf_paths_by_sha.items():
             for duplicate_path in paths_for_hash[1:]:
                 upload_report.record(duplicate_path, "local-duplicate", sha256=sha)
@@ -1526,8 +1713,15 @@ def upload_command(
             description="Checking unique PDFs on server",
         )
         sha_lookup_started = monotonic()
+        # The fast DOI path never uses SHA-256 to decide whether an article
+        # already exists. The legacy index/fallback path retains its original
+        # compatibility lookup and integrity conflict handling.
+        legacy_hashes = {
+            sha for path, sha in hashes_by_path.items()
+            if path not in fast_identities
+        }
         existing_by_sha = get_existing_pdfs_by_sha256(
-            pdf_paths_by_sha,
+            legacy_hashes,
             progress_callback=lambda completed: progress.update(task, completed=completed),
             server_version_callback=remember_server_version,
         )
@@ -1566,7 +1760,7 @@ def upload_command(
                 for sibling in state_paths(pdf_path, sha256):
                     upload_state.record(sibling, sha256, upload_server, "existing", pdf=existing_pdf)
             else:
-                embedded = None if csv_file is not None else extract_document_info_evidence(pdf_path)
+                embedded = None if csv_file is not None or doi else extract_document_info_evidence(pdf_path)
                 embedded_by_path[pdf_path] = embedded
                 if embedded is not None and embedded.status == "conflict":
                     record_failure(
@@ -1671,6 +1865,8 @@ def upload_command(
                             identity_cache_pending += 1
                         elif doi:
                             identity = manual_identity(doi)
+                            # Keep the existing user-confirmation cache schema.
+                            # "manual-trusted" is a transport assertion only.
                             store_identity(identity_cache, sha256, identity)
                             identity_cache_pending += 1
                         elif csv_file is not None:
@@ -1694,6 +1890,13 @@ def upload_command(
                             download_index_hits += 1
                             if index_match.renamed:
                                 download_index_renames += 1
+                        elif pdf_path in fast_identities:
+                            fast = fast_identities[pdf_path]
+                            identity = identity_from_evidence(DoiEvidence(
+                                "ok", fast.doi, fast.source, []
+                            ))
+                            store_identity(identity_cache, sha256, identity)
+                            identity_cache_pending += 1
                         elif identity:
                             doi_cache_hits += 1
                         else:
@@ -1732,11 +1935,21 @@ def upload_command(
                             continue
                         else:
                             dois_by_path[pdf_path] = extracted
-                            doi_sources_by_path[pdf_path] = str(identity.get("source") or "explicit")
+                            # The running NetVault server already supports
+                            # csv-trusted as an explicit user assertion. Reuse
+                            # that wire value for --doi until newer servers
+                            # expose the separate manual-trusted identity.
+                            doi_sources_by_path[pdf_path] = (
+                                "csv-trusted" if doi else str(identity.get("source") or "explicit")
+                            )
                         filename_hint = find_filename_doi_from_name(pdf_path.name)
                         context = upload_identity_context(
                             upload_server, dois_by_path[pdf_path],
-                            doi_sources_by_path[pdf_path] if dois_by_path[pdf_path] else None,
+                            # Preserve distinct local identities for manual DOI
+                            # and CSV even while the older server accepts the
+                            # same csv-trusted transport assertion for both.
+                            ("user" if doi else doi_sources_by_path[pdf_path])
+                            if dois_by_path[pdf_path] else None,
                             no_crossref,
                             upload_server_version,
                             filename_hint.doi if filename_hint else None,
@@ -1782,6 +1995,7 @@ def upload_command(
                     eligible_paths = [
                         path for path in ready_paths
                         if dois_by_path.get(path)
+                        and path not in fast_identities
                         and doi_sources_by_path.get(path) in eligible_sources
                     ]
                     if eligible_paths:
@@ -1833,6 +2047,10 @@ def upload_command(
 
                 record_outcomes(pipeline.collect())
                 for pdf_path in ready_paths:
+                    upload_report.record_pending(
+                        pdf_path, doi=dois_by_path.get(pdf_path),
+                        sha256=hashes_by_path[pdf_path],
+                    )
                     record_outcomes(pipeline.submit(
                         pdf_path,
                         doi=dois_by_path[pdf_path],
@@ -1848,7 +2066,13 @@ def upload_command(
 
 
     upload_report.checkpoint(force=True, finished=True)
-    parts = [f"done: {len(pdfs)}/{len(pdfs)} processed in {monotonic() - started:.1f}s",
+    # Upload state is a small replayable queue, not an ever-growing list of
+    # successful transfers. Compact once per finished run, never per PDF.
+    try:
+        upload_report.history.compact_uploads()
+    except OSError as exc:
+        console.print(f"warning: upload history compaction failed: {exc}", style="yellow")
+    parts = [f"done: {total_pdf_count}/{total_pdf_count} processed in {monotonic() - started:.1f}s",
              f"uploaded: {uploaded}; already stored: {skipped} skipped"]
     if local_duplicate_paths:
         parts.append(f"local duplicate paths: {local_duplicate_paths}")
@@ -1859,10 +2083,10 @@ def upload_command(
     if len(failed) > needs_review:
         parts.append(f"failed: {len(failed) - needs_review}")
     if index_warnings:
-        parts.append(f"index warnings: {len(index_warnings)} (details in report)")
+        parts.append(f"index warnings: {len(index_warnings)} (see history)")
     if replaced:
         parts.append(f"{replaced} replaced")
-    parts.append(f"report: {upload_report.path}")
+    parts.append(f"history: {upload_report.history.path}")
     if verbose:
         parts.extend([f"found paths: {len(pdfs)}", f"unique PDFs: {len(unique_pdf_paths)}",
                       f"hashing/local checks: {hash_seconds:.1f}s; "
@@ -2311,7 +2535,8 @@ Notes:
   Downloads use parallel workers and automatically resume .part files.
   SHA-256 is verified while writing; existing matching files are skipped.
   After interruption or a rate limit, run the same command with the same --to.
-  Failure details are saved to nv-download-report.json in the destination.
+  Successful transfers and failures append to .netvault/history.jsonl in the destination.
+  Downloads can resume from existing PDF and .part files; no report JSON is created.
 """,
 )
 def download(
@@ -2334,6 +2559,7 @@ def download(
 
     to = to.expanduser().resolve()
     to.mkdir(parents=True, exist_ok=True)
+    download_history = History(to, "download")
     failed: list[tuple[str, str]] = []
     unavailable = skipped = downloaded = resumed = 0
     plans: list[DownloadPlan] = []
@@ -2406,6 +2632,10 @@ def download(
                             resumed += 1
                         else:
                             downloaded += 1
+                        download_history.write(
+                            "download", file=plan.destination, doi=plan.doi,
+                            result="ok", reason="resumed" if status_name == "resumed" else None,
+                        )
                     except InterruptedError:
                         deferred.append(plan.doi)
                         continue
@@ -2462,29 +2692,18 @@ def download(
     console.print("; ".join(parts), markup=False)
     if rate_limited:
         console.print("Server download limit reached. Run the same command later to continue.")
+    for doi, error in failed:
+        download_history.write("error", doi=doi, result="failed", reason=error)
+    for doi in deferred:
+        download_history.write("error", doi=doi, result="pending",
+                               reason="Interrupted or deferred after download limit")
+    download_history.write(
+        "summary", result="partial" if (failed or deferred) else "ok",
+        counts=dict(downloaded=downloaded, resumed=resumed, existing=skipped,
+                    unavailable=unavailable, failed=len(failed), pending=len(deferred)),
+    )
+    console.print(f"History: {download_history.path}", markup=False)
     if failed or deferred:
-        report_path = to / "nv-download-report.json"
-        report = {
-            "server": base_url, "requested": len(requested_dois),
-            "downloaded": downloaded, "resumed": resumed, "already_saved": skipped,
-            "unavailable": unavailable,
-            "failed": [{"doi": doi, "error": error} for doi, error in failed],
-            "pending": deferred,
-        }
-        temporary_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=to,
-                                             prefix=".nv-download-report-", delete=False) as handle:
-                temporary_path = Path(handle.name)
-                json.dump(report, handle, ensure_ascii=False, indent=2)
-                handle.write("\n")
-            temporary_path.replace(report_path)
-            console.print(f"Details: {report_path}", markup=False)
-        except OSError as exc:
-            console.print(f"Could not save download report: {exc}", markup=False)
-        finally:
-            if temporary_path is not None:
-                temporary_path.unlink(missing_ok=True)
         raise typer.Exit(1)
 
 

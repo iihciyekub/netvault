@@ -3,7 +3,6 @@ import errno
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 from test_pdf_fingerprint import make_pdf
 
 import netvault.cli.identify as identify
@@ -27,6 +26,16 @@ def read_rows(report: Path) -> list[dict]:
 
 def run(directory: Path, *, rename=False, duplicates_to=None, csv_path=None, lookup=None,
         unidentified_to=None, collect_by_parent=False):
+    # Legacy CSV behavior is exercised by explicitly requesting an export.
+    if csv_path is None:
+        seq = 1
+        while True:
+            label = "" if seq == 1 else f"-{seq}"
+            candidate = directory / f"netvault-index{label}.csv"
+            if not candidate.exists():
+                csv_path = candidate
+                break
+            seq += 1
     return identify.identify_pdfs(
         directory, rename=rename, duplicates_to=duplicates_to, csv_path=csv_path,
         hash_file=cli.file_sha256,
@@ -443,32 +452,6 @@ def test_invalid_server_doi_is_recorded_without_rename(tmp_path):
     assert read_rows(report)[0]["match_status"] == "error"
 
 
-def test_cli_wires_strict_bulk_lookup_and_handles_auth_failure(tmp_path, monkeypatch):
-    write_pdf(tmp_path, "a.pdf")
-    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
-
-    def post(path, json):
-        assert path == "/pdfs/exists"
-        assert len(json["sha256"]) == 1
-        return {"existing": {sha: {"doi": DOI} for sha in json["sha256"]}}
-
-    monkeypatch.setattr(cli, "api_post", post)
-    result = CliRunner().invoke(cli.app, ["identify", str(tmp_path)])
-    assert result.exit_code == 0, result.output
-    assert "Preview only" in result.output
-    assert (tmp_path / "a.pdf").exists()
-
-    def denied(*args, **kwargs):
-        raise RuntimeError("401 expired")
-
-    monkeypatch.setattr(cli, "api_post", denied)
-    monkeypatch.setattr(cli, "get_existing_pdf_by_sha256", lambda sha: pytest.fail("No fallback"))
-    result = CliRunner().invoke(cli.app, ["identify", str(tmp_path), "--rename"])
-    assert result.exit_code == 1
-    assert "401 expired" in result.output
-    assert (tmp_path / "a.pdf").exists()
-
-
 def test_bulk_query_chunks_hashes_without_uploading(monkeypatch):
     hashes = [f"{number:064x}" for number in range(1001)]
     sizes = []
@@ -481,125 +464,6 @@ def test_bulk_query_chunks_hashes_without_uploading(monkeypatch):
     monkeypatch.setattr(cli, "api_post", post)
     assert len(cli.get_existing_pdfs_by_sha256(hashes, fallback=False)) == 1001
     assert sizes == [500, 500, 1]
-
-
-def test_cli_rename_collects_beside_each_original_pdf_at_every_depth(tmp_path, monkeypatch):
-    working = tmp_path / "working"
-    working.mkdir()
-    source = tmp_path / "papers"
-    matched = write_pdf(source, "a.pdf")
-    alternative = write_pdf(source, "b.pdf", b"%PDF-alternate-server-hash")
-    write_pdf(source / "nested", "copy.pdf")
-    unmatched = write_pdf(source, "a-unknown.pdf", b"%PDF-not-on-server")
-    write_pdf(source / "nested", "unknown-copy.pdf", b"%PDF-not-on-server")
-    nested_unknown = write_pdf(source / "nested", "nested.pdf", b"%PDF-nested-unknown")
-    deep_unknown = write_pdf(source / "nested/deeper", "deep.pdf", b"%PDF-deep-unknown")
-    matched_sha = cli.file_sha256(matched)
-    alternative_sha = cli.file_sha256(alternative)
-    monkeypatch.chdir(working)
-    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
-    monkeypatch.setattr(cli, "api_post", lambda path, json: {
-        "existing": {matched_sha: {"doi": DOI}, alternative_sha: {"doi": DOI}},
-    })
-    runner = CliRunner()
-    preview = runner.invoke(cli.app, ["identify", str(source)])
-    assert preview.exit_code == 0, preview.output
-    assert matched.exists() and unmatched.exists()
-    assert not (working / "duplicates").exists()
-    assert not (working / "unidentifys").exists()
-    assert not (source / "duplicates").exists()
-    assert not (source / "unidentifys").exists()
-    assert not (nested_unknown.parent / "unidentifys").exists()
-    assert not (deep_unknown.parent / "unidentifys").exists()
-    preview_rows = read_rows(source / "netvault-index.csv")
-    assert sorted(row["status"] for row in preview_rows) == [
-        "would_move_doi_conflict", "would_move_duplicate", "would_move_duplicate",
-        "would_move_unidentified", "would_move_unidentified", "would_move_unidentified",
-        "would_rename",
-    ]
-
-    applied = runner.invoke(cli.app, ["identify", str(source), "--rename"])
-    assert applied.exit_code == 0, applied.output
-    rows = read_rows(source / "netvault-index-2.csv")
-    assert sorted(row["status"] for row in rows) == [
-        "moved_doi_conflict", "moved_duplicate", "moved_duplicate", "moved_unidentified",
-        "moved_unidentified", "moved_unidentified", "renamed",
-    ]
-    assert len(list((source / "duplicates").glob("*.pdf"))) == 1
-    assert len(list((source / "nested/duplicates").glob("*.pdf"))) == 2
-    assert not (working / "duplicates").exists()
-    assert not (working / "unidentifys").exists()
-    for row in rows:
-        actual = Path(row["path"])
-        assert actual.exists() and cli.file_sha256(actual) == row["sha256"]
-        assert row["directory"] == str(actual.parent)
-        if row["status"].startswith("moved_"):
-            folder = "unidentifys" if row["status"] == "moved_unidentified" else "duplicates"
-            assert actual.parent == Path(row["original_path"]).parent / folder
-        if row["duplicate_of"]:
-            assert cli.file_sha256(Path(row["duplicate_of"])) == row["sha256"]
-        if row["conflict_with"]:
-            assert row["status"] == "moved_doi_conflict"
-            assert cli.file_sha256(Path(row["conflict_with"])) == row["conflict_with_sha256"]
-        if row["status"] == "moved_unidentified":
-            assert row["doi"] == "" and row["match_status"] == "not_found"
-
-    repeated = runner.invoke(cli.app, ["identify", str(source), "--rename"])
-    assert repeated.exit_code == 0, repeated.output
-    assert [row["status"] for row in read_rows(source / "netvault-index-3.csv")] == ["already_named"]
-
-
-def test_default_scan_excludes_both_collection_directories_on_repeated_runs(tmp_path, monkeypatch):
-    first = write_pdf(tmp_path, "new.pdf", b"%PDF-new-unmatched")
-    old_unmatched = write_pdf(tmp_path / "unidentifys", "old.pdf", b"%PDF-old-unmatched")
-    old_duplicate = write_pdf(tmp_path / "duplicates", "old-copy.pdf", b"%PDF-old-duplicate")
-    nested_archives = [
-        write_pdf(tmp_path / "nested/deeper" / folder, "archived.pdf", folder.encode())
-        for folder in ("duplicates", "unidentifys", "Duplicates", "UNIDENTIFYS")
-    ]
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
-    queried = []
-
-    def post(path, json):
-        queried.extend(json["sha256"])
-        return {"existing": {}}
-
-    monkeypatch.setattr(cli, "api_post", post)
-    result = CliRunner().invoke(cli.app, ["identify", "--rename"])
-    assert result.exit_code == 0, result.output
-    assert queried == [cli.file_sha256(tmp_path / "unidentifys/new.pdf")]
-    row, = read_rows(tmp_path / "netvault-index.csv")
-    assert row["status"] == "moved_unidentified"
-    assert not first.exists()
-    assert old_unmatched.read_bytes() == b"%PDF-old-unmatched"
-    assert old_duplicate.read_bytes() == b"%PDF-old-duplicate"
-    result = CliRunner().invoke(cli.app, ["identify", "--rename"])
-    assert result.exit_code == 0, result.output
-    assert read_rows(tmp_path / "netvault-index-2.csv") == []
-    assert all(path.exists() for path in nested_archives)
-    assert len(queried) == 1
-
-
-def test_cli_duplicate_override_keeps_unidentified_local(tmp_path, monkeypatch):
-    source = tmp_path / "papers"
-    write_pdf(source, "a.pdf")
-    duplicate = write_pdf(source / "nested/deeper", "copy.pdf")
-    unknown = write_pdf(source / "nested", "unknown.pdf", b"%PDF-unknown")
-    matched_sha = cli.file_sha256(duplicate)
-    shared = tmp_path / "shared-duplicates"
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli, "ensure_logged_in", lambda: None)
-    monkeypatch.setattr(cli, "api_post", lambda path, json: {
-        "existing": {matched_sha: {"doi": DOI}},
-    })
-    result = CliRunner().invoke(cli.app, [
-        "identify", str(source), "--rename", "--duplicates-to", str(shared),
-    ])
-    assert result.exit_code == 0, result.output
-    assert (shared / duplicate.name).exists()
-    assert (unknown.parent / "unidentifys" / unknown.name).exists()
-    assert not (duplicate.parent / "duplicates").exists()
 
 
 @pytest.mark.parametrize("rename", [False, True])

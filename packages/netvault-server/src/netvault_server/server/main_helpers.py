@@ -24,9 +24,11 @@ from netvault_server.server.doi import (
 )
 from netvault_server.server.models import Pdf, PdfFileAlias, UploadRecord, User, utc_now
 from netvault_server.server.schemas import PdfRead, UploadResponse
+from netvault_server.server.pdf_metadata import stamp_uploaded_doi
 from netvault_server.server.storage import (
     acquire_object_lock,
     object_path,
+    object_relative_path,
     promote_staged_pdf,
     release_object_lock,
     store_pdf,
@@ -37,6 +39,7 @@ CLIENT_DOI_SOURCES = {
     "download-index",
     "download-record",
     "csv-trusted",
+    "manual-trusted",
     "explicit",
     "filename",
     "pdf-content",
@@ -473,7 +476,8 @@ async def process_upload(
     timings: dict[str, float] | None = None,
     expected_sha256: str | None = None,
 ) -> UploadResponse:
-    if force and no_crossref:
+    trusted_input = doi_source in {"csv-trusted", "manual-trusted"}
+    if force and no_crossref and not trusted_input:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Force upload requires Crossref metadata",
@@ -493,6 +497,7 @@ async def process_upload(
     started = monotonic()
     persist_started = None
     sha256, size, relative_path, object_deduplicated, staged_path = await store_pdf(file)
+    original_sha256 = sha256
     if expected_sha256 is not None and sha256 != expected_sha256.lower():
         if staged_path is not None:
             staged_path.unlink(missing_ok=True)
@@ -511,7 +516,7 @@ async def process_upload(
         if pdf_by_sha is not None and not force:
             changed = pdf_by_sha.is_deleted
             embedded = None
-            if doi_source != "csv-trusted":
+            if not trusted_input:
                 embedded = await run_in_threadpool(
                     extract_document_info_evidence, staged_path or object_path(sha256)
                 )
@@ -576,19 +581,19 @@ async def process_upload(
         trusted_csv = doi_source == "csv-trusted"
         client_doi = None
         parse_started = monotonic()
-        if trusted_csv:
+        if trusted_input:
             try:
                 normalized_csv_doi = normalize_doi(doi)
             except ValueError as exc:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
             evidence = DoiEvidence(
-                "ok", normalized_csv_doi, "csv-trusted",
-                [DoiCandidate(normalized_csv_doi, "csv-trusted", "user-specified-csv", 100)],
+                "ok", normalized_csv_doi, doi_source,
+                [DoiCandidate(normalized_csv_doi, doi_source, "user-specified", 100)],
             )
             verification = [{
-                "doi": normalized_csv_doi, "source": "csv-trusted", "accepted": True,
+                "doi": normalized_csv_doi, "source": doi_source, "accepted": True,
                 "pdf_content_verified": False,
-                "reason": "User trusts the DOI/PDF pair in an explicitly specified CSV",
+                "reason": "User explicitly trusts the DOI/PDF mapping",
             }]
             timings["parse"] = monotonic() - parse_started
         elif automatic_resolution:
@@ -646,14 +651,40 @@ async def process_upload(
             )
         normalized_doi = evidence.doi
 
-        if force:
+        if force and (not trusted_input or not no_crossref):
             if verified_metadata is None:
                 verified_metadata = await run_in_threadpool(fetch_doi_metadata, normalized_doi)
-            if verified_metadata.status != "ok":
+            if verified_metadata.status != "ok" and not trusted_input:
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Force upload requires externally verified DOI metadata",
                 )
+
+        # Stamp only the private upload staging file, before publishing its
+        # content-addressed object. The SHA used for identity-independent
+        # storage is recalculated from the final bytes, never for DOI dedup.
+        if staged_path is not None:
+            try:
+                stamped = await run_in_threadpool(
+                    stamp_uploaded_doi, staged_path, normalized_doi, trusted=trusted_input
+                )
+            except (OSError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Could not safely write PDF DOI metadata: {exc}",
+                ) from exc
+            if stamped:
+                # Release the original-object lock before acquiring the final
+                # hash lock. Never hold two object slots (deadlock risk).
+                release_object_lock(object_lock)
+                object_lock = None
+                def final_identity():
+                    with staged_path.open("rb") as handle:
+                        return hashlib.file_digest(handle, "sha256").hexdigest(), staged_path.stat().st_size
+                sha256, size = await run_in_threadpool(final_identity)
+                relative_path = object_relative_path(sha256)
+                object_deduplicated = object_path(sha256).exists()
+                object_lock = await run_in_threadpool(acquire_object_lock, sha256)
 
         persist_started = monotonic()
         # Different byte hashes can resolve to the same DOI concurrently. Serialize
@@ -690,7 +721,7 @@ async def process_upload(
                 fetch_doi_metadata,
                 normalized_doi,
             )
-            if metadata.status != "ok":
+            if metadata.status != "ok" and not trusted_input:
                 error_status = (
                     status.HTTP_404_NOT_FOUND
                     if metadata.status == "not_found"
@@ -718,7 +749,13 @@ async def process_upload(
             pdf_by_doi.is_deleted = False
             pdf_by_doi.deleted_at = None
             pdf_by_doi.deleted_by_id = None
-            apply_crossref_metadata(pdf_by_doi, metadata, overwrite=True)
+            if metadata.status == "ok":
+                apply_crossref_metadata(pdf_by_doi, metadata, overwrite=True)
+            if original_sha256 != sha256:
+                db.add(PdfFileAlias(
+                    pdf_id=pdf_by_doi.id, sha256=original_sha256,
+                    source="upload-input", asserted_by_id=user.id,
+                ))
             add_upload_record(pdf_by_doi, file, size, user, db, idempotency_key)
             db.commit()
             from netvault_server.server.stats import invalidate_stats_cache
@@ -740,7 +777,7 @@ async def process_upload(
         if (
             pdf_by_doi is not None
             and pdf_by_doi.sha256 != sha256
-            and (trusted_csv or (
+            and (trusted_input or (
                 verified_metadata is not None and verified_metadata.status == "ok"
             ))
             and not force
@@ -759,6 +796,20 @@ async def process_upload(
                         asserted_by_id=user.id,
                     )
                 )
+            # A compressed/rewritten variant has two hashes: transmitted
+            # bytes and canonical DOI-stamped bytes. Guard both against
+            # later conflicting identity claims.
+            if original_sha256 != sha256:
+                raw_alias = db.scalar(select(PdfFileAlias.pdf_id).where(
+                    PdfFileAlias.sha256 == original_sha256
+                ))
+                if raw_alias is not None and raw_alias != pdf_by_doi.id:
+                    raise HTTPException(status_code=409, detail="Input PDF belongs to another DOI")
+                if raw_alias is None:
+                    db.add(PdfFileAlias(
+                        pdf_id=pdf_by_doi.id, sha256=original_sha256,
+                        source="upload-input", asserted_by_id=user.id,
+                    ))
             add_upload_record(pdf_by_doi, file, size, user, db, idempotency_key)
             db.commit()
             if staged_path is not None:
@@ -815,6 +866,24 @@ async def process_upload(
         elif no_crossref:
             pdf.crossref_status = "skipped"
 
+        if original_sha256 != sha256:
+            # Original transmitted bytes remain linked for conflict detection,
+            # not for deciding whether two differently hashed PDFs share a DOI.
+            raw_link = db.scalar(
+                select(PdfFileAlias.pdf_id).where(
+                    PdfFileAlias.sha256 == original_sha256
+                )
+            )
+            if raw_link is not None and raw_link != pdf.id:
+                raise HTTPException(status_code=409, detail="Input PDF bytes are already bound to another DOI")
+            db_pdf = db.scalar(select(Pdf.id).where(Pdf.sha256 == original_sha256))
+            if db_pdf is not None and db_pdf != pdf.id:
+                raise HTTPException(status_code=409, detail="Input PDF is already stored under another DOI")
+            if raw_link is None and original_sha256 != pdf.sha256:
+                db.add(PdfFileAlias(
+                    pdf_id=pdf.id, sha256=original_sha256,
+                    source="upload-input", asserted_by_id=user.id,
+                ))
         storage_deduplicated = promote_staged_pdf(staged_path, sha256)
         promoted_new_object = staged_path is not None and not storage_deduplicated
         staged_path = None
@@ -841,4 +910,5 @@ async def process_upload(
             timings["persist"] = monotonic() - persist_started
         if doi_lock is not None:
             release_object_lock(doi_lock)
-        release_object_lock(object_lock)
+        if object_lock is not None:
+            release_object_lock(object_lock)

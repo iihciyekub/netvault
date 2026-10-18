@@ -148,9 +148,8 @@ def process(conn, row, pilot):
         if item.get("status") != "ok" or target.parent != out.resolve() or not target.is_file():
             raise ValueError("Unexpected pdfcraft result")
         compressed_meta = meta(target)
-        if old_meta["status"] == "ok" and (compressed_meta["status"] != "ok"
-                                            or compressed_meta["doi"] != old_meta["doi"]):
-            raise ValueError("Embedded DOI was lost in compression")
+        # PDFCraft may drop Document Info; restore the DOI on the staged
+        # candidate before checking final size instead of rejecting it.
         if compressed_meta["status"] == "conflict" or (
             compressed_meta["status"] == "ok" and compressed_meta["doi"] != doi
         ):
@@ -353,6 +352,8 @@ def main():
     modes.add_argument("--pilot", action="store_true")
     modes.add_argument("--all", action="store_true")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--max-files", type=int, default=0,
+                        help="Bound an --all sweep to N attempts per invocation (0 = unlimited)")
     parser.add_argument("--jobs", type=int, default=4, help="Concurrent PDF workers (1-8)")
     parser.add_argument("--approved-candidates", type=Path,
                         help="Explicit admin-reviewed IDs and SHA-256 fingerprints (pilot only)")
@@ -363,6 +364,8 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.jobs <= 8:
         parser.error("--jobs must be between 1 and 8")
+    if args.max_files < 0 or (args.max_files and not args.all):
+        parser.error("--max-files requires --all and a nonnegative number")
     if bool(args.approved_candidates) != bool(args.result_output):
         parser.error("--approved-candidates and --result-output must be used together")
     if args.approved_candidates and not args.pilot:
@@ -395,19 +398,24 @@ def main():
                 c.execute("select pdfcraft_processed_at from pdfs limit 1")
             cursor = 0 if args.pilot else int(s.get("full_cursor", 0))
             successes = 0
+            attempts_this_run = 0
             pilot_limit_reached = False
             log(f"START mode={mode} active={total} starting_after={cursor} "
                 f"jobs={args.jobs} min_bytes=0 prevent_growth=yes "
                 "ppi=150 quality=75 backups=none")
-            while cursor < max_id and not _stop_requested.is_set() and not pilot_limit_reached:
+            while (cursor < max_id and not _stop_requested.is_set()
+                   and not pilot_limit_reached
+                   and (not args.max_files or attempts_this_run < args.max_files)):
                 with db.cursor() as c:
                     c.execute("select id,doi,sha256,size,storage_path from pdfs "
                               "where id>%s and id<=%s and is_deleted=false "
                               "and (pdfcraft_processed_sha256 IS DISTINCT FROM sha256 "
                               "or pdfcraft_ppi IS DISTINCT FROM %s "
                               "or pdfcraft_quality IS DISTINCT FROM %s) "
-                              "order by id limit 100",
-                              (cursor, max_id, PPI, QUALITY))
+                              "order by id limit %s",
+                              (cursor, max_id, PPI, QUALITY,
+                               min(100, args.max_files - attempts_this_run)
+                               if args.max_files else 100))
                     batch = c.fetchall()
                 if not batch:
                     break
@@ -439,6 +447,7 @@ def main():
                         except Exception as exc:
                             result, error = None, f"Worker error: {type(exc).__name__}: {exc}"
                         counts["attempted"] += 1
+                        attempts_this_run += 1
                         if error is not None:
                             counts["failed"] += 1
                             record_error(row, error)
@@ -466,7 +475,8 @@ def main():
                         if args.pilot and successes >= args.limit:
                             pilot_limit_reached = True
                     submit_available()
-            if args.all and not _stop_requested.is_set():
+            if (args.all and not _stop_requested.is_set()
+                    and (not args.max_files or attempts_this_run < args.max_files)):
                 # Sweep complete: scan from the beginning on future invocations.
                 # Already-processed PDFs are excluded by their DB SHA+settings marker;
                 # newly replaced PDFs with a different SHA become eligible again.

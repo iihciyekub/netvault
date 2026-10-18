@@ -1260,7 +1260,7 @@ def test_upload_force_rejects_no_crossref(tmp_path: Path, monkeypatch) -> None:
     )
 
     assert no_crossref.exit_code == 2
-    assert "--force cannot be combined with --no-crossref" in no_crossref.output
+    assert "--force with automatic DOI requires Crossref verification" in no_crossref.output
 
 
 def test_upload_retries_local_no_doi_and_lets_server_resolve(tmp_path: Path, monkeypatch) -> None:

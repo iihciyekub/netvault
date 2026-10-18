@@ -58,7 +58,7 @@ def cli_upload(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("dry_run", [False, True])
 @pytest.mark.parametrize("hint", ["doi", "cache", "index"])
-def test_cli_document_info_precedes_explicit_cached_and_index_hints(
+def test_cli_document_info_precedes_cache_index_but_not_manual_doi(
     cli_upload, monkeypatch, hint, dry_run,
 ):
     pdf, calls = cli_upload
@@ -72,34 +72,43 @@ def test_cli_document_info_precedes_explicit_cached_and_index_hints(
                             lambda *a, **k: pytest.fail("Index took priority over Document Info"))
     result = CliRunner().invoke(user.app, ["upload", str(pdf), *options])
     assert result.exit_code == 0, result.output
+    expected = OTHER if hint == "doi" else DOI
+    source = "csv-trusted" if hint == "doi" else "pdf-metadata"
     if dry_run:
-        assert DOI in result.output
-        assert "[pdf-metadata]" in result.output
+        assert expected in result.output
+        assert "[user DOI]" in result.output if hint == "doi" else "[pdf-metadata]" in result.output
         assert not calls
     else:
         assert len(calls) == 1
-        assert calls[0]["doi"] == DOI
-        assert calls[0]["doi_source"] == "pdf-metadata"
+        assert calls[0]["doi"] == expected
+        assert calls[0]["doi_source"] == source
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_cli_info_conflict_never_guesses_or_uploads(cli_upload, monkeypatch, dry_run):
+def test_cli_manual_doi_overrides_conflicting_document_info(cli_upload, dry_run):
     pdf, calls = cli_upload
     pdf.write_bytes(pdf_bytes(conflict=True))
-    monkeypatch.setattr(user.DownloadIndexResolver, "resolve",
-                        lambda *a, **k: pytest.fail("Conflicting Info fell back to index"))
     options = ["--dry-run"] if dry_run else []
     result = CliRunner().invoke(user.app, ["upload", str(pdf), "--doi", OTHER, *options])
-    assert not calls
+    assert result.exit_code == 0, result.output
     if dry_run:
-        assert "unresolved" in result.output
-        assert "[needs-review]" in result.output
+        assert OTHER in result.output and not calls
     else:
-        assert result.exit_code == 1, result.output
-        rows = json.loads((pdf.parent / "nv-upload-report.json").read_text())["files"]
-        assert rows[0]["status"] == "needs-review"
-        assert "Multiple Document Info DOI values" in rows[0]["error"]
+        assert len(calls) == 1
+        assert calls[0]["doi"] == OTHER
+        assert calls[0]["doi_source"] == "csv-trusted"
 
+
+def test_cli_automatic_conflicting_document_info_needs_review(cli_upload):
+    pdf, calls = cli_upload
+    pdf.write_bytes(pdf_bytes(conflict=True))
+    result = CliRunner().invoke(user.app, ["upload", str(pdf), "--report",
+                                           str(pdf.parent / "nv-upload-report.json")])
+    assert result.exit_code == 1, result.output
+    assert not calls
+    rows = json.loads((pdf.parent / "nv-upload-report.json").read_text())["files"]
+    assert rows[0]["status"] == "needs-review"
+    assert "Multiple Document Info DOI values" in rows[0]["error"]
 
 def test_explicit_csv_remains_an_explicit_trust_exception(cli_upload, monkeypatch):
     pdf, calls = cli_upload
@@ -227,7 +236,7 @@ def test_server_existing_conflicting_info_rejected_except_explicit_csv(client):
 
 
 @pytest.mark.parametrize("metadata_status", ["not_found", "unavailable"])
-def test_csv_force_for_new_doi_requires_successful_metadata(client, monkeypatch, metadata_status):
+def test_csv_force_new_doi_does_not_require_metadata_availability(client, monkeypatch, metadata_status):
     helpers = importlib.import_module("netvault_server.server.main_helpers")
     crossref = importlib.import_module("netvault_server.server.crossref")
     calls = []
@@ -240,7 +249,7 @@ def test_csv_force_for_new_doi_requires_successful_metadata(client, monkeypatch,
     headers = login(client, "admin", "admin-pass")
     response = upload(client, headers, content=pdf_bytes(),
                       doi=OTHER, doi_source="csv-trusted", force=True)
-    assert response.status_code == 503, response.text
-    assert "requires externally verified DOI metadata" in response.json()["detail"]
+    assert response.status_code == 200, response.text
+    assert response.json()["pdf"]["doi"] == OTHER
     assert calls == [OTHER]
-    assert client.get("/pdfs", headers=headers).json() == []
+    assert len(client.get("/pdfs", headers=headers).json()) == 1

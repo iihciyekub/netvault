@@ -50,7 +50,13 @@ def setup_upload(tmp_path, monkeypatch):
 
 
 def run_upload(pdf, *options):
-    return CliRunner().invoke(user.app, ["upload", str(pdf), *options])
+    # Legacy-report regression coverage: the report is explicitly requested.
+    # Single-history default behavior is covered in test_single_history.py.
+    report_dir = pdf if pdf.is_dir() else pdf.parent
+    return CliRunner().invoke(
+        user.app, ["upload", str(pdf), "--report",
+                   str(report_dir / "nv-upload-report.json"), *options]
+    )
 
 
 def saved_report(pdf):

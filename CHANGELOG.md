@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 0.7.80 — 2026-10-18
+
+- Remove the SHA-to-server `nv identify` CLI because server-side PDF recompression changes the file hash; retain `nv tidy` for offline per-directory cleanup.
+- Verify that explicit `nv upload --doi` and `nv upload --csv` accept image-only scanned PDFs without comparing the PDF title to CSL, and stamp `/DOI` into the stored server PDF on upload. Local PDF bytes stay untouched.
+- Consolidate CLI operation events into `.netvault/history.jsonl` at the selected folder root, with a consistent small schema, append-only writes and interrupted-tail recovery.
+- Stop creating default per-command upload/download JSON and tidy CSV reports. Read-only previews create no audit file. Explicit `--report` JSON export remains available for upload.
+- Replace active per-folder upload SQLite state with in-memory run caches and replayable journal outcomes. The old SQLite is only read in compatibility mode when recovering old rejected identities or upload states; it is never created, updated or deleted.
+- Preserve `nv upload --retry-failed` using JSONL events, keep optional legacy report retry, and log applied tidy mutations and downloads to the shared audit.
+- Preserve user DOI mapping CSV and explicit hash inventory CSV as data inputs; do not merge data exchange inputs into the audit.
+- Compact upload state at the end of each completed run: successful/known DOI entries disappear, only unresolved pending/error/review items and latest summary remain. Legacy SQLite rejections are cleared safely without writing the old DB; manually confirmed DOI and file-operation audits are retained.
+- Persist rejection DOI and resolver context in the JSONL queue, so unchanged failures can be retried or skipped after renames without re-extracting text. Lock append and compaction using the same lightweight file lock.
+
+## 0.7.79 — 2026-10-18
+
+- Add `nv tidy` for offline recursive PDF housekeeping: preview by default, explicit `--apply` to remove confirmed same-parent duplicates and collect DOI-less PDFs in each parent's `unidentifys/`.
+- Protect different PDF content sharing a DOI, prevent cross-folder deletion, preserve symlinks and corrupt files, and write an exclusive CSV audit for applied changes.
+- Reuse adaptive metadata/pdftotext pages 1-2 DOI scanning, conservative page fingerprints, and safe moves; filenames alone cannot establish a DOI for tidy.
+- Exclude `unidentifys/` and `duplicates/` from recursive `nv upload` scans, while retaining direct file uploads and existing `nv identify` behavior.
+- Carry forward DOI-first upload and PDFCraft metadata-stamping source improvements; production server deployment remains separate.
+
+
 ## 0.7.78 — 2026-10-17
 
 - Simplify the public README to focus on the `nv` CLI and web management.

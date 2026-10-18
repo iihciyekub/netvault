@@ -35,6 +35,11 @@ def test_known_hash_doi_conflict_is_reported_before_skip(tmp_path, monkeypatch, 
     )
     options = []
     if assertion == "option":
+        # Manual DOI-first preflight queries the asserted DOI directly; a
+        # known DOI is skipped without a full-file SHA comparison.
+        monkeypatch.setattr(user, "get_existing_pdfs_by_doi", lambda values: {
+            "10.1234/wrong": {"doi": "10.1234/wrong", "title": "User confirmed"}
+        })
         options = ["--doi", "10.1234/wrong"]
     elif assertion == "cache":
         user.save_identity_cache({sha: user.manual_identity("10.1234/wrong")})
@@ -46,9 +51,14 @@ def test_known_hash_doi_conflict_is_reported_before_skip(tmp_path, monkeypatch, 
         options = ["--index-file", str(index)]
     report = tmp_path / "report.json"
     result = CliRunner().invoke(user.app, ["upload", str(pdf), "--report", str(report), *options])
-    assert result.exit_code == 1, result.output
-    row = json.loads(report.read_text())["files"][0]
-    assert row["status"] == "failed" and "already linked" in row["error"]
+    if assertion == "option":
+        assert result.exit_code == 0, result.output
+        row = json.loads(report.read_text())["files"][0]
+        assert row["status"] == "existing" and row["doi"] == "10.1234/wrong"
+    else:
+        assert result.exit_code == 1, result.output
+        row = json.loads(report.read_text())["files"][0]
+        assert row["status"] == "failed" and "already linked" in row["error"]
 
 
 @pytest.mark.parametrize("status", [401, 429, 503])

@@ -88,196 +88,29 @@ Logout:
 nv logout
 ```
 
-## Identify and organize local PDFs
+## Tidy local PDFs
 
-Look up local PDF hashes in the server database and write a CSV preview:
-
-```bash
-nv identify ~/Downloads/papers
-```
-
-The command scans `.pdf` and `.PDF` files recursively, computes their SHA-256
-values from their bytes, and queries the existing authenticated API in batches
-of up to 500 unique hashes. It also finds hashes registered as alternate versions
-of a server PDF. No PDFs are uploaded, no DOI is inferred from PDF text, and no
-CSL metadata is requested. Without `--rename`, all PDFs remain unchanged.
-
-Rename matched PDFs by DOI and automatically collect duplicates and unmatched PDFs:
+Use `nv tidy` for offline, recursive PDF cleanup. It reads an embedded DOI
+first, then up to two pages of text. It does **not** rely on whether a
+server-side PDF has the same SHA-256 bytes: NetVault may recompress stored PDFs.
 
 ```bash
-nv identify ~/Downloads/papers --rename
+nv tidy ./papers
+nv tidy ./papers --apply
 ```
 
-No destination arguments are required. Under each PDF's original parent directory,
-`duplicates/` receives identical extra copies, equivalent page content, and
-same-DOI filename conflicts with different hashes. `unidentifys/` receives
-retained PDFs whose hashes have no DOI match on the server. For example,
-`papers/A/copy.pdf` moves to `papers/A/duplicates/copy.pdf`, and an unmatched
-`papers/A/deeper/unknown.pdf` moves to `papers/A/deeper/unidentifys/unknown.pdf`.
-This applies at every depth and does not depend on the command's current working
-directory. Collection directories are created when needed, only with `--rename`.
+Preview is read-only. With `--apply`, the command removes only confirmed
+same-directory duplicates and moves PDFs without an unambiguous DOI into
+each original directory's `unidentifys/`. Duplicate detection is never
+performed across parent directories. Different content with the same DOI is
+retained for review; errors are left untouched. Changes append to the
+single `.netvault/history.jsonl` at the invocation root.
 
-For example, DOI `10.1177/00222437241234567` produces
-`10.1177_00222437241234567.pdf`. Path separators, Windows-reserved punctuation,
-and control characters become underscores. The CSV retains the complete DOI.
-When a DOI destination belongs to a server-matched PDF with the same DOI and a
-different local hash, the extra PDF moves to `duplicates/` with status
-`moved_doi_conflict`. The existing DOI-named PDF is retained. Other occupied
-destinations, including two different DOIs mapping to the same filename, produce
-a `conflict`; the source is kept and no file is overwritten. Very long DOI names
-produce an error rather than silently truncating the DOI.
-
-To preview or apply all operations for PDFs in the current directory:
-
-```bash
-# Preview renames and both kinds of collection moves.
-nv identify
-
-# Rename and collect using the automatic directories.
-nv identify --rename
-```
-
-An optional `--duplicates-to PATH` collects duplicates into one shared destination
-instead. Unidentified PDFs still move under their own original parent directories.
-
-One copy per hash is retained. The default fast engine retains the first
-successfully processed copy; an existing verified DOI destination in the same
-directory is preferred. With `--check-content`, an already DOI-named copy is
-preferred across the complete scan, then the first sorted absolute path. Other
-copies move to the duplicate directory using their original basenames. If a basename is
-already taken, a short hash and, when needed, a number are appended. Different
-PDF bytes sharing a DOI are recorded separately as DOI conflicts when they
-compete for the same filename. Identical copies without
-a server match are also collected: one copy goes to `unidentifys/`, the others
-to `duplicates/`, and the CSV records the retained copy's final path.
-
-With `--check-content`, PDFs with different byte hashes can also be recognized
-as containing the same complete page content. The command compares page objects
-and decoded resources, ignoring document metadata,
-object numbers, stream compression, and verified standalone Wiley download notices.
-Fonts, images, annotations, page geometry/order, and optional-content settings remain
-part of the comparison. This is a conservative comparison, not a text-only similarity
-check. Unreadable, encrypted, empty, attached-file, or unsupported cyclic PDFs receive
-no content fingerprint and still use the existing hash/DOI rules.
-
-For equivalent pages, one server-matched, correctly named copy is preferred, then
-the first sorted absolute path. Extra versions move to `duplicates/` with status
-`moved_content_duplicate`, even when their registered DOIs differ. Each CSV row retains
-its own server DOI and actual byte hash, and records the retained PDF's path/hash.
-No DOI suffix is stripped: `_2`, `_3`, etc. can be valid parts of registered DOIs.
-Content duplicates are collected before applying the unmatched-file rule, across
-the full recursively scanned directory. Both archive directories remain excluded.
-
-Folders named `duplicates` or `unidentifys` are excluded at every depth, ignoring
-case, including subsequent runs. An explicit shared duplicate destination is also
-excluded. Explicit destinations cannot equal or contain the scan directory, or
-overlap each other. Automatic collection folders must be directories rather than
-symbolic links. Original basenames are kept when collecting
-unmatched PDFs; a hash and number prevent overwriting prior runs or same-name files.
-Symbolic links are skipped. Cross-filesystem moves verify the copied hash before
-removing the original file. Files changed after scanning are left in place.
-
-By default the CSV is saved as `netvault-index.csv` in the scanned directory.
-Repeated runs produce `netvault-index-2.csv`, `netvault-index-3.csv`, etc., keeping
-earlier audit records. Choose a different new report filename with:
-
-```bash
-nv identify ~/Downloads/papers --rename --report ~/Downloads/papers-report.csv
-```
-
-An explicitly specified existing CSV is never overwritten. The parent directory
-must already exist. Reports use UTF-8 with a BOM for spreadsheet compatibility
-and contain one row per scanned PDF, including unmatched files and failures:
-
-| Column | Meaning |
-| --- | --- |
-| `sha256` | Actual local PDF hash, including when matched through a server alias |
-| `doi` | Complete DOI returned by the server, or empty when unmatched |
-| `directory` | Actual containing directory after this run |
-| `original_filename`, `original_path` | Name and absolute path before processing |
-| `filename`, `path` | Actual name and absolute path after processing |
-| `proposed_path` | Planned destination; preview runs leave `path` unchanged |
-| `status` | `would_rename`, `would_move_duplicate`, `would_move_content_duplicate`, `would_move_doi_conflict`, `would_move_unidentified`, `renamed`, `moved_duplicate`, `moved_content_duplicate`, `moved_doi_conflict`, `moved_unidentified`, `already_named`, `not_found`, `not_in_index`, `conflict`, or `error` |
-| `match_status` | `matched`, `not_found`, `not_in_index`, or `error` |
-| `duplicate_of` | Actual path of the retained identical copy |
-| `conflict_with`, `conflict_with_sha256` | Path and local hash of the retained same-DOI file for a DOI conflict; the hashes differ |
-| `content_sha256` | Conservative page-content fingerprint, or empty when unavailable |
-| `content_duplicate_of`, `content_duplicate_of_sha256` | Actual path and byte hash of the retained PDF with equivalent page content |
-| `error` | Reason a file could not be processed |
-
-Without `--rename`, the command creates a report but does not move or rename PDFs.
-The fast engine applies each successful batch; a later server failure stops
-the run and preserves completed CSV records. A failure is never treated as an
-unmatched PDF. With `--check-content`, all queries finish before any file changes.
-A run containing file errors or conflicts writes its report and exits with
-status 1; otherwise it exits with 0.
-
-## One command for literature management
-
-Use `identify` for all local matching and renaming. Preview first; add `--rename`
-to apply the changes. The separate `rename` command has been removed.
-
-```bash
-# Mixed journals or unknown ISSN: query the complete vault.
-nv identify ./papers
-nv identify ./papers --rename
-
-# Known journal: download its inventory once and match locally.
-nv identify ./papers --issn 0025-1909
-nv identify ./papers --issn 0025-1909 --rename
-
-# Reuse an exported inventory entirely offline.
-nv export --issn 0025-1909
-nv identify ./papers --index ./netvault-0025-1909.csv
-nv identify ./papers --index ./netvault-0025-1909.csv --rename
-```
-
-Without `--issn` or `--index`, matching uses the server's bulk hash lookup,
-including aliases. `--issn` accepts a print or electronic ISSN and downloads one
-temporary inventory. `--index` needs no login or network requests. The complete
-`doi,sha256` CSV is validated before any PDF processing; invalid rows or a hash
-assigned to conflicting DOIs stop the command. Do not combine these two options.
-
-An inventory miss means only that the file was not in that selected index.
-Its report status is `not_in_index`, and the retained PDF stays in place, even
-with `--rename`. An empty inventory likewise leaves retained PDFs in place.
-Run `nv identify ./papers` without either option to check the remaining files
-against the complete vault. Full-vault misses move to `unidentifys/` only when
-`--rename` is supplied. Identical extra copies and verified same-DOI filename
-conflicts move to `duplicates/` under their own original parent directories in
-all modes. Files with different DOIs that encode to the same filename are kept
-and reported as conflicts. No existing PDF is overwritten.
-
-The default engine keeps the fast hash-only method: four parallel SHA-256 readers,
-at most twice the reader count queued, matching and moves as batches finish, and
-a verified per-run hash cache. Online lookups use batches of up to 500; an offline
-index can match and process each file as soon as its hash is ready. PDF pages are
-not parsed by default. Use `--workers 1` for serial reads. Hashes are reused only
-while device, inode, size, mtime and ctime agree, and checked again before moves.
-
-Fast processing retains the first successfully processed copy for each exact
-hash, preferring an existing verified DOI destination in the same directory when
-needed. Later identical copies reference that retained file in the CSV.
-All archive folder names are skipped recursively. If a later server batch fails,
-completed moves remain recorded in the durable CSV; remaining sources stay put.
-A server error is never treated as an unidentified file.
-
-For different PDF bytes containing equivalent complete page content, opt in:
-
-```bash
-nv identify ./papers --check-content
-nv identify ./papers --check-content --rename
-```
-
-This uses the full content-comparison workflow described above and is slower.
-It can also be combined with `--issn` or `--index`; retained index misses still
-stay in place. All lookups and content checks complete before its first move.
-
-Each run writes `netvault-index.csv`, then `netvault-index-2.csv`, and so on,
-in the scanned directory. Use `--report PATH.csv` for a different new report
-(`--csv` remains a compatible alias).
-Without `--rename`, only the preview CSV is written. File errors or unresolved
-filename conflicts produce exit status 1.
+The former `nv identify` hash-to-server matching/renaming command has been
+removed: recompressed or rewritten server PDFs can have different hashes
+from the original local file. Use DOI-based `nv upload` to query whether a
+paper is already stored. For a trusted manual mapping, use `--doi DOI` on
+one file or a `file,doi` CSV with `--csv mappings.csv`, including scanned PDFs.
 
 ## Upload PDFs
 

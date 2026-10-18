@@ -9,11 +9,11 @@ SERVER = (
 )
 
 
-def test_heatmap_and_left_journal_list_share_the_same_row_data() -> None:
+def test_heatmap_years_and_fixed_labels_share_row_data_without_duplicate_navigator() -> None:
     template = (SERVER / "templates/dashboard.html").read_text(encoding="utf-8")
     assert template.index('class="heat-year"') < template.index('class="heat-total-head"')
-    assert 'data-journal-library-items' in template
-    assert '<span class="heat-corner">Journal</span>' in template
+    assert 'data-journal-list-group="custom"' in template
+    assert 'class="heat-corner" data-journal-sort-toggle="name"' in template
     assert 'data-journal-sort-toggle="name"' in template
 
     app = (SERVER / "static/app.js").read_text(encoding="utf-8")
@@ -21,8 +21,9 @@ def test_heatmap_and_left_journal_list_share_the_same_row_data() -> None:
     assert row.index("years.forEach") < row.index("elements.push(total);")
     assert row.index("elements.push(total);") < row.index("elements.push(label);")
     assert "fixedNodes.append(node);" in app
-    assert "if (journalNav) journalNodes.append(node);" in app
-    assert "journalNav.replaceChildren(journalNodes)" in app
+    assert "heatmap.replaceChildren(yearNodes);" in app
+    assert "fixedBody.replaceChildren(fixedNodes);" in app
+    assert "journalNav.replaceChildren(journalNodes)" not in app
 
 
 def test_journal_labels_are_flat_single_line_items_in_the_left_sidebar() -> None:
@@ -142,7 +143,7 @@ def test_single_left_list_menu_switches_lists_and_supports_custom_creation_delet
     assert template.index('class="heatmap-limit-form"') < template.index('class="heatmap-scroll"')
     assert template.index('class="heatmap-scroll"') < template.index('class="heatmap-pagination"')
     assert template.index('<div class="filter-tabs"') > template.index('<aside class="journal-library"')
-    assert 'data-journal-library-title title="{{ current_list_name }}"' in template
+    assert 'class="journal-library" data-journal-library' in template
     assert '<section class="journal-library-collections" aria-label="Journal lists">' in template
     assert '<details class="journal-list-group' in template
     assert 'data-journal-list-group="abs" open' in template
@@ -152,7 +153,7 @@ def test_single_left_list_menu_switches_lists_and_supports_custom_creation_delet
     assert '<span>My lists</span>' in template
     assert '<div class="journal-library-collections-head">Lists</div>' not in template
     assert '<span data-journal-library-filter-label>Entries</span>' not in template
-    assert template.index('data-custom-list-create') > template.index('class="journal-library-footer"')
+    assert template.index('data-custom-list-create') > template.index('data-journal-list-group="custom"')
     assert 'data-journal-create-dialog' in template
     assert 'data-journal-create-form' in template
     assert 'name="category"' in template and 'name="kind"' in template

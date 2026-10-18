@@ -334,7 +334,10 @@ def test_cli_to_verifier_to_incremental_writer_to_vault_uses_same_final_bytes(
         return response.json()
     monkeypatch.setattr(user, "verify_pdf_doi", verify)
     monkeypatch.setattr(user, "upload_pdf", upload)
-    result = CliRunner().invoke(user.app, ["upload", str(paper), "--write-doi"])
+    result = CliRunner().invoke(user.app, [
+        "upload", str(paper), "--write-doi",
+        "--report", str(tmp_path / "nv-upload-report.json"),
+    ])
     assert result.exit_code == 0, result.output
     pdf = client.get("/pdfs", headers=headers).json()[0]
     final_sha = hashlib.sha256(paper.read_bytes()).hexdigest()
