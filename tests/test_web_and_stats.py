@@ -635,6 +635,11 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert dashboard.status_code == 200
     assert '<h1 class="sr-only">NetVault dashboard</h1>' in dashboard.text
     assert "No journal-year data." in dashboard.text
+    assert '<footer class="dashboard-vault-footer" aria-label="Vault totals">' in dashboard.text
+    assert 'data-vault-total-count="0">0</strong>' in dashboard.text
+    assert 'data-vault-total-bytes="0">0 B</strong>' in dashboard.text
+    assert "Total literature" in dashboard.text
+    assert "PDF storage" in dashboard.text
     assert "UTD24" in dashboard.text
     assert "ABS 4*" in dashboard.text
     assert "FT50" in dashboard.text
@@ -1605,6 +1610,13 @@ def test_heatmap_search_matches_node_and_retains_filters_on_pagination(client: T
     stats.invalidate_stats_cache()
 
     dashboard = client.get("/web", params={"filter": "all"})
+    assert 'data-vault-total-count="29">29</strong>' in dashboard.text
+    assert 'data-vault-total-bytes="2900">2.8 KB</strong>' in dashboard.text
+    # The footer is a true vault-wide total, even while viewing one subset.
+    filtered = client.get("/web", params={"filter": "utd24"})
+    assert filtered.status_code == 200
+    assert 'data-vault-total-count="29">29</strong>' in filtered.text
+    assert 'data-vault-total-bytes="2900">2.8 KB</strong>' in filtered.text
     row = next(row for row in dashboard_journal_data(dashboard) if row[0] == journal.upper())
     assert row[1] == 27
     assert next(cell[1] for cell in row[2] if cell[0] == 0) == 26

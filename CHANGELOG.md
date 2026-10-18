@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.81 — 2026-10-18
+
+- Add a compact, localized dashboard footer with the full NetVault literature count and the stored PDF file size; values are server statistics for all active PDFs, unchanged by journal-list filters.
+- Keep the footer visible beneath the heatmap and ranking panel in responsive dark/light layouts without additional database queries.
+
 ## 0.7.80 — 2026-10-18
 
 - Add exact-journal NetVault PDF search to the dashboard journal context menu, with proper URL encoding and site-prefix support.

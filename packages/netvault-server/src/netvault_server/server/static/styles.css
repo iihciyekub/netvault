@@ -5350,3 +5350,43 @@ body.dashboard-body:has([data-journal-library]) {
   background: color-mix(in srgb, var(--tier-ink) 18%, transparent);
   font-weight: 800;
 }
+
+/* Full-vault totals belong to the dashboard itself, not to the currently
+   selected journal list. The thin footer has its own flex row and never
+   overlays the heatmap scrollbar or its pagination controls. */
+.dashboard-body .dashboard-vault-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 30px;
+  width: 100%;
+  padding: 6px 12px max(6px, env(safe-area-inset-bottom));
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+.dashboard-body .dashboard-vault-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.dashboard-body .dashboard-vault-stat > i {
+  align-self: center;
+  font-size: 11px;
+  opacity: .8;
+}
+.dashboard-body .dashboard-vault-stat > strong {
+  color: var(--fg);
+  font-size: 11.5px;
+  font-weight: 720;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-body .dashboard-vault-footer-separator { opacity: .6; }
+@media (max-width: 560px) {
+  .dashboard-body .dashboard-vault-footer { flex-wrap: wrap; gap: 4px 9px; font-size: 10px; }
+  .dashboard-body .dashboard-vault-stat { gap: 4px; }
+}

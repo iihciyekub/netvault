@@ -89,7 +89,8 @@ def test_rankings_are_a_permanently_embedded_detail_column() -> None:
     opening = template.index('data-rank-workspace')
     table = template.index('class="panel heatmap-panel"')
     rank_slot = template.index('class="journal-rank-slot"')
-    closing = template.index('</div>\n<dialog class="doi-batch-dialog"')
+    closing = template.index('</div>\n<footer class="dashboard-vault-footer"')
+    assert closing < template.index('<dialog class="doi-batch-dialog"')
     assert opening < table < rank_slot < closing
     assert template.count('data-rank-panel') == 1
     assert 'data-rank-workspace data-rank-layout="docked"' in template
