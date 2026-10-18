@@ -74,7 +74,7 @@ function environment(journalNames = ['Nature','System']) {
         rows:[{key:'sci',name:'SCI JCR quartile',rank:'Q1',source:'Official datasets'}]})};
     },
   };
-  runInNewContext(code + '\nthis.actions={loadRanks,openRankPanel,renderRankHighlights,primeSharedRankCache,getCache:()=>rankCache};',context);
+  runInNewContext(code + '\nthis.actions={loadRanks,openRankPanel,renderRankHighlights,primeSharedRankCache,rankResultTier,setRankRows:(rows)=>{rankResult={rows};renderRanks();},getCache:()=>rankCache};',context);
   return {qs,panel,menu,heatmap,context,listeners,actions:context.actions,
     fireTimers(){for (const [id,fn] of [...timers]) {timers.delete(id);fn();}}};
 }
@@ -96,6 +96,40 @@ function environment(journalNames = ['Nature','System']) {
     assert(kinds.includes('rank-emphasis rank-emphasis--'+kind),kind+' highlighted');
   assert.equal(rich.children.map(p=>typeof p==='string'?p:p.textContent).join(''),
     'ESCI / SCI / Q1 Q2 / 中科院TOP / 1区','Important text stays intact');
+
+  // Highlight real ranking RESULTS, never left-navigation category links or
+  // unrelated grades. These values mirror live easyScholar database payloads.
+  assert.equal(env.actions.rankResultTier({key:'utd24',rank:'UTD24'}),'utd24');
+  assert.equal(env.actions.rankResultTier({key:'ft50',rank:'FT50'}),'ft50');
+  assert.equal(env.actions.rankResultTier({key:'ajg',rank:'4*'}),'abs4star');
+  assert.equal(env.actions.rankResultTier({key:'ajg',rank:'4★'}),'abs4star');
+  assert.equal(env.actions.rankResultTier({key:'ajg',rank:'4'}),'abs4');
+  for (const result of [{key:'ajg',rank:'3'},{key:'ajg',rank:'2'},
+    {key:'sci',rank:'4'},{key:'ft50',rank:'No'}]) {
+    assert.equal(env.actions.rankResultTier(result),'','Unrelated result not highlighted');
+  }
+  const tierRows = [
+    {key:'utd24',rank:'UTD24',name:'UTD24'},
+    {key:'ft50',rank:'FT50',name:'FT50'},
+    {key:'ajg',rank:'4*',name:'ABS academic journal guide'},
+    {key:'ajg',rank:'4',name:'ABS academic journal guide'},
+    {key:'ajg',rank:'3',name:'ABS academic journal guide'},
+    {key:'sci',rank:'4',name:'JCR scores'},
+  ];
+  env=environment();
+  env.actions.setRankRows(tierRows);
+  const tableRows=env.qs('[data-rank-rows]').children.filter(tr=>tr.className!=='rank-group');
+  const tierCell=(label,rank)=>tableRows.find(tr=>tr.children[0].title===label
+    && tr.children[1].title===rank).children[1];
+  assert.equal(tierCell('UTD24','UTD24').className,'rank-result-tier rank-result-tier--utd24');
+  assert.equal(tierCell('FT50','FT50').className,'rank-result-tier rank-result-tier--ft50');
+  assert.equal(tierCell('ABS学术期刊指南','4*').className,'rank-result-tier rank-result-tier--abs4star');
+  assert.equal(tierCell('ABS学术期刊指南','4').className,'rank-result-tier rank-result-tier--abs4');
+  assert(!tierCell('ABS学术期刊指南','3').className,'ABS 3 is not specially highlighted');
+  assert(!tierCell('SCI分区-JCR','4').className,'Unrelated ranking 4 is not highlighted');
+  for (const tr of tableRows) assert(!tr.children[0].className,
+    'Ranking dataset name column stays unchanged');
+
 
   env.panel.dataset.journalName='Other Journal';
   await env.actions.loadRanks();

@@ -1888,6 +1888,17 @@
     if (/^[1\u4e00]\u533a$/i.test(token)) return "zone";
     return "secondary";
   };
+  // EasyScholar's real result codes: utd24="UTD24", ft50="FT50",
+  // ajg="4*" or "4". Do not highlight other AJG grades or the left navigator.
+  const rankResultTier = (row) => {
+    const code = String(row.abbreviation || row.key || "").trim().toLowerCase();
+    const value = String(row.rank || "").trim();
+    if (code === "utd24" && /^UTD24$/i.test(value)) return "utd24";
+    if (code === "ft50" && /^FT50$/i.test(value)) return "ft50";
+    if (code === "ajg" && /^4[ ]*[*★☆]$/.test(value)) return "abs4star";
+    if (code === "ajg" && value === "4") return "abs4";
+    return "";
+  };
   const renderRankHighlights = (cell, raw) => {
     for (const part of String(raw).split(rankImportantPattern)) {
       if (!part) continue;
@@ -1964,6 +1975,8 @@
         renderRankHighlights(th, entry.label);
         th.title = entry.label;
         renderRankHighlights(td, entry.row.rank);
+        const tier = rankResultTier(entry.row);
+        if (tier) td.className = "rank-result-tier rank-result-tier--" + tier;
         td.title = entry.row.rank;
         tr.append(th, td);
         children.push(tr);

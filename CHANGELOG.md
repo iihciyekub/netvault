@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.83 — 2026-10-18
+
+- Restore the original plain journal-list navigation: remove the unintended UTD24/FT50/ABS colored backgrounds, text overrides and vertical stripes.
+- Highlight only authentic Journal rankings **result values**: UTD24, FT50, ABS 4* and ABS 4. Use bold, theme-aware colored text without changing ranking cell backgrounds, unrelated grades or layout.
+
 ## 0.7.82 — 2026-10-18
 
 - Place dashboard-wide literature and PDF-size totals on the same line as the heatmap legend and pagination, eliminating the separate footer row.

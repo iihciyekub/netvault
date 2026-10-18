@@ -133,7 +133,6 @@
         <a
           class="{% if option.key == journal_filter %}active{% endif %}"
           href="{{ path_for('/web') }}?filter={{ option.key }}"
-          {% if option.key in ('utd24', 'ft50') %}data-journal-spotlight="{{ option.key }}"{% endif %}
           {% if option.editable %}
           data-journal-list-edit
           data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
@@ -144,7 +143,7 @@
       {% endfor %}
       <details class="journal-list-group{% if journal_filter.startswith('abs') %} active{% endif %}"
                data-journal-list-group="abs" open>
-        <summary class="journal-list-group-heading" data-journal-spotlight="abs">
+        <summary class="journal-list-group-heading">
           <span>ABS</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
         </summary>
         <div class="filter-menu-popover">
@@ -152,7 +151,6 @@
           <a
             class="{% if option.key == journal_filter %}active{% endif %}"
             href="{{ path_for('/web') }}?filter={{ option.key }}"
-            {% if option.key in ('abs4star', 'abs4') %}data-journal-spotlight="{{ option.key }}"{% endif %}
             data-journal-list-edit
             data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
             title="Click to filter; right-click to edit {{ option.label }}"

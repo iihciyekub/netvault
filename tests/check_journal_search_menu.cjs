@@ -10,10 +10,13 @@ const css = readFileSync(join(root, "static/styles.css"), "utf8");
 
 assert(template.includes("data-journal-netvault-search"), "Search menu item missing");
 assert(template.includes('data-search-url="{{ path_for(\'/web/pdfs\') }}"'), "URL must use configured base path");
-for (const key of ["utd24", "ft50", "abs", "abs4", "abs4star"])
-  assert(css.includes('[data-journal-spotlight="' + key + '"]'), key + " highlight missing");
-assert(css.includes("font-weight: 750;"), "Tier labels should be bold");
-assert(css.includes(':root[data-theme="dark"]'), "Dark-theme highlights missing");
+assert(!template.includes("data-journal-spotlight"), "Sidebar navigation must keep original style");
+assert(!css.includes("[data-journal-spotlight"), "No colored sidebar category backgrounds");
+for (const key of ["utd24", "ft50", "abs4", "abs4star"])
+  assert(css.includes('tbody td.rank-result-tier--' + key),
+    key + " ranking RESULT color missing");
+assert(css.includes('tbody td.rank-result-tier {\n  font-weight: 800;'),
+  "Only actual ranking result text should be bold");
 const render = source.slice(source.indexOf('  const renderJournalRow ='), source.indexOf('  const journalLimitValue ='));
 const nameBlock = render.slice(render.indexOf('label.className = "heat-journal"'),render.indexOf('name.textContent = row.label;'));
 assert(!nameBlock.includes("label.title"), "Native journal name hover tooltip must be absent");
@@ -72,4 +75,4 @@ for (const journal of cases) {
   context.closeJournalMenu();
   assert.equal(menu.hidden,true);
 }
-console.log("PASS: exact journal search, proper encoding, base path, clipboard, dark/light category highlights, no native title");
+console.log("PASS: exact journal search, proper encoding, base path, clipboard, plain sidebar, ranking-result emphasis, no native title");

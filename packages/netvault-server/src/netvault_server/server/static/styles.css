@@ -5326,31 +5326,6 @@ body.dashboard-body:has([data-journal-library]) {
   color: var(--fg);
 }
 
-/* Curated journal tiers stand out in both themes without changing
-   navigation behavior or list geometry. */
-.dashboard-body .journal-library [data-journal-spotlight="utd24"] { --tier-ink: #1557a5; }
-.dashboard-body .journal-library [data-journal-spotlight="ft50"] { --tier-ink: #086960; }
-.dashboard-body .journal-library [data-journal-spotlight="abs"] { --tier-ink: #7b3ba1; }
-.dashboard-body .journal-library [data-journal-spotlight="abs4star"],
-.dashboard-body .journal-library [data-journal-spotlight="abs4"] { --tier-ink: #8f5410; }
-:root[data-theme="dark"] .dashboard-body .journal-library [data-journal-spotlight="utd24"] { --tier-ink: #9cc8ff; }
-:root[data-theme="dark"] .dashboard-body .journal-library [data-journal-spotlight="ft50"] { --tier-ink: #83ded0; }
-:root[data-theme="dark"] .dashboard-body .journal-library [data-journal-spotlight="abs"] { --tier-ink: #d3b2fa; }
-:root[data-theme="dark"] .dashboard-body .journal-library [data-journal-spotlight="abs4star"],
-:root[data-theme="dark"] .dashboard-body .journal-library [data-journal-spotlight="abs4"] { --tier-ink: #ffd08a; }
-.dashboard-body .journal-library :is(.filter-tabs > a, .filter-menu-popover > a, .journal-list-group-heading)[data-journal-spotlight] {
-  color: var(--tier-ink);
-  background: color-mix(in srgb, var(--tier-ink) 9%, transparent);
-  font-weight: 750;
-  box-shadow: inset 3px 0 0 var(--tier-ink);
-}
-.dashboard-body .journal-library :is(.filter-tabs > a, .filter-menu-popover > a, .journal-list-group-heading)[data-journal-spotlight]:is(:hover, :focus-visible, .active),
-.dashboard-body .journal-library .journal-list-group.active > .journal-list-group-heading[data-journal-spotlight] {
-  color: var(--tier-ink);
-  background: color-mix(in srgb, var(--tier-ink) 18%, transparent);
-  font-weight: 800;
-}
-
 /* One compact row: density legend / full-vault totals / journal pages.
    Container queries react to the actual heatmap width (not the browser),
    so docking the ranking sidebar cannot push statistics onto another line. */
@@ -5459,3 +5434,19 @@ body.dashboard-body:has([data-journal-library]) {
   .dashboard-body .dashboard-vault-stat { gap: 2px; }
   .dashboard-body .dashboard-vault-metrics { gap: 4px; }
 }
+
+
+/* Emphasize ONLY real classifications in the right-hand Journal rankings
+   result column. The left-hand journal list retains its original styling.
+   Text-only color and weight: no badges, backgrounds, borders or geometry. */
+.dashboard-body .journal-rank-panel tbody td.rank-result-tier {
+  font-weight: 800;
+}
+.dashboard-body .journal-rank-panel tbody td.rank-result-tier--utd24 { color: #1557a5; }
+.dashboard-body .journal-rank-panel tbody td.rank-result-tier--ft50 { color: #087168; }
+.dashboard-body .journal-rank-panel tbody td.rank-result-tier--abs4star { color: #974d09; }
+.dashboard-body .journal-rank-panel tbody td.rank-result-tier--abs4 { color: #6745a2; }
+:root[data-theme="dark"] .dashboard-body .journal-rank-panel tbody td.rank-result-tier--utd24 { color: #a5ccff; }
+:root[data-theme="dark"] .dashboard-body .journal-rank-panel tbody td.rank-result-tier--ft50 { color: #87dfce; }
+:root[data-theme="dark"] .dashboard-body .journal-rank-panel tbody td.rank-result-tier--abs4star { color: #ffcd85; }
+:root[data-theme="dark"] .dashboard-body .journal-rank-panel tbody td.rank-result-tier--abs4 { color: #ceadfc; }

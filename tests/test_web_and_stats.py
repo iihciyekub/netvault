@@ -812,8 +812,8 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "data-journal-wos-link" in dashboard.text
     assert 'data-journal-netvault-search role="menuitem"' in dashboard.text
     assert 'data-search-url="/web/pdfs"' in dashboard.text
-    for tier in ("utd24", "ft50", "abs", "abs4star", "abs4"):
-        assert f'data-journal-spotlight="{tier}"' in dashboard.text
+    assert "data-journal-spotlight" not in dashboard.text
+    assert 'data-rank-panel' in dashboard.text  # only ranking results carry tier emphasis
     assert "WEB JOURNAL" in dashboard_journal_names(dashboard)
     assert "ANOTHER JOURNAL" in dashboard_journal_names(dashboard)
     journal_rows = dashboard_journal_data(dashboard)
