@@ -3,6 +3,37 @@
 import json
 import subprocess
 import sys
+from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlsplit
+
+
+class _WebAssetPaths(HTMLParser):
+    """Read HTML's actual asset URLs, decoding &amp; query separators."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.urls: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attribute = "src" if tag == "script" else "href" if tag == "link" else None
+        if attribute is None:
+            return
+        self.urls.extend(value for key, value in attrs if key == attribute and value)
+
+
+def verify_web_assets(page: str, version: str) -> None:
+    marker = f'class="brand-version">v{version}</small>'
+    if marker not in page:
+        raise RuntimeError(f"Rendered web version is inconsistent: missing {marker}")
+    parser = _WebAssetPaths()
+    parser.feed(page)
+    for asset in ("styles.css", "app.js", "i18n.js"):
+        if not any(
+            urlsplit(url).path.endswith("/static/" + asset)
+            and parse_qs(urlsplit(url).query).get("v") == [version]
+            for url in parser.urls
+        ):
+            raise RuntimeError(f"Rendered web asset is missing expected version: {asset} v{version}")
 
 
 def verify(base_url: str, version: str) -> None:
@@ -25,10 +56,7 @@ def verify(base_url: str, version: str) -> None:
     if deployed != version:
         raise RuntimeError(f"API version is {deployed}, expected {version}")
     page = read("/web/login")
-    for marker in (f'class="brand-version">v{version}</small>', f"styles.css?v={version}\"",
-                   f"app.js?v={version}\""):
-        if marker not in page:
-            raise RuntimeError(f"Rendered web version is inconsistent: missing {marker}")
+    verify_web_assets(page, version)
     print(f"Deployed API, web UI and static assets match NetVault {version}")
 
 
