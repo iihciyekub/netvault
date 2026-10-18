@@ -1224,11 +1224,9 @@
     const elements = [];
     const label = document.createElement("div");
     label.className = "heat-journal";
-    label.title = row.label;
-    if (row.total === 0) {
-      label.classList.add("journal-no-pdfs");
-      label.title += " — No year-tagged PDFs currently match this journal.";
-    }
+    // Do not set a title attribute: the browser's native hover tooltip
+    // obscures neighbouring journal rows and duplicates the visible name.
+    if (row.total === 0) label.classList.add("journal-no-pdfs");
     label.tabIndex = 0;
     label.dataset.journalRow = String(row.id);
     label.dataset.journalName = row.label;
@@ -1710,11 +1708,17 @@
   const openJournalMenu = (target, event) => {
     const menu = qs("[data-journal-context-menu]");
     const link = qs("[data-journal-wos-link]", menu);
+    const netvaultSearch = qs("[data-journal-netvault-search]", menu);
     const name = (target.dataset.journalName || "").replace(/\s+/g, " ").trim();
-    if (!menu || !link || !name) return;
+    if (!menu || !link || !netvaultSearch || !name) return;
     closeJournalMenu();
     const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
     link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
+    // Exact journal filtering uses the existing authenticated PDF search.
+    // URLSearchParams safely encodes punctuation and non-ASCII journal names.
+    const searchUrl = new URL(menu.dataset.searchUrl, window.location.origin);
+    searchUrl.searchParams.set("journal", name);
+    netvaultSearch.href = searchUrl.href;
     journalMenuTarget = target;
     menu.dataset.journalName = name;
     qs("[data-journal-copy]", menu).setAttribute("data-copy", name);
@@ -1863,6 +1867,9 @@
   const rankDatasetOrder = new Map();
   rankDisplayGroups.forEach((group, category) => group.codes.forEach((code, order) =>
     rankDatasetOrder.set(code.toLowerCase(), [category, order])));
+  // A shared collator avoids hundreds of expensive localeCompare collator
+  // allocations during the first hovered ranking table render.
+  const rankLabelCollator = new Intl.Collator("zh-CN", { numeric: true });
   const rankFallbackCategory = rankDisplayGroups.length - 1;
   const rankRowPresentation = (row) => {
     const abbreviation = String(row.abbreviation || row.key || "").trim().toLowerCase();
@@ -1939,7 +1946,7 @@
         .map(rankRowPresentation)
         .sort((left, right) => left.category - right.category
           || left.order - right.order
-          || left.label.localeCompare(right.label, "zh-CN", { numeric: true }));
+          || rankLabelCollator.compare(left.label, right.label));
       const children = [];
       let category = -1;
       for (const entry of rows) {
@@ -3193,7 +3200,7 @@
     if (!event.target.closest("[data-journal-context-menu]")) closeJournalMenu();
   });
   document.addEventListener("click", (event) => {
-    if (event.target.closest("[data-journal-wos-link]")) closeJournalMenu();
+    if (event.target.closest("[data-journal-wos-link], [data-journal-netvault-search]")) closeJournalMenu();
   });
   document.addEventListener("scroll", () => closeJournalMenu(), true);
   window.addEventListener("resize", () => closeJournalMenu());

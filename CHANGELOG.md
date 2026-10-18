@@ -4,6 +4,9 @@
 
 ## 0.7.80 — 2026-10-18
 
+- Add exact-journal NetVault PDF search to the dashboard journal context menu, with proper URL encoding and site-prefix support.
+- Highlight UTD24, FT50, ABS 4* and ABS 4 journal lists with strong accessible theme-aware text; remove the duplicate native hover tooltip over journal names.
+- Reduce first-hover rankings render latency by reusing one locale collator and preserve a complete journal-row slot in narrow browser heights.
 - Remove the SHA-to-server `nv identify` CLI because server-side PDF recompression changes the file hash; retain `nv tidy` for offline per-directory cleanup.
 - Verify that explicit `nv upload --doi` and `nv upload --csv` accept image-only scanned PDFs without comparing the PDF title to CSL, and stamp `/DOI` into the stored server PDF on upload. Local PDF bytes stay untouched.
 - Consolidate CLI operation events into `.netvault/history.jsonl` at the selected folder root, with a consistent small schema, append-only writes and interrupted-tail recovery.

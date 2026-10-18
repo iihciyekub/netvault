@@ -803,6 +803,10 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert "Open in Web of Science" in dashboard.text
     assert "data-journal-context-menu" in dashboard.text
     assert "data-journal-wos-link" in dashboard.text
+    assert 'data-journal-netvault-search role="menuitem"' in dashboard.text
+    assert 'data-search-url="/web/pdfs"' in dashboard.text
+    for tier in ("utd24", "ft50", "abs", "abs4star", "abs4"):
+        assert f'data-journal-spotlight="{tier}"' in dashboard.text
     assert "WEB JOURNAL" in dashboard_journal_names(dashboard)
     assert "ANOTHER JOURNAL" in dashboard_journal_names(dashboard)
     journal_rows = dashboard_journal_data(dashboard)
@@ -1605,6 +1609,19 @@ def test_heatmap_search_matches_node_and_retains_filters_on_pagination(client: T
     assert row[1] == 27
     assert next(cell[1] for cell in row[2] if cell[0] == 0) == 26
     assert 'data-pdf-search-url="/web/pdfs"' in dashboard.text
+    assert 'data-journal-netvault-search role="menuitem"' in dashboard.text
+
+    # Context-menu 'Search in NetVault' intentionally uses a journal-only
+    # filter: exact journal identity, all years and the existing paginated UI.
+    journal_only = client.get("/web/pdfs", params={"journal": journal})
+    assert journal_only.status_code == 200
+    assert "27 results" in journal_only.text
+    assert "Wrong journal" not in journal_only.text
+    assert "Deleted paper" not in journal_only.text
+    assert 'name="journal" value="Research &amp; Evidence"' in journal_only.text
+    assert "Search within these results" in journal_only.text
+    assert 'class="paper-result"' in journal_only.text
+    assert client.get("/web/pdfs", params={"journal": journal, "page": 2}).status_code == 200
 
     first = client.get("/web/pdfs", params={"journal": journal, "year": 2026})
     assert first.status_code == 200

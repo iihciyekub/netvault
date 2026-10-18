@@ -133,6 +133,7 @@
         <a
           class="{% if option.key == journal_filter %}active{% endif %}"
           href="{{ path_for('/web') }}?filter={{ option.key }}"
+          {% if option.key in ('utd24', 'ft50') %}data-journal-spotlight="{{ option.key }}"{% endif %}
           {% if option.editable %}
           data-journal-list-edit
           data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
@@ -143,7 +144,7 @@
       {% endfor %}
       <details class="journal-list-group{% if journal_filter.startswith('abs') %} active{% endif %}"
                data-journal-list-group="abs" open>
-        <summary class="journal-list-group-heading">
+        <summary class="journal-list-group-heading" data-journal-spotlight="abs">
           <span>ABS</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
         </summary>
         <div class="filter-menu-popover">
@@ -151,6 +152,7 @@
           <a
             class="{% if option.key == journal_filter %}active{% endif %}"
             href="{{ path_for('/web') }}?filter={{ option.key }}"
+            {% if option.key in ('abs4star', 'abs4') %}data-journal-spotlight="{{ option.key }}"{% endif %}
             data-journal-list-edit
             data-journal-list-url="{{ path_for('/web/journal-filters/' ~ option.key) }}"
             title="Click to filter; right-click to edit {{ option.label }}"
@@ -382,8 +384,9 @@
   <div data-doi-batch-download-ids></div>
 </form>
 
-<div class="journal-context-menu" data-journal-context-menu data-rank-url="{{ path_for('/web/journal-rank') }}" role="menu" aria-label="Journal actions" hidden>
+<div class="journal-context-menu" data-journal-context-menu data-rank-url="{{ path_for('/web/journal-rank') }}" data-search-url="{{ path_for('/web/pdfs') }}" role="menu" aria-label="Journal actions" hidden>
   <button type="button" role="menuitem" data-journal-copy><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Copy journal name</span></button>
+  <a href="{{ path_for('/web/pdfs') }}" data-journal-netvault-search role="menuitem"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span>Search in NetVault</span></a>
   <a href="https://www.webofscience.com/" data-journal-wos-link role="menuitem" target="_blank" rel="noopener noreferrer" data-no-pjax><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>Open in Web of Science</span></a>
   <button type="button" role="menuitem" data-journal-rank><i class="fa-solid fa-ranking-star" aria-hidden="true"></i><span>Journal rankings</span></button>
   <button type="button" role="menuitem" data-journal-rank-batch><i class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Fetch current list rankings</span></button>
