@@ -246,20 +246,34 @@ def _geometry(tmp_path: Path, chrome: str, width: int, theme: str = "dark",
     suffix = ("job" if active_rank_job else "idle") + ("-open" if library_open else "-closed")
     page = tmp_path / f"heatmap-{width}x{height}-{theme}-{suffix}.html"
     page.write_text(_fixture(theme, active_rank_job, library_open), encoding="utf-8")
-    profile = tmp_path / f"profile-{width}x{height}-{theme}-{suffix}"
-    command = [
-        chrome, "--headless=new", "--disable-gpu", "--no-sandbox",
-        "--disable-extensions", "--disable-background-networking",
-        "--allow-file-access-from-files", "--no-first-run",
-        "--no-default-browser-check", f"--user-data-dir={profile}",
-        f"--window-size={width},{height}", "--virtual-time-budget=1400",
-        "--dump-dom", page.as_uri(),
-    ]
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=25)
-    assert completed.returncode == 0, completed.stderr[-1500:]
-    match = re.search(r'data-test-geometry="([^"]+)"', completed.stdout)
-    assert match is not None, completed.stderr[-1500:]
-    return json.loads(unescape(match.group(1)))
+    # Headless Chromium can hang during cold startup on busy shared CI
+    # runners. Retry ONLY process timeouts with a fresh browser profile; do
+    # not hide a real geometry regression or a failed DOM assertion.
+    for attempt in range(2):
+        profile = tmp_path / f"profile-{width}x{height}-{theme}-{suffix}-{attempt}"
+        command = [
+            chrome, "--headless=new", "--disable-gpu", "--no-sandbox",
+            "--disable-extensions", "--disable-background-networking",
+            "--disable-dev-shm-usage",
+            "--allow-file-access-from-files", "--no-first-run",
+            "--no-default-browser-check", f"--user-data-dir={profile}",
+            f"--window-size={width},{height}", "--virtual-time-budget=1400",
+            "--dump-dom", page.as_uri(),
+        ]
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True,
+                timeout=30 if attempt == 0 else 50,
+            )
+        except subprocess.TimeoutExpired:
+            if attempt == 0:
+                continue
+            raise
+        assert completed.returncode == 0, completed.stderr[-1500:]
+        match = re.search(r'data-test-geometry="([^"]+)"', completed.stdout)
+        assert match is not None, completed.stderr[-1500:]
+        return json.loads(unescape(match.group(1)))
+    raise AssertionError("Unreachable Chromium retry state")
 
 
 def test_codex_split_view_keeps_embedded_rankings_and_scrollable_years(tmp_path: Path):
