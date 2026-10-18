@@ -19,6 +19,11 @@ from test_heatmap_layout_browser import STATIC, _chrome
 
 APP = STATIC / "app.js"
 
+# 18 first renders made P95 equal the SINGLE slowest sample on shared CI.
+# Sixty different journals provide a real upper-percentile distribution
+# without loosening either the <35ms cold or <12ms cached latency guard.
+COLD_SAMPLE_COUNT = 60
+
 
 def _fixture() -> str:
     app = APP.read_text(encoding="utf-8")
@@ -27,18 +32,18 @@ def _fixture() -> str:
     labels = "".join(
         f'<div class="heat-journal" data-journal-name="Journal {i:02d}">'
         f'<span class="heat-journal-name">Journal {i:02d}</span></div>'
-        for i in range(18)
+        for i in range(COLD_SAMPLE_COUNT)
     )
     years = "".join(
         f'<span class="heat-cell level-0" data-journal-row="{i}" data-heat-year="1992" data-heat-count="0"></span>'
         f'<button class="heat-cell level-3" data-journal-row="{i}" data-heat-year="2026" data-heat-count="6"></button>'
-        for i in range(18)
+        for i in range(COLD_SAMPLE_COUNT)
     )
     totals_and_names = "".join(
         f'<div class="heat-total" data-journal-row="{i}" data-journal-name="Journal {i:02d}">123</div>'
         f'<div class="heat-journal" data-journal-row="{i}" data-journal-name="Journal {i:02d}">'
         f'<span class="heat-journal-name">Journal {i:02d}</span></div>'
-        for i in range(18)
+        for i in range(COLD_SAMPLE_COUNT)
     )
     return (
         '<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8">'
@@ -66,7 +71,7 @@ def _fixture() -> str:
         '};\n'
         + code
         + '''
-const names=Array.from({length:18},(_,index)=>"Journal "+String(index).padStart(2,"0"));
+const names=Array.from({length:60},(_,index)=>"Journal "+String(index).padStart(2,"0"));
 const rankUrl="/web/journal-rank";
 const datasetRows=names.map((name,index)=>({
   journal_name:name,queried_at:Math.floor(Date.now()/1000),
@@ -136,7 +141,7 @@ const checkSelection = (index) => {
   hoverStatistic(totals[0]); checkSelection(0);
   hoverStatistic(centralNames[7]); checkSelection(7);
   hoverStatistic(filledCells[17]); checkSelection(17);
-  rearrange(Array.from({length:18},(_,index)=>index));
+  rearrange(Array.from({length:60},(_,index)=>index));
   if (networkCalls!==0) throw Error("Cached switching must not make HTTP requests");
   let active=Array.from(document.querySelectorAll('.journal-library-items .heat-journal[data-rank-current]'));
   if(active.length!==1 || active[0].dataset.journalName!==title.textContent)
@@ -202,7 +207,8 @@ const checkSelection = (index) => {
   const coldSorted=sort(cold);
   const sorted=sort(times);
   const result={
-    measured:times.length,hoverSurfaces:5,firstRenderP95Ms:coldSorted[Math.floor(coldSorted.length*.95)],
+    measured:times.length,hoverSurfaces:5,coldSamples:cold.length,
+    firstRenderP95Ms:coldSorted[Math.floor(coldSorted.length*.95)],
     p50Ms:sorted[Math.floor(sorted.length*.5)],
     p95Ms:sorted[Math.floor(sorted.length*.95)],
     maxMs:sorted[sorted.length-1], cachedNetworkCalls:0,
@@ -227,6 +233,7 @@ def test_cached_journal_hover_is_synchronous_under_fast_pointer_switches(tmp_pat
         [
             chrome, "--headless=new", "--no-sandbox", "--disable-gpu",
             "--disable-extensions", "--disable-background-networking",
+            "--disable-dev-shm-usage",
             "--allow-file-access-from-files", "--no-first-run",
             "--no-default-browser-check",
             f"--user-data-dir={tmp_path / 'chrome-user'}",
@@ -242,6 +249,7 @@ def test_cached_journal_hover_is_synchronous_under_fast_pointer_switches(tmp_pat
     assert match is not None, result.stderr[-1200:]
     measured = json.loads(unescape(match.group(1)))
     assert measured["measured"] == 360
+    assert measured["coldSamples"] == COLD_SAMPLE_COUNT
     assert measured["cachedNetworkCalls"] == 0
     assert measured["lateNetworkCalls"] == 1
     assert measured["latestJournal"] == "Journal 04"
