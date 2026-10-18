@@ -284,7 +284,7 @@ wheels = [
 
 [[package]]
 name = "netvault"
-version = "0.7.81"
+version = "0.7.82"
 source = { editable = "." }
 dependencies = [
     { name = "pypdf" },

@@ -89,7 +89,10 @@ def test_rankings_are_a_permanently_embedded_detail_column() -> None:
     opening = template.index('data-rank-workspace')
     table = template.index('class="panel heatmap-panel"')
     rank_slot = template.index('class="journal-rank-slot"')
-    closing = template.index('</div>\n<footer class="dashboard-vault-footer"')
+    closing = template.index('</div>\n<dialog class="doi-batch-dialog"')
+    assert '<div class="heatmap-pagination-container">' in template
+    assert template.index('class="heatmap-legend"') < template.index('class="dashboard-vault-metrics"') < template.index('class="heatmap-pager-navigation"')
+    assert '<footer class="dashboard-vault-footer"' not in template
     assert closing < template.index('<dialog class="doi-batch-dialog"')
     assert opening < table < rank_slot < closing
     assert template.count('data-rank-panel') == 1
@@ -250,3 +253,28 @@ def test_people_page_does_not_repeat_its_title() -> None:
     assert "<h3>Team accounts</h3>" in template
     assert "Create User" in template
     assert "Reset Password" in template
+
+
+def test_dashboard_totals_and_journal_pager_remain_on_one_adaptive_row() -> None:
+    template = (SERVER / "templates/dashboard.html").read_text(encoding="utf-8")
+    css = (SERVER / "static/styles.css").read_text(encoding="utf-8")
+
+    pager = template.index('class="heatmap-pagination" data-journal-pagination')
+    metrics = template.index('class="dashboard-vault-metrics"', pager)
+    buttons = template.index('class="heatmap-pager-navigation"', pager)
+    closing = template.index('</nav>', pager)
+    assert pager < metrics < buttons < closing
+    assert template.count('data-vault-total-count=') == 2  # includes empty-vault case
+    assert template.count('data-vault-total-bytes=') == 2
+    assert 'class="dashboard-vault-footer"' not in template
+
+    assert 'container: journal-pager / inline-size;' in css
+    assert 'grid-template-columns: max-content minmax(0, 1fr) max-content;' in css
+    assert 'flex-wrap: nowrap;' in css[css.index('/* One compact row:'):]
+
+    # Responsive breakpoints drop decorative words and the range, never the
+    # count/size values or accessible page controls.
+    for cutoff in (810, 670, 480, 335, 280):
+        assert f"@container journal-pager (max-width: {cutoff}px)" in css
+    assert "data-vault-total-count" in template
+    assert "data-vault-total-bytes" in template

@@ -289,7 +289,8 @@
         </div>
       </div>
     </div>
-    <nav class="heatmap-pagination" data-journal-pagination aria-label="Journal pages">
+    <div class="heatmap-pagination-container">
+    <nav class="heatmap-pagination" data-journal-pagination aria-label="Journal pages and vault totals">
       <div class="heatmap-pager-settings">
       <div class="heatmap-legend" aria-label="Heatmap legend">
         <span>Less</span>
@@ -300,6 +301,23 @@
         <span class="heat-cell level-4"></span>
         <span>More</span>
       </div>
+      </div>
+      <div class="dashboard-vault-metrics" aria-label="Vault totals">
+        <span class="dashboard-vault-stat">
+          <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+          <span class="sr-only">Total literature: </span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--full" aria-hidden="true">Total literature</span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--short" aria-hidden="true">Docs</span>
+          <strong data-vault-total-count="{{ vault_summary.active_pdfs }}">{{ vault_summary.active_pdfs|number }}</strong>
+        </span>
+        <span class="dashboard-vault-footer-separator" aria-hidden="true">·</span>
+        <span class="dashboard-vault-stat">
+          <i class="fa-solid fa-hard-drive" aria-hidden="true"></i>
+          <span class="sr-only">PDF storage: </span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--full" aria-hidden="true">PDF storage</span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--short" aria-hidden="true">PDF</span>
+          <strong data-vault-total-bytes="{{ vault_summary.total_size }}">{{ vault_summary.total_size|bytes }}</strong>
+        </span>
       </div>
       <div class="heatmap-pager-navigation">
       <span class="heatmap-page-range" data-journal-page-range aria-live="polite"></span>
@@ -312,9 +330,31 @@
       </div>
       </div>
     </nav>
+    </div>
     <div class="empty-state heatmap-no-matches" data-journal-no-matches hidden>No journals match the current filters.</div>
     {% else %}
     <div class="empty-state">No journal-year data.</div>
+    <div class="heatmap-pagination-container">
+      <div class="heatmap-pagination heatmap-pagination--empty">
+      <div class="dashboard-vault-metrics" aria-label="Vault totals">
+        <span class="dashboard-vault-stat">
+          <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+          <span class="sr-only">Total literature: </span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--full" aria-hidden="true">Total literature</span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--short" aria-hidden="true">Docs</span>
+          <strong data-vault-total-count="{{ vault_summary.active_pdfs }}">{{ vault_summary.active_pdfs|number }}</strong>
+        </span>
+        <span class="dashboard-vault-footer-separator" aria-hidden="true">·</span>
+        <span class="dashboard-vault-stat">
+          <i class="fa-solid fa-hard-drive" aria-hidden="true"></i>
+          <span class="sr-only">PDF storage: </span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--full" aria-hidden="true">PDF storage</span>
+          <span class="dashboard-vault-stat-label dashboard-vault-stat-label--short" aria-hidden="true">PDF</span>
+          <strong data-vault-total-bytes="{{ vault_summary.total_size }}">{{ vault_summary.total_size|bytes }}</strong>
+        </span>
+      </div>
+      </div>
+    </div>
     {% endif %}
 </section>
 <aside class="journal-rank-slot" aria-label="Journal ranking sidebar">
@@ -337,19 +377,6 @@
   </section>
 </aside>
 </div>
-<footer class="dashboard-vault-footer" aria-label="Vault totals">
-  <span class="dashboard-vault-stat">
-    <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
-    <span>Total literature</span>
-    <strong data-vault-total-count="{{ vault_summary.active_pdfs }}">{{ vault_summary.active_pdfs|number }}</strong>
-  </span>
-  <span class="dashboard-vault-footer-separator" aria-hidden="true">·</span>
-  <span class="dashboard-vault-stat">
-    <i class="fa-solid fa-hard-drive" aria-hidden="true"></i>
-    <span>PDF storage</span>
-    <strong data-vault-total-bytes="{{ vault_summary.total_size }}">{{ vault_summary.total_size|bytes }}</strong>
-  </span>
-</footer>
 <dialog class="doi-batch-dialog" data-doi-batch-dialog
         data-batch-url="{{ path_for('/web/pdfs/batch') }}"
         aria-labelledby="doi-batch-title">

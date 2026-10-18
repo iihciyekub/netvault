@@ -635,7 +635,9 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert dashboard.status_code == 200
     assert '<h1 class="sr-only">NetVault dashboard</h1>' in dashboard.text
     assert "No journal-year data." in dashboard.text
-    assert '<footer class="dashboard-vault-footer" aria-label="Vault totals">' in dashboard.text
+    assert '<div class="heatmap-pagination-container">' in dashboard.text
+    assert '<div class="dashboard-vault-metrics" aria-label="Vault totals">' in dashboard.text
+    assert '<footer class="dashboard-vault-footer"' not in dashboard.text
     assert 'data-vault-total-count="0">0</strong>' in dashboard.text
     assert 'data-vault-total-bytes="0">0 B</strong>' in dashboard.text
     assert "Total literature" in dashboard.text

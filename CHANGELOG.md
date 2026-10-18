@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.82 — 2026-10-18
+
+- Place dashboard-wide literature and PDF-size totals on the same line as the heatmap legend and pagination, eliminating the separate footer row.
+- Adapt to the actual available pager width: progressively abbreviate explanatory labels, keep counts and page controls visible, and never wrap the row. Retain vault totals when no journal-year data exists.
+
 ## 0.7.81 — 2026-10-18
 
 - Add a compact, localized dashboard footer with the full NetVault literature count and the stored PDF file size; values are server statistics for all active PDFs, unchanged by journal-list filters.

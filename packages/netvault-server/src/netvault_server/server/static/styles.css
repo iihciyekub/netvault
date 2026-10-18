@@ -5351,42 +5351,111 @@ body.dashboard-body:has([data-journal-library]) {
   font-weight: 800;
 }
 
-/* Full-vault totals belong to the dashboard itself, not to the currently
-   selected journal list. The thin footer has its own flex row and never
-   overlays the heatmap scrollbar or its pagination controls. */
-.dashboard-body .dashboard-vault-footer {
-  display: flex;
+/* One compact row: density legend / full-vault totals / journal pages.
+   Container queries react to the actual heatmap width (not the browser),
+   so docking the ranking sidebar cannot push statistics onto another line. */
+.dashboard-body .heatmap-pagination-container {
+  container: journal-pager / inline-size;
+  width: 100%;
+  min-width: 0;
   flex: 0 0 auto;
+}
+.dashboard-body .heatmap-pagination-container .heatmap-pagination {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  justify-content: normal;
+  gap: 10px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-width: 0;
+  width: 100%;
+}
+.dashboard-body .heatmap-pagination-container .heatmap-pagination--empty {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  min-height: 30px;
-  width: 100%;
-  padding: 6px 12px max(6px, env(safe-area-inset-bottom));
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
 }
-.dashboard-body .dashboard-vault-stat {
+.dashboard-body .heatmap-pagination-container .heatmap-pager-settings {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.dashboard-body .heatmap-pagination-container .heatmap-pager-navigation {
+  flex-wrap: nowrap;
+  margin: 0;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.dashboard-body .heatmap-pagination-container .dashboard-vault-metrics {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  justify-content: center;
+  min-width: 0;
   white-space: nowrap;
-}
-.dashboard-body .dashboard-vault-stat > i {
-  align-self: center;
+  gap: 9px;
+  color: var(--muted);
   font-size: 11px;
+  line-height: 1.2;
+}
+.dashboard-body .dashboard-vault-metrics .dashboard-vault-stat {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+  gap: 5px;
+}
+.dashboard-body .dashboard-vault-metrics .dashboard-vault-stat > i {
+  align-self: center;
+  font-size: 10px;
   opacity: .8;
 }
-.dashboard-body .dashboard-vault-stat > strong {
+.dashboard-body .dashboard-vault-metrics .dashboard-vault-stat > strong {
   color: var(--fg);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 720;
   font-variant-numeric: tabular-nums;
 }
-.dashboard-body .dashboard-vault-footer-separator { opacity: .6; }
-@media (max-width: 560px) {
-  .dashboard-body .dashboard-vault-footer { flex-wrap: wrap; gap: 4px 9px; font-size: 10px; }
-  .dashboard-body .dashboard-vault-stat { gap: 4px; }
+.dashboard-body .dashboard-vault-metrics .dashboard-vault-stat-label--short { display: none; }
+.dashboard-body .dashboard-vault-metrics .dashboard-vault-footer-separator { opacity: .6; }
+
+/* Drop low-value words first. Never hide total numbers or page controls. */
+@container journal-pager (max-width: 810px) {
+  .dashboard-body .heatmap-page-range { display: none; }
+}
+@container journal-pager (max-width: 670px) {
+  .dashboard-body .dashboard-vault-metrics .dashboard-vault-stat-label--full { display: none; }
+  .dashboard-body .dashboard-vault-metrics .dashboard-vault-stat-label--short { display: inline; }
+  .dashboard-body .heatmap-legend > span:first-child,
+  .dashboard-body .heatmap-legend > span:last-child { display: none; }
+  .dashboard-body .heatmap-pagination { gap: 7px; }
+  .dashboard-body .dashboard-vault-metrics { gap: 6px; }
+}
+@container journal-pager (max-width: 480px) {
+  .dashboard-body .dashboard-vault-metrics .dashboard-vault-stat-label--short { display: none; }
+  .dashboard-body .heatmap-page-label { display: none; }
+  .dashboard-body .heatmap-pager-navigation { gap: 3px; }
+  .dashboard-body .heatmap-pagination { gap: 4px; }
+  .dashboard-body .heatmap-pager-settings .heatmap-legend { gap: 2px; }
+  .dashboard-body .heatmap-pager-settings .heatmap-legend .heat-cell {
+    width: 8px;
+    height: 8px;
+    flex-basis: 8px;
+  }
+}
+@container journal-pager (max-width: 335px) {
+  .dashboard-body .heatmap-pager-settings { display: none; }
+  .dashboard-body .heatmap-page-controls { gap: 0; }
+  .dashboard-body .heatmap-page-controls > button {
+    width: 22px;
+    min-width: 22px;
+  }
+}
+@container journal-pager (max-width: 280px) {
+  .dashboard-body .heatmap-page-controls [data-journal-page-total] { display: none; }
+  .dashboard-body .heatmap-page-controls > button { width: 18px; min-width: 18px; }
+  .dashboard-body .heatmap-page-controls > input { width: 26px; }
+  .dashboard-body .dashboard-vault-stat > i { display: none; }
+  .dashboard-body .dashboard-vault-stat { gap: 2px; }
+  .dashboard-body .dashboard-vault-metrics { gap: 4px; }
 }
