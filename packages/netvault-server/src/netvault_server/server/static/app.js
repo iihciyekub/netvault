@@ -1705,6 +1705,16 @@
     journalMenuTarget = null;
   };
 
+  const journalWosUrl = (name) => {
+    const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
+    return "https://www.webofscience.com/wos/woscc/general-summary?queryJson=" + encodeURIComponent(queryJson);
+  };
+  const journalNetvaultUrl = (name, base) => {
+    // Reuse the prefix-aware authenticated PDF search URL.
+    const searchUrl = new URL(base, window.location.origin);
+    searchUrl.searchParams.set("journal", name);
+    return searchUrl.href;
+  };
   const openJournalMenu = (target, event) => {
     const menu = qs("[data-journal-context-menu]");
     const link = qs("[data-journal-wos-link]", menu);
@@ -1712,13 +1722,8 @@
     const name = (target.dataset.journalName || "").replace(/\s+/g, " ").trim();
     if (!menu || !link || !netvaultSearch || !name) return;
     closeJournalMenu();
-    const queryJson = JSON.stringify([{ rowBoolean: null, rowField: "SO", rowText: name }]);
-    link.href = `https://www.webofscience.com/wos/woscc/general-summary?queryJson=${encodeURIComponent(queryJson)}`;
-    // Exact journal filtering uses the existing authenticated PDF search.
-    // URLSearchParams safely encodes punctuation and non-ASCII journal names.
-    const searchUrl = new URL(menu.dataset.searchUrl, window.location.origin);
-    searchUrl.searchParams.set("journal", name);
-    netvaultSearch.href = searchUrl.href;
+    link.href = journalWosUrl(name);
+    netvaultSearch.href = journalNetvaultUrl(name, menu.dataset.searchUrl);
     journalMenuTarget = target;
     menu.dataset.journalName = name;
     qs("[data-journal-copy]", menu).setAttribute("data-copy", name);
@@ -1912,38 +1917,22 @@
       cell.append(strong);
     }
   };
-  const rankTimeDisplayCache = new Map();
-  const showRankRetrievedAt = (result) => {
-    const indicator = qs("[data-rank-queried-at]", qs("[data-rank-panel]"));
-    if (!indicator) return;
-    const seconds = result?.queried_at;
-    if (!Number.isFinite(seconds) || seconds <= 0) {
-      indicator.hidden = true;
-      indicator.textContent = "";
-      indicator.removeAttribute("datetime");
-      return;
+  // Four icon actions follow the journal currently shown in the ranking
+  // panel. A stale hover/menu selection must never be used as the target.
+  const syncRankActions = (panel, name) => {
+    const copy = qs("[data-rank-copy]", panel);
+    const wos = qs("[data-rank-wos-link]", panel);
+    const search = qs("[data-rank-netvault-search]", panel);
+    if (!copy || !wos || !search) return; // Standalone benchmark fixtures.
+    copy.setAttribute("data-copy", name);
+    copy.disabled = false;
+    qs("[data-rank-refresh]", panel).disabled = false;
+    wos.href = journalWosUrl(name);
+    search.href = journalNetvaultUrl(name, search.dataset.searchUrl);
+    for (const link of [wos, search]) {
+      link.removeAttribute("aria-disabled");
+      link.removeAttribute("tabindex");
     }
-    const stamp = new Date(seconds * 1000);
-    if (!Number.isFinite(stamp.getTime())) {
-      indicator.hidden = true;
-      indicator.textContent = "";
-      indicator.removeAttribute("datetime");
-      return;
-    }
-    const locale = document.documentElement?.lang || globalThis.navigator?.language || "en";
-    const key = locale + ":" + seconds;
-    let display = rankTimeDisplayCache.get(key);
-    if (!display) {
-      const label = window.NetVaultI18n?.translateString("Fetched") || "Fetched";
-      display = label + " · " + stamp.toLocaleString(locale, {
-        year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit",
-      });
-      rankTimeDisplayCache.set(key, display);
-    }
-    indicator.dateTime = stamp.toISOString();
-    indicator.textContent = display;
-    indicator.hidden = false;
   };
   const renderRanks = () => {
     const panel = qs("[data-rank-panel]");
@@ -2068,7 +2057,7 @@
     const current = () => sequence === rankSequence && panel.isConnected;
     let cached = rankCache.get(key);
     rankResult = cached || null;
-    showRankRetrievedAt(rankResult);
+
     panel.removeAttribute("aria-busy");
     qs("[data-rank-refresh]", panel).disabled = false;
     if (cached) {
@@ -2089,7 +2078,6 @@
       cached = rankCache.get(key);
       if (cached) {
         rankResult = cached;
-        showRankRetrievedAt(rankResult);
         renderRanks();
         return;
       }
@@ -2100,7 +2088,6 @@
       const data = await fetchRankResult(name, panel.dataset.rankUrl, refresh);
       if (!current()) return;
       rankResult = rankCache.get(key) || data;
-      showRankRetrievedAt(rankResult);
       renderRanks();
     } catch (error) {
       if (current()) qs("[data-rank-status]", panel).textContent = error.message + (cached ? " Showing saved rankings." : "");
@@ -2119,6 +2106,7 @@
     panel.dataset.rankUrl = url;
     panel.dataset.rankOpenMode = hover ? "hover" : "manual";
     qs("[data-rank-title]", panel).textContent = name;
+    syncRankActions(panel, name);
     if (!hover) qs("[data-rank-refresh]", panel)?.focus({preventScroll:true});
     void loadRanks();
   };
@@ -3171,7 +3159,12 @@
           const menu = qs("[data-journal-context-menu]");
           if (menu) showRankPanel(journal.dataset.journalName, menu.dataset.rankUrl, true, journal);
         }
-      } else openJournalMenu(journal, event);
+      } else {
+        // Regular click selects a journal; its four frequent actions live in
+        // the permanent ranking toolbar. Right-click still offers bulk tools.
+        const url = qs("[data-journal-context-menu]")?.dataset.rankUrl;
+        if (url) showRankPanel(journal.dataset.journalName, url, false, journal);
+      }
       return;
     }
     if (event.target.closest("[data-journal-rank]")) { openRankPanel(); return; }
@@ -3206,7 +3199,8 @@
     const journal = event.target.closest?.(".heatmap-fixed-body .heat-journal[data-journal-name]");
     if (!journal) return;
     event.preventDefault();
-    openJournalMenu(journal, event);
+    const url = qs("[data-journal-context-menu]")?.dataset.rankUrl;
+    if (url) showRankPanel(journal.dataset.journalName, url, false, journal);
   });
 
   document.addEventListener("pointerdown", (event) => {

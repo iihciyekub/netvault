@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.84 — 2026-10-18
+
+- Replace the journal ranking panel's Fetched timestamp and text Retry control with four compact, accessible icon actions: copy the current journal name, open the journal in Web of Science, search its stored PDFs, and explicitly refresh that journal's rankings.
+- Keep these actions synchronized with the selected/hovered journal, reuse the exact journal-name URL encoding and clipboard behavior, and make regular journal-name clicks select the ranking directly. Advanced bulk ranking actions remain available from the context menu.
+
 ## 0.7.83 — 2026-10-18
 
 - Restore the original plain journal-list navigation: remove the unintended UTD24/FT50/ABS colored backgrounds, text overrides and vertical stripes.

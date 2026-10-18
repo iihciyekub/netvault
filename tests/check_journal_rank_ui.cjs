@@ -5,10 +5,18 @@ const {join} = require('node:path');
 const {runInNewContext} = require('node:vm');
 const app = readFileSync(join(__dirname, '../packages/netvault-server/src/netvault_server/server/static/app.js'), 'utf8');
 const template = readFileSync(join(__dirname, '../packages/netvault-server/src/netvault_server/server/templates/dashboard.html'), 'utf8');
-const code = app.slice(app.indexOf('  let rankSequence ='), app.indexOf('  const journalLimitValue ='));
+// Both the context menu and the compact ranking toolbar reuse these links.
+const actionUrls = app.slice(app.indexOf('  const journalWosUrl ='), app.indexOf('  const openJournalMenu ='));
+const code = actionUrls + app.slice(app.indexOf('  let rankSequence ='), app.indexOf('  const journalLimitValue ='));
 assert(!template.includes('data-rank-hover-toggle'), 'Hover control must be removed');
 assert(!template.includes('data-rank-toggle'), 'The right panel must not slide or collapse');
 assert(!template.includes('data-rank-close'), 'The ranking panel stays visible');
+assert(!template.includes('data-rank-queried-at'), 'Fetched timestamp has been removed from the panel');
+const toolbar = template.slice(template.indexOf('class="rank-meta-row"'),template.indexOf('<p data-rank-status'));
+for (const icon of ['data-rank-copy','data-rank-wos-link','data-rank-netvault-search','data-rank-refresh'])
+  assert(toolbar.includes(icon),icon+' must be inside the compact toolbar');
+assert.equal((toolbar.match(/<button|<a /g)||[]).length,4,'Exactly 4 journal action buttons');
+assert(toolbar.includes('data-copy-label'),'Copy feedback should not replace the icon');
 assert(!app.includes('rankHoverEnabled'), 'Hover must always be active');
 assert(!app.includes('rankHoverStorageKey'), 'Previously saved false flags must be ignored');
 const storage = new Map();
@@ -38,7 +46,8 @@ function environment(journalNames = ['Nature','System']) {
   panel.dataset={journalName:'Nature',rankUrl:'/web/journal-rank'};
   const menu=qs('[data-journal-context-menu]');
   menu.hidden=true;
-  menu.dataset={journalName:'Nature',rankUrl:'/web/journal-rank'};
+  menu.dataset={journalName:'Nature',rankUrl:'/web/journal-rank',searchUrl:'/nv/web/pdfs'};
+  qs('[data-rank-netvault-search]').dataset.searchUrl='/nv/web/pdfs';
   const heatmap=qs('.heatmap-panel');
   heatmap.dataset={rankCachedUrl:'/web/journal-ranks/cached'};
   qs("[data-journal-list-form] input[name='csrf_token']").value='csrf';
@@ -54,7 +63,8 @@ function environment(journalNames = ['Nature','System']) {
     },
     document:{body:{dataset:{userId:'1'}},createElement:node,
       addEventListener:(event,fn)=>(listeners[event] ||= []).push(fn)},
-    window:{clearTimeout(id){timers.delete(id);},
+    window:{location:{origin:'https://example.test'},
+      clearTimeout(id){timers.delete(id)},
       setTimeout(fn){const id=++clock;timers.set(id,fn);return id;}},
     fetch:async (url,options={})=>{
       const key=String(url);
@@ -172,6 +182,17 @@ function environment(journalNames = ['Nature','System']) {
   env.actions.openRankPanel();
   assert.equal(env.panel.hidden,false,'Manual selection keeps the sidebar permanently visible');
   assert.equal(focusCount,1,'Manual selection provides an accessible retry control');
+  assert.equal(env.qs('[data-rank-copy]').attrs['data-copy'],'System',
+    'The copy icon must always target the journal shown on the ranking panel');
+  assert.equal(new URL(env.qs('[data-rank-netvault-search]').href).pathname,'/nv/web/pdfs');
+  assert.equal(new URL(env.qs('[data-rank-netvault-search]').href).searchParams.get('journal'),'System',
+    'The search icon uses the currently selected journal, respecting the /nv prefix');
+  const wos = new URL(env.qs('[data-rank-wos-link]').href);
+  const wosQuery = JSON.parse(wos.searchParams.get('queryJson'));
+  assert.equal(wosQuery[0].rowText,'System');
+  assert.equal(wosQuery[0].rowField,'SO');
+  assert.equal(env.qs('[data-rank-netvault-search]').attrs['aria-disabled'],undefined);
+  assert.equal(env.qs('[data-rank-wos-link]').attrs['aria-disabled'],undefined);
 
   // Hover always swaps the journal and its quiet active-row cue, regardless
   // of stale browser preferences.
@@ -181,12 +202,40 @@ function environment(journalNames = ['Nature','System']) {
   const cultural=journal('Cultural Studies'), nature=journal('Nature');
   env.listeners.pointerover[0](eventFor(cultural));
   assert.equal(env.panel.dataset.journalName,'Cultural Studies');
+  assert.equal(env.qs('[data-rank-copy]').attrs['data-copy'],'Cultural Studies');
+  assert.equal(new URL(env.qs('[data-rank-netvault-search]').href).searchParams.get('journal'),'Cultural Studies');
   assert('data-rank-current' in cultural.attrs,'Hovered journal must be highlighted immediately');
   assert.equal(env.panel.hidden,false);
   storage.set('netvault:rank-hover:v2:1','false');
   env.listeners.pointerover[0](eventFor(nature));
   assert.equal(env.panel.dataset.journalName,'Nature',
     'Hover must keep working even if an old preference disables it');
+  assert.equal(env.qs('[data-rank-copy]').attrs['data-copy'],'Nature');
+  assert.equal(JSON.parse(new URL(env.qs('[data-rank-wos-link]').href).searchParams.get('queryJson'))[0].rowText,'Nature');
+
+  // Reuse the existing shared clipboard helper: the new icon remains intact
+  // while only its hidden feedback label changes to Copied/Failed.
+  const copyStart=app.indexOf('  const copyText =');
+  const copyEnd=app.indexOf('  const doiBatchDraftKey =',copyStart);
+  const copied={value:null};
+  const label={textContent:'Copy journal name'};
+  let reset=null;
+  const copyRuntime={
+    qs:()=>label,
+    navigator:{clipboard:{writeText:async value=>{copied.value=value;}}},
+    window:{isSecureContext:true,setTimeout:fn=>{reset=fn;}},
+    document:{},
+  };
+  runInNewContext(app.slice(copyStart,copyEnd)+'\nthis.copyText=copyText;',copyRuntime);
+  const newIcon=env.qs('[data-rank-copy]');
+  newIcon.textContent='icon';
+  newIcon.getAttribute=key=>newIcon.attrs[key] || null;
+  await copyRuntime.copyText(newIcon);
+  assert.equal(copied.value,'Nature');
+  assert.equal(newIcon.textContent,'icon','The icon must never be replaced by Copied text');
+  assert.equal(label.textContent,'Copied');
+  reset();
+  assert.equal(label.textContent,'Copy journal name');
   assert('data-rank-current' in nature.attrs,'Current ranking journal receives the cue');
   assert(!('data-rank-current' in cultural.attrs),'Previous journal highlight is cleared');
   assert.equal(env.panel.hidden,false,'The permanent sidebar remains visible');

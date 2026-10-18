@@ -27,7 +27,10 @@ COLD_SAMPLE_COUNT = 60
 
 def _fixture() -> str:
     app = APP.read_text(encoding="utf-8")
-    code = app[app.index("  let rankSequence ="):app.index("  const journalLimitValue =")]
+    # Benchmark the shipped icon toolbar too: updating four actions on hover
+    # is part of the real performance cost, not just swapping rank table rows.
+    urls = app[app.index("  const journalWosUrl ="):app.index("  const openJournalMenu =")]
+    code = urls + app[app.index("  let rankSequence ="):app.index("  const journalLimitValue =")]
     css = (STATIC / "styles.css").resolve().as_uri()
     labels = "".join(
         f'<div class="heat-journal" data-journal-name="Journal {i:02d}">'
@@ -55,9 +58,14 @@ def _fixture() -> str:
         f'<div class="heatmap-fixed-body" data-heatmap-fixed-body>{totals_and_names}</div></div>'
         '<div class="journal-context-menu" data-journal-context-menu data-rank-url="/web/journal-rank" hidden></div>'
         '<section class="journal-rank-panel" data-rank-panel aria-label="Journal rankings">'
-        '<header><h2 data-rank-title>Journal rankings</h2>'
-        '<button data-rank-refresh>Retry</button>'
-        '<button data-rank-selected aria-pressed="false">Selected</button></header>'
+        '<header><h2 data-rank-title>Journal rankings</h2></header>'
+        '<div class="rank-meta-row"><div class="rank-header-actions">'
+        '<button data-rank-copy data-copy="" disabled aria-label="Copy journal name"><i></i></button>'
+        '<a data-rank-wos-link aria-disabled="true" tabindex="-1" aria-label="Open in Web of Science"><i></i></a>'
+        '<a data-rank-netvault-search data-search-url="/nv/web/pdfs" aria-disabled="true" '
+        'tabindex="-1" aria-label="Search in NetVault"><i></i></a>'
+        '<button data-rank-refresh disabled aria-label="Retry ranking lookup"><i></i></button>'
+        '</div></div>'
         '<p data-rank-status></p><table data-rank-table><tbody data-rank-rows></tbody></table>'
         '</section><script>'
         'const qs=(selector,root=document)=>root.querySelector(selector);'
@@ -98,6 +106,13 @@ const checkSelection = (index) => {
   const correctName=names[index];
   if(ranking.dataset.journalName!==correctName || title.textContent!==correctName
       || !tbody.textContent.includes("Q1")) throw Error("Wrong ranking for "+correctName);
+  const copy=qs('[data-rank-copy]');
+  const search=qs('[data-rank-netvault-search]');
+  const wos=qs('[data-rank-wos-link]');
+  if(copy.dataset.copy!==correctName
+      || new URL(search.href).searchParams.get('journal')!==correctName
+      || JSON.parse(new URL(wos.href).searchParams.get('queryJson'))[0].rowText!==correctName)
+    throw Error("Ranking toolbar actions must track the current hovered journal");
   for(const nodes of [journals,centralNames,totals]) {
     const selected=nodes.filter(node=>node.hasAttribute('data-rank-current'));
     if(selected.length!==1 || selected[0]!==nodes[index])

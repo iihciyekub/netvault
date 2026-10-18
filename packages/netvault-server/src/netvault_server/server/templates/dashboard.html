@@ -362,8 +362,24 @@
       <h2 id="rank-title" data-rank-title>Journal rankings</h2>
     </header>
     <div class="rank-meta-row">
-      <time data-rank-queried-at hidden></time>
-      <button type="button" data-rank-refresh aria-label="Retry ranking lookup" title="Retry ranking lookup"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>Retry</span></button>
+      <div class="rank-header-actions" role="group" aria-label="Journal actions">
+        <button type="button" data-rank-copy data-copy="" disabled
+                aria-label="Copy journal name" title="Copy journal name">
+          <i class="fa-regular fa-copy" aria-hidden="true"></i><span class="sr-only" data-copy-label aria-live="polite">Copy journal name</span>
+        </button>
+        <a data-rank-wos-link target="_blank" rel="noopener noreferrer" data-no-pjax
+           aria-disabled="true" tabindex="-1" aria-label="Open in Web of Science" title="Open in Web of Science">
+          <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span class="sr-only">Open in Web of Science</span>
+        </a>
+        <a data-rank-netvault-search data-search-url="{{ path_for('/web/pdfs') }}"
+           aria-disabled="true" tabindex="-1" aria-label="Search in NetVault" title="Search in NetVault">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Search in NetVault</span>
+        </a>
+        <button type="button" data-rank-refresh disabled
+                aria-label="Retry ranking lookup" title="Retry ranking lookup">
+          <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span class="sr-only">Retry ranking lookup</span>
+        </button>
+      </div>
     </div>
     <p data-rank-status role="status" aria-live="polite">Hover over a journal to view its rankings.</p>
     <div class="rank-table-scroll" tabindex="0" role="region" aria-label="Journal ranking results">

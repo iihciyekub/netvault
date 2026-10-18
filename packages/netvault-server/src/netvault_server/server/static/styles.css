@@ -5203,9 +5203,8 @@ body.dashboard-body:has([data-journal-library]) {
   }
 }
 
-/* Ranking title on the first line; Retry + actual provider query time on
-   a dedicated second line. Removing the selected-only toggle simplifies
-   the header without reducing the legibility of ranking rows. */
+/* Four journal actions replace the fetched timestamp and Retry text.
+   Small monochrome icon buttons; no extra row or colorful decoration. */
 .dashboard-body .journal-rank-panel header {
   min-height: 40px;
   padding: 9px 11px 3px 14px;
@@ -5215,51 +5214,49 @@ body.dashboard-body:has([data-journal-library]) {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
+  justify-content: flex-end;
+  min-height: 36px;
   padding: 0 11px 7px 14px;
   border-bottom: 1px solid var(--line);
 }
-.dashboard-body .journal-rank-panel .rank-meta-row time {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.4;
-}
-.dashboard-body .journal-rank-panel .rank-meta-row time[hidden] {
-  display: none;
-}
-.dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh] {
+.dashboard-body .journal-rank-panel .rank-meta-row .rank-header-actions {
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
-  justify-content: center;
   gap: 5px;
-  min-width: 67px;
-  height: 27px;
-  min-height: 27px;
-  padding: 0 9px;
-  border: 1px solid var(--line-strong);
+}
+.dashboard-body .journal-rank-panel .rank-meta-row .rank-header-actions :is(button, a) {
+  display: inline-grid;
+  flex: 0 0 28px;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--fg);
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
   cursor: pointer;
 }
-.dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh]:is(:hover, :focus-visible) {
+.dashboard-body .journal-rank-panel .rank-meta-row .rank-header-actions :is(button, a):is(:hover, :focus-visible) {
   background: var(--soft);
+  color: var(--fg);
+  border-color: var(--line);
 }
-.dashboard-body .journal-rank-panel .rank-meta-row [data-rank-refresh]:disabled {
-  opacity: .5;
-  cursor: wait;
+.dashboard-body .journal-rank-panel .rank-meta-row .rank-header-actions :is(button, a):focus-visible {
+  outline: 1px solid var(--choice-line);
+  outline-offset: 1px;
+}
+.dashboard-body .journal-rank-panel .rank-meta-row .rank-header-actions :is(button:disabled, a[aria-disabled="true"]) {
+  opacity: .45;
+  cursor: default;
+  pointer-events: none;
 }
 
 /* Muted empty journal rail, as in the original split-view design. */

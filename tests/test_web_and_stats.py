@@ -814,6 +814,14 @@ def test_web_login_dashboard_upload_download_and_csrf(client: TestClient) -> Non
     assert 'data-search-url="/web/pdfs"' in dashboard.text
     assert "data-journal-spotlight" not in dashboard.text
     assert 'data-rank-panel' in dashboard.text  # only ranking results carry tier emphasis
+    assert 'data-rank-queried-at' not in dashboard.text
+    assert 'class="rank-header-actions" role="group"' in dashboard.text
+    for icon in ('data-rank-copy', 'data-rank-wos-link',
+                 'data-rank-netvault-search', 'data-rank-refresh'):
+        assert icon in dashboard.text
+    assert 'data-rank-netvault-search data-search-url="/web/pdfs"' in dashboard.text
+    assert 'data-rank-copy data-copy="" disabled' in dashboard.text
+    assert 'data-rank-refresh disabled' in dashboard.text
     assert "WEB JOURNAL" in dashboard_journal_names(dashboard)
     assert "ANOTHER JOURNAL" in dashboard_journal_names(dashboard)
     journal_rows = dashboard_journal_data(dashboard)
