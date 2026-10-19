@@ -37,6 +37,16 @@ def stamp_uploaded_doi(path: Path, doi: str, *, trusted: bool = False) -> bool:
         root = reader.trailer["/Root"]
     except Exception:
         return False
+    # A canonical DOI is already stored; never rewrite the bytes just to restamp it.
+    # This no-op is safe even when the PDF contains signature or append-only flags.
+    info = reader.metadata or {}
+    old_dois = {value.doi for value in document_info_candidates(reader)}
+    if old_dois - {canonical} and not trusted:
+        raise ValueError("PDF Document Info DOI conflicts with verified article DOI")
+    aliases = [str(key) for key in info if str(key).casefold() == "/doi" and str(key) != "/DOI"]
+    if (old_dois == {canonical} and info.get("/DOI") == canonical and not aliases):
+        return False
+
     if "/Perms" in root:
         raise ValueError("Cannot modify a signed or certified PDF")
     form = root.get("/AcroForm")
@@ -47,14 +57,6 @@ def stamp_uploaded_doi(path: Path, doi: str, *, trusted: bool = False) -> bool:
         if any(field.get_object().get("/FT") == "/Sig"
                for field in form.get("/Fields", [])):
             raise ValueError("Cannot modify a signed PDF")
-
-    info = reader.metadata or {}
-    old_dois = {value.doi for value in document_info_candidates(reader)}
-    if old_dois - {canonical} and not trusted:
-        raise ValueError("PDF Document Info DOI conflicts with verified article DOI")
-    aliases = [str(key) for key in info if str(key).casefold() == "/doi" and str(key) != "/DOI"]
-    if (old_dois == {canonical} and info.get("/DOI") == canonical and not aliases):
-        return False
 
     updates = {"/DOI": canonical}
     if trusted:
