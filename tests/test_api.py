@@ -20,6 +20,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("NETVAULT_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setenv("NETVAULT_STORAGE_ROOT", str(tmp_path / "storage"))
     monkeypatch.setenv("NETVAULT_SECRET_KEY", "test-secret")
+    # Production may set /nv in .env; isolated TestClient URLs have no prefix.
+    monkeypatch.setenv("NETVAULT_BASE_PATH", "")
     monkeypatch.setenv("NETVAULT_BOOTSTRAP_ADMIN", "admin")
     monkeypatch.setenv("NETVAULT_BOOTSTRAP_ADMIN_PASSWORD", "admin-pass")
 

@@ -281,13 +281,13 @@ def doi_scan_workers(file_count: int) -> int:
     return max(1, min(file_count, 6, (logical_cpus + 1) // 2))
 
 
-def scan_upload_dois(
+def iter_scan_upload_dois(
     paths: list[Path], *, for_tidy: bool = False,
-) -> list[tuple[FastIdentity | None, str | None]]:
-    """Reuse one bounded, ordered PDF probe for upload, preview and tidy.
+):
+    """Yield (original index, probe result) as each PDF finishes.
 
-    Preserve per-file errors so one unusual PDF does not abort the batch.
-    File fingerprints, hashes, and network calls are intentionally excluded.
+    Bound pending work to twice the worker count, so a slow first PDF
+    cannot freeze the progress bar or queue thousands of PDFs at once.
     """
     def inspect(path: Path) -> tuple[FastIdentity | None, str | None]:
         try:
@@ -305,9 +305,38 @@ def scan_upload_dois(
 
     workers = doi_scan_workers(len(paths))
     if workers == 1:
-        return [inspect(path) for path in paths]
+        for index, path in enumerate(paths):
+            yield index, inspect(path)
+        return
+
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="nv-doi") as executor:
-        return list(executor.map(inspect, paths))
+        pending = {}
+        next_index = 0
+        while next_index < min(len(paths), workers * 2):
+            pending[executor.submit(inspect, paths[next_index])] = next_index
+            next_index += 1
+        while pending:
+            ready, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in ready:
+                index = pending.pop(future)
+                yield index, future.result()
+                if next_index < len(paths):
+                    pending[executor.submit(inspect, paths[next_index])] = next_index
+                    next_index += 1
+
+
+def scan_upload_dois(
+    paths: list[Path], *, for_tidy: bool = False,
+) -> list[tuple[FastIdentity | None, str | None]]:
+    """Return ordered probe results for dry-run/tidy callers.
+
+    Live uploads consume iter_scan_upload_dois directly to show immediate
+    progress without buffering every first-page text extraction.
+    """
+    results = [(None, None)] * len(paths)
+    for index, outcome in iter_scan_upload_dois(paths, for_tidy=for_tidy):
+        results[index] = outcome
+    return results
 
 
 def pdf_open_error(path: Path) -> str | None:
@@ -1423,6 +1452,8 @@ def upload_command(
     local_duplicate_paths = 0
     stats = UploadStats()
     preparation_seconds = 0.0
+    prepared_count = 0
+    preparing_total = 0
     doi_precheck_seconds = 0.0
     doi_precheck_batches = 0
     doi_precheck_candidates = 0
@@ -1481,6 +1512,8 @@ def upload_command(
 
         def update_counts():
             counts = [f"new {uploaded}"]
+            if preparing_total:
+                counts.insert(0, f"prepared {prepared_count}/{preparing_total}")
             if skipped:
                 counts.append(f"already stored {skipped}")
             if needs_review or review_skipped:
@@ -1523,6 +1556,8 @@ def upload_command(
                         found[pdf_path] = identity
                     except (OSError, ValueError) as exc:
                         fast_reviews.append((pdf_path, str(exc)))
+                    finally:
+                        progress.advance(task)
             else:
                 # pypdf and pdftotext are independent for each PDF; bounded
                 # threading overlaps their I/O and process startup costs.
@@ -1532,7 +1567,8 @@ def upload_command(
                         f"DOI scan: {len(pdfs)} PDFs, {workers} auto-selected workers",
                         highlight=False,
                     )
-                for pdf_path, (identity, error) in zip(pdfs, scan_upload_dois(pdfs)):
+                for index, (identity, error) in iter_scan_upload_dois(pdfs):
+                    pdf_path = pdfs[index]
                     progress.advance(task)
                     if error is not None:
                         fast_reviews.append((pdf_path, error))
@@ -1542,9 +1578,24 @@ def upload_command(
                         found[pdf_path] = identity
 
             # A lookup outage must never be treated as a missing DOI.
-            by_doi = (
-                get_existing_pdfs_by_doi(identity.doi for identity in found.values())
-                if found else {}
+            # Concurrent probes finish out of order; retain the original
+            # selection priority when several PDFs resolve to the same DOI.
+            found = {path: found[path] for path in pdfs if path in found}
+            unique_dois = sorted({identity.doi for identity in found.values()})
+            by_doi = {}
+            if unique_dois:
+                progress.reset(
+                    task, total=len(unique_dois), completed=0,
+                    description="Checking stored DOIs on server",
+                )
+                # Same 500-DOI API batches as before, but visible to users.
+                for offset in range(0, len(unique_dois), 500):
+                    chunk = unique_dois[offset : offset + 500]
+                    by_doi.update(get_existing_pdfs_by_doi(chunk))
+                    progress.advance(task, len(chunk))
+            progress.reset(
+                task, total=len(found), completed=0,
+                description="Classifying DOI matches",
             )
             new_automatic: dict[Path, FastIdentity] = {}
             for pdf_path, identity in found.items():
@@ -1562,7 +1613,26 @@ def upload_command(
                     fast_identities[pdf_path] = identity
                 else:
                     new_automatic[pdf_path] = identity
-            accepted = check_new_titles(new_automatic)
+                progress.advance(task)
+            if new_automatic:
+                progress.reset(
+                    task, total=len({identity.doi for identity in new_automatic.values()}),
+                    completed=0, description="Looking up DOI titles",
+                )
+                last_title_stage = "Looking up DOI titles"
+
+                def title_progress(stage: str, completed: int, total: int) -> None:
+                    nonlocal last_title_stage
+                    if stage != last_title_stage:
+                        progress.reset(task, total=total, completed=0, description=stage)
+                        last_title_stage = stage
+                    progress.update(task, completed=completed)
+
+                accepted = check_new_titles(
+                    new_automatic, progress_callback=title_progress,
+                )
+            else:
+                accepted = {}
             for pdf_path, identity in new_automatic.items():
                 if accepted[pdf_path]:
                     fast_identities[pdf_path] = identity
@@ -1574,6 +1644,11 @@ def upload_command(
                     ))
             # One upload task per DOI per invocation. Identical papers with
             # different compressed PDF hashes must not be sent repeatedly.
+            progress.reset(
+                task,
+                total=len(fast_identities) + len(fast_skips) + len(fast_reviews),
+                completed=0, description="Recording DOI decisions",
+            )
             seen_dois: set[str] = set()
             for pdf_path, identity in list(fast_identities.items()):
                 if identity.doi in seen_dois:
@@ -1582,13 +1657,16 @@ def upload_command(
                     del fast_identities[pdf_path]
                 else:
                     seen_dois.add(identity.doi)
+                progress.advance(task)
             for pdf_path, existing_pdf in fast_skips:
                 skipped += 1
                 skipped_by_doi += 1
                 latest_pdf = existing_pdf
                 upload_report.record(pdf_path, "existing", pdf=existing_pdf)
+                progress.advance(task)
             for pdf_path, error in fast_reviews:
                 record_failure(pdf_path, error, review=True)
+                progress.advance(task)
             pdfs = [
                 pdf_path for pdf_path in pdfs
                 if pdf_path in fast_identities or pdf_path in fallbacks
@@ -1706,12 +1784,6 @@ def upload_command(
             for duplicate_path in paths_for_hash[1:]:
                 upload_report.record(duplicate_path, "local-duplicate", sha256=sha)
 
-        progress.reset(
-            task,
-            total=len(unique_pdf_paths),
-            completed=0,
-            description="Checking unique PDFs on server",
-        )
         sha_lookup_started = monotonic()
         # The fast DOI path never uses SHA-256 to decide whether an article
         # already exists. The legacy index/fallback path retains its original
@@ -1720,12 +1792,21 @@ def upload_command(
             sha for path, sha in hashes_by_path.items()
             if path not in fast_identities
         }
+        if legacy_hashes:
+            progress.reset(
+                task, total=len(legacy_hashes), completed=0,
+                description="Checking legacy PDF hashes",
+            )
         existing_by_sha = get_existing_pdfs_by_sha256(
             legacy_hashes,
             progress_callback=lambda completed: progress.update(task, completed=completed),
             server_version_callback=remember_server_version,
         )
         sha_lookup_seconds = monotonic() - sha_lookup_started
+        progress.reset(
+            task, total=len(unique_pdf_paths), completed=0,
+            description="Preparing unique PDFs",
+        )
 
         new_pdfs: list[Path] = []
         embedded_by_path: dict[Path, DoiEvidence | None] = {}
@@ -1752,6 +1833,7 @@ def upload_command(
                             "Ask an administrator to correct a wrong DOI identity.")
                 except (ValueError, RuntimeError, OSError) as exc:
                     record_failure(pdf_path, exc)
+                    progress.advance(task)
                     continue
                 latest_pdf = existing_pdf
                 skipped += 1
@@ -1759,6 +1841,7 @@ def upload_command(
                 upload_report.record(pdf_path, "existing", sha256=sha256, pdf=existing_pdf)
                 for sibling in state_paths(pdf_path, sha256):
                     upload_state.record(sibling, sha256, upload_server, "existing", pdf=existing_pdf)
+                progress.advance(task)
             else:
                 embedded = None if csv_file is not None or doi else extract_document_info_evidence(pdf_path)
                 embedded_by_path[pdf_path] = embedded
@@ -1766,8 +1849,10 @@ def upload_command(
                     record_failure(
                         pdf_path, ApiError(422, embedded.reason or "Multiple Document Info DOI values")
                     )
+                    progress.advance(task)
                     continue
                 new_pdfs.append(pdf_path)
+                progress.advance(task)
 
         initial_skips = []
         if skipped:
@@ -1776,6 +1861,7 @@ def upload_command(
             initial_skips.append(f"{local_duplicate_paths} local duplicates")
         if initial_skips:
             console.print("Skipped: " + ", ".join(initial_skips))
+        preparing_total = len(new_pdfs)
         update_counts()
         progress.reset(task, total=len(new_pdfs), completed=0, description="Checking / uploading PDFs")
 
@@ -1975,6 +2061,7 @@ def upload_command(
                         record_failure(pdf_path, exc)
                         progress.advance(task, 1)
                     finally:
+                        prepared_count += 1
                         if identity_cache_pending >= 25:
                             identity_writer.checkpoint()
                             identity_cache_pending = 0

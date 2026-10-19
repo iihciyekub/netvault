@@ -82,7 +82,7 @@ def test_mismatch_rejected_before_hash(tmp_path, monkeypatch):
     ))
     monkeypatch.setattr(user, "get_existing_pdfs_by_doi", lambda *_: {})
     monkeypatch.setattr(user, "check_new_titles",
-                        lambda identities: {p: False for p in identities})
+                        lambda identities, **_kwargs: {p: False for p in identities})
     def unnecessary(*args, **kwargs):
         raise AssertionError("Should not hash or upload a rejected DOI")
     monkeypatch.setattr(user, "file_sha256", unnecessary)

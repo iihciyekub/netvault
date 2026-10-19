@@ -5,7 +5,7 @@ cannot be identified cheaply falls through to the existing full resolver.
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
@@ -13,6 +13,7 @@ import re
 import subprocess
 import unicodedata
 from urllib.parse import quote
+from typing import Callable
 
 import requests
 
@@ -150,14 +151,41 @@ def fetch_csl_title(doi: str) -> str | None:
     return None
 
 
-def check_new_titles(identities: dict[Path, FastIdentity]) -> dict[Path, bool]:
-    """Fetch each unique DOI once; cap parallel provider requests at three."""
+def check_new_titles(
+    identities: dict[Path, FastIdentity], *,
+    progress_callback: Callable[[str, int, int], None] | None = None,
+) -> dict[Path, bool]:
+    """Verify automatic DOI hints while reporting both network and PDF work.
+
+    Fetch each DOI once with at most three concurrent provider requests; keep
+    bounded pending futures for large folders and preserve all title checks.
+    """
     if not identities:
         return {}
     dois = sorted({identity.doi for identity in identities.values()})
-    with ThreadPoolExecutor(max_workers=min(3, len(dois))) as pool:
-        titles = dict(zip(dois, pool.map(fetch_csl_title, dois)))
-    return {
-        path: title_matches(titles.get(identity.doi), identity.text or first_two_pages(path))
-        for path, identity in identities.items()
-    }
+    titles: dict[str, str | None] = {}
+    workers = min(3, len(dois))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        pending = {}
+        next_index = 0
+        for index in range(min(len(dois), workers * 2)):
+            pending[pool.submit(fetch_csl_title, dois[index])] = dois[index]
+            next_index += 1
+        while pending:
+            ready, _ = wait(pending, return_when=FIRST_COMPLETED)
+            for future in ready:
+                doi = pending.pop(future)
+                titles[doi] = future.result()
+                if progress_callback is not None:
+                    progress_callback("Looking up DOI titles", len(titles), len(dois))
+                if next_index < len(dois):
+                    pending[pool.submit(fetch_csl_title, dois[next_index])] = dois[next_index]
+                    next_index += 1
+    results = {}
+    for index, (path, identity) in enumerate(identities.items(), start=1):
+        results[path] = title_matches(
+            titles.get(identity.doi), identity.text or first_two_pages(path)
+        )
+        if progress_callback is not None:
+            progress_callback("Matching PDF titles", index, len(identities))
+    return results
