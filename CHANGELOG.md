@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.85 — 2026-10-19
+
+- Fix `nv upload` HTTP 422 failures for protected PDFs that already contain the correct canonical `/DOI` Document Info value. Leave their original bytes and SHA-256 unchanged instead of trying to write an unnecessary DOI stamp.
+- Continue rejecting metadata modifications to signed or certified PDFs when the DOI is missing, conflicting, or requires normalization; preserve explicit DOI conflict and alias checks.
+- Add server upload and PDF metadata regression tests covering append-only signature flags, signature fields, certification markers, unchanged content hashes, and normal unsigned DOI stamping.
+
 ## 0.7.84 — 2026-10-18
 
 - Replace the journal ranking panel's Fetched timestamp and text Retry control with four compact, accessible icon actions: copy the current journal name, open the journal in Web of Science, search its stored PDFs, and explicitly refresh that journal's rankings.
