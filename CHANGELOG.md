@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.86 — 2026-10-19
+
+- Show live DOI scan progress during `nv upload` on large folders instead of collecting all PDF scan results before the first progress update. Keep workers and queued futures bounded, and retain input-order DOI priority.
+- Add visible progress for batched existing-DOI checks, new article title lookups, PDF title comparisons, DOI classification, result recording, unique-PDF preparation and upload candidate preparation. Preserve the existing trust and duplicate-skip rules.
+- Add regression tests for slow first PDFs, concurrent DOI lookups, multi-batch server checks and duplicate selection order. Isolate web TestClient URL prefixes from the production VPS `.env`.
+
 ## 0.7.85 — 2026-10-19
 
 - Fix `nv upload` HTTP 422 failures for protected PDFs that already contain the correct canonical `/DOI` Document Info value. Leave their original bytes and SHA-256 unchanged instead of trying to write an unnecessary DOI stamp.
