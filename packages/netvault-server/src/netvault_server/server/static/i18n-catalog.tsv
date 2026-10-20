@@ -604,3 +604,6 @@ Reset column widths	重置列宽	重設欄寬
 categories	个学科	個學科
 Visible columns	显示列	顯示欄位
 Find columns	查找列名	尋找欄位
+Data time	数据时间	資料時間
+Latest JSON creation time in ZIP (UTC+08:00).	ZIP 内最新一批 JSON 的创建时间（北京时间）。	ZIP 內最新一批 JSON 的建立時間（北京時間）。
+Latest JSON modification time in ZIP (UTC+08:00).	ZIP 内最新一批 JSON 的修改时间（北京时间）。	ZIP 內最新一批 JSON 的修改時間（北京時間）。

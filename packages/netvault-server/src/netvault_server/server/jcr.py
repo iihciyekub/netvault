@@ -8,8 +8,9 @@ import sqlite3
 import zipfile
 import unicodedata
 import math
+import struct
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 MAX_ZIP = 64 * 1024 * 1024
@@ -203,6 +204,48 @@ def connect(root):
         db.close()
 
 
+def zip_file_time(info):
+    """Prefer NTFS birth time, then extended UTC mtime, then ZIP local mtime."""
+    extra = info.extra
+    modified = None
+    created = None
+    while len(extra) >= 4:
+        tag, length = struct.unpack_from("<HH", extra)
+        value, extra = extra[4 : 4 + length], extra[4 + length :]
+        if tag == 0x5455 and len(value) >= 5 and value[0] & 1:
+            modified = datetime.fromtimestamp(struct.unpack_from("<I", value, 1)[0], timezone.utc)
+        if tag == 0x000A:
+            ntfs = value[4:]
+            while len(ntfs) >= 4:
+                subtag, sublength = struct.unpack_from("<HH", ntfs)
+                attributes, ntfs = ntfs[4 : 4 + sublength], ntfs[4 + sublength :]
+                if subtag == 1 and len(attributes) >= 24:
+                    ticks = struct.unpack_from("<Q", attributes, 16)[0]
+                    if ticks:
+                        try:
+                            created = datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(
+                                microseconds=ticks // 10
+                            )
+                        except OverflowError:
+                            pass
+    zone = timezone(timedelta(hours=8))
+    stamp = created or modified
+    if stamp is None:
+        try:
+            stamp = datetime(*info.date_time, tzinfo=zone)
+        except ValueError:
+            return None
+    if stamp.year < 1981:
+        return None  # ZIP's 1980 placeholder is not a real data timestamp.
+    return dict(value=stamp.astimezone(zone).isoformat(), kind="created" if created else "modified")
+
+
+def add_source_time(times, year, info):
+    stamp = zip_file_time(info)
+    if stamp and (year not in times or stamp["value"] > times[year]["value"]):
+        times[year] = {**stamp, "filename": Path(info.filename).name}
+
+
 def import_zip(root, file, filename="JCR.zip"):
     file.seek(0, 2)
     if file.tell() > MAX_ZIP:
@@ -211,6 +254,7 @@ def import_zip(root, file, filename="JCR.zip"):
     digest = hashlib.file_digest(file, "sha256").hexdigest()
     file.seek(0)
     records, expected, sources = {}, {}, []
+    source_times = {}
     duplicate_count = 0
     try:
         archive = zipfile.ZipFile(file)
@@ -248,12 +292,14 @@ def import_zip(root, file, filename="JCR.zip"):
             if not isinstance(rows, list):
                 raise ValueError(f"Expected a JCR journal array: {path.name}")
             sources.append(info.filename)
+            file_years = set()
             for row in rows:
                 if not isinstance(row, dict) or not clean(row.get("journalName")):
                     raise ValueError(f"Missing journal name: {path.name}")
                 year = clean(row.get("jcrYear"))
                 if not re.fullmatch(r"(19|20|21)\d{2}", year):
                     raise ValueError(f"Missing or invalid JCR year: {path.name}")
+                file_years.add(year)
                 cats = row.get("categoryQuartiles")
                 if not isinstance(cats, list) or any(
                     not isinstance(c, dict) or not clean(c.get("category")) for c in cats
@@ -275,6 +321,8 @@ def import_zip(root, file, filename="JCR.zip"):
                     duplicate_count += 1
                 else:
                     records[key] = row, raw
+            for year in file_years:
+                add_source_time(source_times, year, info)
     if not records:
         raise ValueError("No JCR journal records found in ZIP.")
     counts = {}
@@ -295,6 +343,7 @@ def import_zip(root, file, filename="JCR.zip"):
         filename=Path(filename).name,
         importedAt=datetime.now(timezone.utc).isoformat(),
         sources=sources,
+        jsonTimesByYear=source_times,
         manifestVerified=bool(expected),
     )
     with connect(root) as db, db:
@@ -372,15 +421,18 @@ def facets(root, year=""):
             )
         ]
         latest = db.execute(
-            "SELECT report FROM imports ORDER BY imported_at DESC LIMIT 1"
+            "SELECT report FROM imports WHERE json_type(report, ?) IS NOT NULL ORDER BY imported_at DESC LIMIT 1",
+            ("$." + "years." + '"' + year + '"',),
         ).fetchone()
+        report = json.loads(latest[0]) if latest else None
         return dict(
             years=years,
             year=year,
             publishers=pubs,
             categories=cats,
             total=db.execute("SELECT COUNT(*) FROM journals WHERE year=?", (year,)).fetchone()[0],
-            latestImport=json.loads(latest[0]) if latest else None,
+            latestImport=report,
+            dataTime=(report or {}).get("jsonTimesByYear", {}).get(year),
         )
 
 

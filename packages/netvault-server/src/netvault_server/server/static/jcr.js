@@ -65,6 +65,8 @@
     const data=await json(api+'/facets?'+new URLSearchParams({year:year||''}));
     options($('#jcr-year'),data.years); $('#jcr-year').value=data.year;
     $('#jcr-total').textContent=data.total.toLocaleString()+' '+t('journals');
+    const sourceTime=$('#jcr-source-time');sourceTime.hidden=!data.dataTime;
+    if(data.dataTime){const time=sourceTime.querySelector('time');time.dateTime=data.dataTime.value;time.textContent=data.dataTime.value.slice(0,19).replace('T',' ');sourceTime.title=t(data.dataTime.kind==='created'?'Latest JSON creation time in ZIP (UTC+08:00).':'Latest JSON modification time in ZIP (UTC+08:00).');}
     options($('#jcr-publishers'),data.publishers);
     categoryData=data.categories;
     const group=form.elements.group.value || pendingGroup;pendingGroup='';

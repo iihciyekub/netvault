@@ -70,3 +70,15 @@ or focus the divider and use Left/Right (Shift for 50 px steps, Home to reset).
 Widths persist locally. Resizing uses requestAnimationFrame and sends no API
 requests; it remains active if an in-flight search finishes during a drag. The
 table keeps explicit widths and scrolls horizontally within its own region.
+
+## Data timestamp
+
+The top-right data time belongs to the selected JCR year. It is the latest time
+among journal JSON batches in the ZIP, excluding checkpoints and macOS resource
+forks. NTFS birth time is used when available; otherwise extended UTC modification
+time, then ZIP local modification time are used. All values are shown at UTC+08:00.
+The tooltip identifies creation versus modification time. Import time remains an
+independent audit field and is never substituted for a missing file timestamp.
+ZIP's default 1980 placeholder is treated as unknown. Future imports retain
+`jsonTimesByYear` in their reports; legacy reports can be supplemented from their
+original ZIP only after verifying its SHA-256.

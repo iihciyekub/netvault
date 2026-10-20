@@ -244,3 +244,46 @@ def test_installed_catalog_backfill_preserves_raw_and_future_imports(tmp_path):
         tmp_path, archive({"JCR.json": [journal, row("Journal of Applied Linguistics")]})
     )
     assert jcr.query(tmp_path, year="2025", q="JAL")["total"] == 1
+
+
+def timestamp_archive(year, date):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(zipfile.ZipInfo("data.json", date), json.dumps([row(year=year)]))
+        # Later checkpoint timestamps must not masquerade as journal data time.
+        z.writestr(
+            zipfile.ZipInfo("task.json", (2099, 1, 1, 0, 0, 0)),
+            json.dumps({"year": year, "totalCount": 1}),
+        )
+    buf.seek(0)
+    return buf
+
+
+def test_source_times_follow_json_and_selected_year(tmp_path):
+    jcr.import_zip(tmp_path, timestamp_archive("2025", (2026, 10, 20, 20, 42, 12)))
+    jcr.import_zip(tmp_path, timestamp_archive("2024", (2025, 9, 2, 13, 4, 6)))
+    time = jcr.facets(tmp_path, "2025")["dataTime"]
+    assert time["value"] == "2026-10-20T20:42:12+08:00" and time["kind"] == "modified"
+    assert jcr.facets(tmp_path, "2024")["dataTime"]["value"] == "2025-09-02T13:04:06+08:00"
+    assert jcr.facets(tmp_path, "2025")["latestImport"]["years"] == {"2025": 1}
+
+
+def test_zip_extended_utc_and_ntfs_creation_times():
+    import struct
+    from datetime import datetime, timezone
+
+    info = zipfile.ZipInfo("batch.json", (2026, 10, 20, 1, 0, 0))
+    stamp = datetime(2026, 10, 20, 12, 42, 12, tzinfo=timezone.utc)
+    info.extra = struct.pack("<HHBI", 0x5455, 5, 1, int(stamp.timestamp()))
+    assert jcr.zip_file_time(info)["value"] == "2026-10-20T20:42:12+08:00"
+    created = datetime(2026, 10, 19, 10, 20, 30, tzinfo=timezone.utc)
+    ticks = int((created - datetime(1601, 1, 1, tzinfo=timezone.utc)).total_seconds()) * 10000000
+    payload = struct.pack("<IHHQQQ", 0, 1, 24, ticks, ticks, ticks)
+    info.extra += struct.pack("<HH", 0x000A, len(payload)) + payload
+    assert jcr.zip_file_time(info) == {"value": "2026-10-19T18:20:30+08:00", "kind": "created"}
+
+
+def test_unknown_zip_time_does_not_fall_back_to_import_time(tmp_path):
+    report = jcr.import_zip(tmp_path, timestamp_archive("2025", (1980, 1, 1, 0, 0, 0)))
+    assert report["jsonTimesByYear"] == {}
+    assert jcr.facets(tmp_path, "2025")["dataTime"] is None
