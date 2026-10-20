@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.7.88 — 2026-10-20
+
+- Add an authenticated JCR journal catalogue with validated ZIP imports, including nested export batches, manifest completeness checks, duplicate handling, transactional year updates, and lossless source JSON retention.
+- Add year, publisher, citation index, category, quartile, JIF range and keyword filters, plus journal-title initials such as `IJIR` after removing common function words.
+- Sort every data column across the complete filtered catalogue before pagination; use indexed numeric/text projections, stable ties, and missing values last in both directions.
+- Add a searchable right-click column picker exposing all 33 source fields and three derived columns, persistent column selections, draggable persistent widths, and horizontal scrolling. Resizing sends no API requests.
+- Display journal names consistently in uppercase, retain Web of Science links for titles and ISSNs, and show all category-specific metrics in the details drawer.
+- Show the selected year's latest JSON file timestamp from its ZIP, using creation time when available and modification time otherwise; keep import time separate.
+- Preserve compact 23 px rows, English/Simplified Chinese/Traditional Chinese labels, themes, and responsive layouts; align CLI, server, rendered UI and asset versions at 0.7.88.
+
 ## 0.7.87 — 2026-10-20
 
 - Support `nv download --journal "Management Science"` (alias `-j`) to download all PDFs already stored for an exact normalized journal title, without requiring an ISSN or a manual DOI list.

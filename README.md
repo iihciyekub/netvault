@@ -36,6 +36,12 @@ Run `nv --help` for all commands.
 
 Open **[NetVault Web](https://iiaide.com/nv/web)** to search and manage PDFs, journal lists, and account/admin settings.
 
+The **[JCR catalogue](https://iiaide.com/nv/web/jcr)** browses imported journal data
+with index/quartile/category filters, acronym search, full-result sorting, and
+resizable columns. Right-click a heading to choose visible fields. Administrators
+can import complete JCR ZIP exports; see the [JCR guide](docs/jcr.md).
+
+
 ### Offline folder cleanup
 
 Preview recursively with `nv tidy .` and apply with `nv tidy . --apply`. Only confirmed duplicates in the same directory are deleted; PDFs without a DOI in Document Info or pages 1-2 move into each parent's `unidentifys/`. The command never accesses the server.
