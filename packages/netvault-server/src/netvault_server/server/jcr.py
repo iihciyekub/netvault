@@ -46,11 +46,18 @@ def connect(root):
         search TEXT NOT NULL, raw TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS jcr_year_name ON journals(year,name);
       CREATE INDEX IF NOT EXISTS jcr_publisher ON journals(year,publisher);
+      CREATE INDEX IF NOT EXISTS jcr_name_sort ON journals(year,name COLLATE NOCASE,id);
+      CREATE INDEX IF NOT EXISTS jcr_jif_sort ON journals(year,jif,id);
+      CREATE INDEX IF NOT EXISTS jcr_jci_sort ON journals(year,jci,id);
+      CREATE INDEX IF NOT EXISTS jcr_cites_sort ON journals(year,citations,id);
       CREATE TABLE IF NOT EXISTS categories (
         journal_id TEXT NOT NULL REFERENCES journals(id) ON DELETE CASCADE,
         category TEXT NOT NULL, family TEXT NOT NULL, edition TEXT NOT NULL, quartile TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS jcr_cat_journal ON categories(journal_id);
       CREATE INDEX IF NOT EXISTS jcr_cat_filter ON categories(category,edition,quartile);
+      CREATE INDEX IF NOT EXISTS jcr_index_quartile ON categories(edition,quartile,journal_id);
+      CREATE INDEX IF NOT EXISTS jcr_quartile ON categories(quartile,journal_id);
+      CREATE INDEX IF NOT EXISTS jcr_family ON categories(family,journal_id);
       CREATE TABLE IF NOT EXISTS imports (
         sha256 TEXT PRIMARY KEY, filename TEXT, imported_at TEXT, report TEXT);
     """)
@@ -275,7 +282,7 @@ def query(
         if value is not None:
             clauses.append("j.jif " + op + " ?")
             args.append(value)
-    cclauses = ["c.journal_id=j.id"]
+    cclauses = []
     for column, value in [
         ("edition", edition),
         ("quartile", quartile),
@@ -291,8 +298,10 @@ def query(
                 if column == "quartile" and value == "N/A"
                 else value
             )
-    if len(cclauses) > 1:
-        clauses.append("EXISTS (SELECT 1 FROM categories c WHERE " + " AND ".join(cclauses) + ")")
+    if cclauses:
+        clauses.append(
+            "j.id IN (SELECT c.journal_id FROM categories c WHERE " + " AND ".join(cclauses) + ")"
+        )
     where = " AND ".join(clauses)
     with connect(root) as db:
         total = db.execute("SELECT COUNT(*) FROM journals j WHERE " + where, args).fetchone()[0]
@@ -301,9 +310,9 @@ def query(
         rows = db.execute(
             "SELECT j.id,j.raw FROM journals j WHERE "
             + where
-            + f" ORDER BY ({sort_column}) IS NULL, {sort_column} "
+            + f" ORDER BY {sort_column} "
             + ("DESC" if direction == "desc" else "ASC")
-            + ",j.id LIMIT ? OFFSET ?",
+            + " NULLS LAST,j.id LIMIT ? OFFSET ?",
             args + [size, (page - 1) * size],
         ).fetchall()
         return dict(
