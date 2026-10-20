@@ -530,3 +530,68 @@ With --apply, confirmed duplicates are deleted permanently; files with matching 
 Explicit CSV file,doi mappings are trusted by relative path or unique filename, regardless of PDF hash or size. Explicit --doi likewise overrides embedded PDF DOI/title checks. An existing server DOI is skipped by default; use --force for intentional replacement.	显式 CSV file,doi 映射按相对路径或唯一文件名直接信任，不依赖 PDF 哈希或大小。显式 --doi 同样优先于 PDF 内的 DOI 或标题检查。默认跳过服务器已有 DOI；如需替换则使用 --force。	明確指定 CSV file,doi 對應時，依相對路徑或唯一檔名直接信任，不依賴 PDF 雜湊或大小。明確指定 --doi 同樣優先於 PDF 內的 DOI 或標題檢查。預設略過伺服器已有 DOI；如需替換請使用 --force。
 Copy journal download command	复制期刊下载命令	複製期刊下載命令
 Use --journal to download every PDF already stored on NetVault for an exact journal title. It does not fetch external papers.	使用 --journal 根据准确的期刊名称下载 NetVault 中已收录的全部 PDF，不会从外部获取文献。	使用 --journal 根據準確的期刊名稱下載 NetVault 中已收錄的全部 PDF，不會從外部取得文獻。
+JCR journals	JCR 期刊	JCR 期刊
+JCR year	JCR 年份	JCR 年份
+Columns	列显示	欄位顯示
+Import ZIP	导入 ZIP	匯入 ZIP
+Filter journals, ISSN, publisher, category	筛选期刊、ISSN、出版商、学科	篩選期刊、ISSN、出版商、學科
+Publisher	出版商	出版商
+All publishers	全部出版商	全部出版商
+Index	收录索引	收錄索引
+All indexes	全部索引	全部索引
+Quartile	分区	分區
+All quartiles	全部分区	全部分區
+Unranked	无分区	無分區
+Category family	学科大类（派生）	學科大類（衍生）
+Derived from the category name before the comma; not an official JCR or CAS classification.	按学科名称逗号前的部分归组，并非官方 JCR 大类或中科院分区。	按學科名稱逗號前的部分歸組，並非官方 JCR 大類或中科院分區。
+All families	全部大类	全部大類
+All categories	全部学科	全部學科
+Minimum JIF	最低 JIF	最低 JIF
+Maximum JIF	最高 JIF	最高 JIF
+Min	最低	最低
+Max	最高	最高
+Loading journals…	正在加载期刊…	正在載入期刊…
+JCR journal table	JCR 期刊表格	JCR 期刊表格
+Journal details	期刊详情	期刊詳情
+Close details	关闭详情	關閉詳情
+Category-specific quartiles	按学科保留各自分区	按學科保留各自分區
+Quartiles and indexes are matched within the same category. Category families are derived from category names.	分区和索引在同一学科内匹配；大类由学科名称派生。	分區與索引在同一學科內匹配；大類由學科名稱衍生。
+Rows	每页	每頁
+JIF quartiles	JIF 分区	JIF 分區
+Total cites	总被引	總被引
+5-year JIF	五年 JIF	五年 JIF
+Abbreviation	期刊缩写	期刊縮寫
+JIF without self cites	去自引 JIF	去自引 JIF
+Article influence	文章影响分	文章影響分
+Eigenfactor	特征因子	特徵因子
+Normalized Eigenfactor	标准化特征因子	標準化特徵因子
+Immediacy index	即年指数	即年指數
+Gold OA %	金色开放比例 %	金色開放比例 %
+Articles	文章数	文章數
+Citable items	可引文献数	可引文獻數
+Cited half-life	被引半衰期	被引半衰期
+Citing half-life	引用半衰期	引用半衰期
+JCI quartile	JCI 分区	JCI 分區
+JCI rank	JCI 排名	JCI 排名
+JCI percentile	JCI 百分位	JCI 百分位
+JIF rank	JIF 排名	JIF 排名
+JIF percentile	JIF 百分位	JIF 百分位
+AIS quartile	AIS 分区	AIS 分區
+AIS rank	AIS 排名	AIS 排名
+5-year JIF quartile	五年 JIF 分区	五年 JIF 分區
+Articles / citable items %	文章占可引文献比例 %	文章佔可引文獻比例 %
+Source rank	来源排名	來源排名
+Authentication required	请先登录	請先登入
+Request failed	请求失败	請求失敗
+journals	本期刊	本期刊
+matches	条匹配	筆符合
+Search in Web of Science	在 Web of Science 检索	在 Web of Science 檢索
+No matching journals	没有匹配的期刊	沒有符合的期刊
+Category-specific rankings	各学科分区与排名	各學科分區與排名
+All source fields	全部原始字段	全部原始欄位
+Original JSON	原始 JSON	原始 JSON
+Import a JCR ZIP to get started.	导入 JCR ZIP 后即可浏览。	匯入 JCR ZIP 後即可瀏覽。
+JCR ZIP exceeds the 64 MB limit.	JCR ZIP 超过 64 MB 限制。	JCR ZIP 超過 64 MB 限制。
+Importing and validating JCR ZIP…	正在导入并校验 JCR ZIP…	正在匯入並驗證 JCR ZIP…
+Import complete	导入完成	匯入完成
+duplicates skipped	条重复已跳过	筆重複已略過

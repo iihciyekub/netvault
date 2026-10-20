@@ -26,7 +26,7 @@ def test_web_ui_source_contains_no_chinese_text() -> None:
         / "server"
     )
     ui_files = list((server_root / "templates").glob("*.html"))
-    ui_files.extend([server_root / "static" / "app.js", server_root / "static" / "styles.css"])
+    ui_files.extend([server_root / "static" / "app.js", server_root / "static" / "styles.css", server_root / "static" / "jcr.js", server_root / "static" / "jcr.css"])
     chinese = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
     # Canonical UI markup and feature scripts remain English. The trilingual

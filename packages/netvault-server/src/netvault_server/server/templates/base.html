@@ -22,6 +22,7 @@
       <nav class="sidebar-nav" aria-label="Main navigation">
         <a class="sidebar-icon {% if request.url.path == '/web' %}active{% endif %}" href="{{ path_for('/web') }}" {% if request.url.path == '/web' %}aria-current="page"{% endif %} data-tooltip="Home" aria-label="Home"><i class="fa-solid fa-chart-column fa-fw" aria-hidden="true"></i></a>
         <a class="sidebar-icon {% if request.url.path == '/web/pdfs' %}active{% endif %}" href="{{ path_for('/web/pdfs') }}" {% if request.url.path == '/web/pdfs' %}aria-current="page"{% endif %} data-tooltip="Search" aria-label="Search"><i class="fa-solid fa-magnifying-glass fa-fw" aria-hidden="true"></i></a>
+        <a class="sidebar-icon {% if '/web/jcr' in request.url.path %}active{% endif %}" href="{{ path_for('/web/jcr') }}" data-no-pjax {% if '/web/jcr' in request.url.path %}aria-current="page"{% endif %} data-tooltip="JCR journals" aria-label="JCR journals"><i class="fa-solid fa-table-list fa-fw" aria-hidden="true"></i></a>
         <a class="sidebar-icon {% if request.url.path == '/web/cli' %}active{% endif %}" href="{{ path_for('/web/cli') }}" {% if request.url.path == '/web/cli' %}aria-current="page"{% endif %} data-tooltip="CLI" aria-label="CLI"><i class="fa-solid fa-terminal fa-fw" aria-hidden="true"></i></a>
         {% if user.role.value == "admin" %}
         {% set in_admin_console = request.url.path.startswith('/web/admin') or request.url.path.startswith(path_for('/web/admin')) %}

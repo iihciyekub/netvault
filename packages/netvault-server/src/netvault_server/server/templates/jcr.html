@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}JCR · NetVault{% endblock %}
+{% block heading %}JCR journals{% endblock %}
+{% block body_class %}jcr-page{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ path_for('/static/jcr.css') }}?v={{ asset_version }}&amp;h={{ jcr_hash }}">
+<section id="jcr-app" data-api="{{ path_for('/web/jcr') }}" data-csrf="{{ csrf_token }}">
+  <header class="jcr-titlebar"><strong>JCR</strong><span class="jcr-subtitle">Journal Citation Reports</span><select id="jcr-year" aria-label="JCR year"></select><span id="jcr-total" class="jcr-muted" aria-live="polite"></span><span class="jcr-spacer"></span><button id="jcr-columns-toggle" type="button" aria-expanded="false" aria-controls="jcr-columns">Columns</button>{% if user.role.value == 'admin' %}<label class="jcr-upload" for="jcr-file">Import ZIP</label><input id="jcr-file" type="file" accept=".zip,application/zip" hidden>{% endif %}</header>
+  <form id="jcr-filters" class="jcr-toolbar" role="search">
+    <input id="jcr-search" name="q" type="search" autocomplete="off" placeholder="Filter journals, ISSN, publisher, category" aria-label="Filter journals, ISSN, publisher, category">
+    <label>Publisher<input name="publisher" list="jcr-publishers" placeholder="All publishers" autocomplete="off"></label><datalist id="jcr-publishers"></datalist>
+    <label>Index<select name="edition"><option value="">All indexes</option><option value="SCIE">SCI / SCIE</option><option>SSCI</option><option>AHCI</option><option>ESCI</option></select></label>
+    <label>Quartile<select name="quartile"><option value="">All quartiles</option><option>Q1</option><option>Q2</option><option>Q3</option><option>Q4</option><option value="N/A">Unranked</option></select></label>
+    <label>Category family<select name="group" title="Derived from the category name before the comma; not an official JCR or CAS classification."><option value="">All families</option></select></label>
+    <label>Category<input name="category" list="jcr-categories" placeholder="All categories" autocomplete="off"></label><datalist id="jcr-categories"></datalist>
+    <label>JIF<input name="jif_min" type="number" min="0" step="any" placeholder="Min" aria-label="Minimum JIF"></label><input name="jif_max" type="number" min="0" step="any" placeholder="Max" aria-label="Maximum JIF">
+    <button type="reset">Reset</button>
+  </form>
+  <div id="jcr-columns" class="jcr-columns" hidden></div>
+  <div id="jcr-status" class="jcr-status" role="status" aria-live="polite">Loading journals…</div>
+  <div class="jcr-workspace">
+    <div id="jcr-grid" class="jcr-grid" tabindex="0" role="region" aria-label="JCR journal table"><table class="jcr-table"><thead><tr id="jcr-head"></tr></thead><tbody id="jcr-rows"></tbody></table></div>
+    <aside id="jcr-detail" class="jcr-detail" aria-label="Journal details" hidden><header><strong>Journal details</strong><button id="jcr-close" type="button" aria-label="Close details">×</button></header><div id="jcr-detail-content"></div></aside>
+  </div>
+  <footer class="jcr-footer"><span id="jcr-count" aria-live="polite"></span><span class="jcr-note" title="Quartiles and indexes are matched within the same category. Category families are derived from category names.">Category-specific quartiles</span><span class="jcr-spacer"></span><label>Rows<select id="jcr-size"><option>50</option><option selected>100</option><option>200</option></select></label><button id="jcr-prev" type="button" aria-label="Previous page">‹</button><span id="jcr-page-number"></span><button id="jcr-next" type="button" aria-label="Next page">›</button></footer>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ path_for('/static/jcr.js') }}?v={{ asset_version }}&amp;h={{ jcr_hash }}" defer></script>{% endblock %}

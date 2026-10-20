@@ -1320,3 +1320,51 @@ def web_pdf_download_all(
         headers=headers,
         background=BackgroundTask(record_completed_downloads, [pdf.id for pdf in ordered], user.id),
     )
+
+
+@router.get("/web/jcr", response_class=HTMLResponse, include_in_schema=False)
+def jcr_page(request: Request, db: Session = Depends(get_db)):
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    static = Path(__file__).parent / "static"
+    asset_hash = hashlib.sha256((static / 'jcr.js').read_bytes() + (static / 'jcr.css').read_bytes()).hexdigest()[:12]
+    return render(request, 'jcr.html', {'user': user, 'jcr_hash': asset_hash})
+
+
+@router.get("/web/jcr/facets", include_in_schema=False)
+def jcr_facets(request: Request, year: str = '', db: Session = Depends(get_db)):
+    if get_cookie_user(request, db) is None:
+        raise HTTPException(401, 'Authentication required')
+    from . import jcr
+    return jcr.facets(get_settings().storage_root, year)
+
+
+@router.get("/web/jcr/journals", include_in_schema=False)
+def jcr_journals(request: Request, year: str = '', q: str = Query('', max_length=300),
+                 publisher: str = Query('', max_length=300), edition: str = '', quartile: str = '',
+                 category: str = Query('', max_length=300), group: str = Query('', max_length=300),
+                 sort: str = 'name', direction: str = 'asc', page: int = Query(1, ge=1),
+                 size: int = Query(100, ge=1, le=200), jif_min: float | None = None,
+                 jif_max: float | None = None, db: Session = Depends(get_db)):
+    if get_cookie_user(request, db) is None:
+        raise HTTPException(401, 'Authentication required')
+    from . import jcr
+    return jcr.query(get_settings().storage_root, year=year, q=q, publisher=publisher,
+                     edition=edition, quartile=quartile, category=category, group=group,
+                     sort=sort, direction=direction, page=page, size=size, jif_min=jif_min, jif_max=jif_max)
+
+
+@router.post("/web/jcr/import", include_in_schema=False)
+def jcr_import(request: Request, file: UploadFile = File(...), csrf_token: str = Form(...),
+               db: Session = Depends(get_db)):
+    user = require_web_admin(request, db)
+    if isinstance(user, RedirectResponse):
+        raise HTTPException(401, 'Authentication required')
+    validate_csrf(request, csrf_token)
+    from . import jcr
+    try:
+        report = jcr.import_zip(get_settings().storage_root, file.file, file.filename or 'JCR.zip')
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {'ok': True, 'report': report}
