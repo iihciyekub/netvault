@@ -164,3 +164,83 @@ def test_authenticated_import_csrf_and_browser_endpoints(client):
         ).status_code
         == 403
     )
+
+
+def test_acronym_and_keywords_with_index_filter(tmp_path):
+    journals = [
+        row("International Journal of Intercultural Relations"),
+        row("The Journal of Applied Linguistics"),
+        row("Journal of Other Research"),
+    ]
+    jcr.import_zip(tmp_path, archive({"JCR.json": journals}))
+    for q in ["IJIR", "ijir", "I.J.I.R.", "IJIR Publisher"]:
+        result = jcr.query(tmp_path, year="2025", q=q, edition="SSCI")
+        assert (
+            result["total"] == 1 and result["rows"][0]["journalName"] == journals[0]["journalName"]
+        )
+    assert (
+        jcr.query(tmp_path, year="2025", q="JAL")["rows"][0]["journalName"]
+        == journals[1]["journalName"]
+    )
+    assert jcr.query(tmp_path, year="2025", q="intercultural")["total"] == 1
+
+
+def test_global_sort_for_every_column_and_nulls_last(tmp_path):
+    journals = []
+    for i in range(230):
+        r = row(f"Journal {i:03d}")
+        r.update(
+            issn=f"{9999 - i:04d}-1234",
+            eissn=f"{i:04d}-5678",
+            jif5Years=str(i),
+            jciRank=f"{i + 1}/300",
+            jif2019=str(i),
+        )
+        journals.append(r)
+    missing = row("Missing")
+    missing.update(jif5Years="N/A", jciRank="N/A", issn="N/A", eissn="N/A")
+    journals.append(missing)
+    jcr.import_zip(tmp_path, archive({"JCR.json": journals}))
+    for key in jcr.SORT_COLUMNS:
+        for direction in ["asc", "desc"]:
+            result = jcr.query(tmp_path, year="2025", sort=key, direction=direction, size=50)
+            assert result["total"] == 231 and len(result["rows"]) == 50, key
+    for key in ["jif5Years", "jciRank", "jif"]:
+        result = jcr.query(tmp_path, year="2025", sort=key, direction="desc", size=50)
+        assert result["rows"][0]["journalName"] == "Journal 229"
+        second = jcr.query(tmp_path, year="2025", sort=key, direction="desc", size=50, page=2)
+        assert second["rows"][0]["journalName"] == "Journal 179"
+    assert (
+        jcr.query(tmp_path, year="2025", sort="jif5Years", direction="desc", size=50, page=5)[
+            "rows"
+        ][-1]["journalName"]
+        == "Missing"
+    )
+    assert (
+        jcr.query(tmp_path, year="2025", sort="jciRank", direction="asc")["rows"][0]["journalName"]
+        == "Journal 000"
+    )
+    assert (
+        jcr.query(tmp_path, year="2025", sort="issn", direction="asc")["rows"][0]["journalName"]
+        == "Journal 229"
+    )
+
+
+def test_installed_catalog_backfill_preserves_raw_and_future_imports(tmp_path):
+    journal = row("International Journal of Intercultural Relations")
+    journal["jif5Years"] = "10.5"
+    jcr.import_zip(tmp_path, archive({"JCR.json": [journal]}))
+    with jcr.connect(tmp_path) as db:
+        before = db.execute("SELECT id,raw FROM journals").fetchall()
+        db.execute("DROP TABLE journal_lookup")
+        db.execute("DELETE FROM jcr_meta")
+        db.commit()
+    assert jcr.query(tmp_path, year="2025", q="IJIR", sort="jif5Years")["total"] == 1
+    with jcr.connect(tmp_path) as db:
+        assert [tuple(r) for r in db.execute("SELECT id,raw FROM journals")] == [
+            tuple(r) for r in before
+        ]
+    jcr.import_zip(
+        tmp_path, archive({"JCR.json": [journal, row("Journal of Applied Linguistics")]})
+    )
+    assert jcr.query(tmp_path, year="2025", q="JAL")["total"] == 1

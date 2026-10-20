@@ -20,11 +20,21 @@
     ['citingHalfLife','Citing half-life',105],['jciQuartile','JCI quartile',90],['jciRank','JCI rank',90],
     ['jciPercentile','JCI percentile',100],['jifRank','JIF rank',90],['jifPercentile','JIF percentile',100],
     ['aisQuartile','AIS quartile',90],['aisRank','AIS rank',90],['fiveYearJifQuartile','5-year JIF quartile',125],
-    ['percentageOfArticlesInCitableItems','Articles / citable items %',160],['rank','Source rank',90]
+    ['percentageOfArticlesInCitableItems','Articles / citable items %',160],['rank','Source rank',90],
+    ['jcrYear','JCR year',80],['quartile','Source JIF quartile',115],
+    ['category','Source category labels',230],['categoryQuartiles','Category rankings',140]
   ];
-  const defaultColumns = fields.slice(0,10).map(c => c[0]);
+  const numericColumns = new Set(['jif2019','jci','totalCites','jif5Years','jifWithoutSelfCites','articleInfluenceScore','eigenFactor','normalizedEigenFactor','immediacyIndex','percentageOAGold','totalArticles','citableItems','citedHalfLife','citingHalfLife','jciRank','jciPercentile','jifRank','jifPercentile','aisRank','percentageOfArticlesInCitableItems','rank']);
+  for (const field of fields) if (!field[3]) field[3]=field[0];
+  const defaultColumns = [...fields.slice(0,11).map(c => c[0]),'jcrYear'];
+  const columnStorage = 'netvault:jcr:columns:v2';
+  const widthStorage = 'netvault:jcr:widths:v1';
+  let widths = {};
+  try {const saved=JSON.parse(localStorage.getItem(widthStorage));if(saved&&typeof saved==='object')for(const [key,value] of Object.entries(saved))if(fields.some(f=>f[0]===key)&&Number.isFinite(value))widths[key]=Math.max(52,Math.min(1200,value));}catch{}
+  const widthOf = field => widths[field[0]] || field[2];
+  const saveWidths = () => {try{localStorage.setItem(widthStorage,JSON.stringify(widths));}catch{}};
   let selected = defaultColumns;
-  try {const saved = JSON.parse(localStorage.getItem('netvault:jcr:columns')); if (Array.isArray(saved) && saved.includes('journalName')) selected = saved;} catch {}
+  try {const saved = JSON.parse(localStorage.getItem(columnStorage)); if (Array.isArray(saved) && saved.includes('journalName')) selected = saved.filter(key=>fields.some(f=>f[0]===key));} catch {}
   const columns = new Set(selected);
   let page = 1, pages = 1, sort = 'name', direction = 'asc', rows = [], controller, sequence = 0, timer, importNotice = '';
   let selectedId = '';
@@ -34,7 +44,7 @@
   const params = new URLSearchParams(location.search);
   let pendingGroup = params.get('group') || '';
   for (const el of form.elements) if (el.name && params.has(el.name)) el.value = params.get(el.name);
-  sort = ['name','publisher','jif','jci','citations'].includes(params.get('sort')) ? params.get('sort') : sort;
+  sort = fields.some(f=>f[3]===params.get('sort')) ? params.get('sort') : sort;
   direction = params.get('direction') === 'desc' ? 'desc' : 'asc';
   page = Math.max(1, Number(params.get('page')) || 1);
   if (['50','100','200'].includes(params.get('size'))) $('#jcr-size').value = params.get('size');
@@ -77,19 +87,48 @@
   const cats = row => row.categoryQuartiles || [];
   const indexes = row => [...new Set(cats(row).flatMap(c=>String(c.edition||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean)))].sort();
   const quartiles = row => [...new Set(cats(row).map(c=>valid(c.quartile)?c.quartile:'N/A'))].sort();
+  function applyWidths() {
+    const visible=fields.filter(f=>columns.has(f[0]));
+    $('.jcr-table').style.width=(34+visible.reduce((n,f)=>n+widthOf(f),0))+'px';
+    visible.forEach(field=>{const col=$('col[data-key="'+field[0]+'"]');if(col)col.style.width=widthOf(field)+'px';const th=$('th[data-key="'+field[0]+'"]');if(th)th.style.width=widthOf(field)+'px';});
+  }
+  function resizeHandle(th,field) {
+    const handle=text('span','','jcr-resize-handle');
+    handle.tabIndex=0;handle.setAttribute('role','separator');handle.setAttribute('aria-orientation','vertical');
+    handle.setAttribute('aria-label',t('Resize column')+': '+t(field[1]));
+    const minimum=field[0]==='journalName'?120:52;
+    handle.setAttribute('aria-valuemin',minimum);handle.setAttribute('aria-valuemax','1200');
+    const update=value=>{widths[field[0]]=Math.max(minimum,Math.min(1200,Math.round(value)));handle.setAttribute('aria-valuenow',widths[field[0]]);applyWidths();};
+    handle.setAttribute('aria-valuenow',widthOf(field));
+    handle.addEventListener('pointerdown',event=>{
+      if(event.button!==0)return;event.preventDefault();event.stopPropagation();
+      const startX=event.clientX,startWidth=widthOf(field);let frame=0,pending=startWidth;
+      handle.setPointerCapture(event.pointerId);root.classList.add('jcr-resizing');
+      const move=e=>{pending=startWidth+e.clientX-startX;if(!frame)frame=requestAnimationFrame(()=>{frame=0;update(pending);});};
+      const finish=()=>{if(frame)cancelAnimationFrame(frame);update(pending);saveWidths();root.classList.remove('jcr-resizing');handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',finish);handle.removeEventListener('pointercancel',finish);handle.removeEventListener('lostpointercapture',finish);};
+      handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);handle.addEventListener('lostpointercapture',finish);
+    });
+    handle.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home'].includes(event.key))return;event.preventDefault();update(event.key==='Home'?field[2]:widthOf(field)+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?50:10));saveWidths();});
+    handle.addEventListener('dblclick',event=>{event.preventDefault();event.stopPropagation();update(field[2]);saveWidths();});
+    th.append(handle);
+  }
   function drawHead() {
     const head=$('#jcr-head');head.replaceChildren();
-    $('.jcr-table').style.width=(34+fields.filter(c=>columns.has(c[0])).reduce((n,c)=>n+c[2],0))+'px';
+    let group=$('.jcr-table colgroup');if(!group){group=document.createElement('colgroup');$('.jcr-table').prepend(group);}group.replaceChildren();
+    const infoCol=document.createElement('col');infoCol.style.width='34px';group.append(infoCol);
     const info=text('th','');info.style.width='34px';info.title=t('Journal details');head.append(info);
-    for (const [key,label,width,order] of fields.filter(c=>columns.has(c[0]))) {
-      const th=text('th','');th.scope='col';th.style.width=width+'px';
-      if (order) {const b=text('button',t(label)+(sort===order?(direction==='asc'?' ↑':' ↓'):''));b.type='button';b.onclick=()=>{direction=sort===order&&direction==='asc'?'desc':sort!==order&&order!=='name'?'desc':'asc';sort=order;page=1;load();};th.setAttribute('aria-sort',sort===order?(direction==='asc'?'ascending':'descending'):'none');th.append(b);}
-      else {th.textContent=t(label);th.style.padding='4px 7px';}
-      head.append(th);
+    for (const field of fields.filter(c=>columns.has(c[0]))) {
+      const [key,label,,order]=field;
+      const col=document.createElement('col');col.dataset.key=key;group.append(col);
+      const th=text('th','');th.scope='col';th.dataset.key=key;
+      const button=text('button',t(label)+(sort===order?(direction==='asc'?' ↑':' ↓'):''));button.type='button';
+      button.onclick=()=>{direction=sort===order?(direction==='asc'?'desc':'asc'):(numericColumns.has(key)&&!key.endsWith('Rank')&&key!=='rank'?'desc':'asc');sort=order;page=1;load();};
+      th.setAttribute('aria-sort',sort===order?(direction==='asc'?'ascending':'descending'):'none');th.append(button);resizeHandle(th,field);head.append(th);
     }
+    applyWidths();
   }
   function drawRows() {
-    drawHead();const body=$('#jcr-rows');body.replaceChildren();
+    if(!root.classList.contains('jcr-resizing'))drawHead();const body=$('#jcr-rows');body.replaceChildren();
     const fragment=document.createDocumentFragment();
     for (const row of rows) {
       const tr=document.createElement('tr');tr.dataset.id=row.id;tr.classList.toggle('is-selected',row.id===selectedId);
@@ -101,8 +140,10 @@
         } else if (key==='indexes'||key==='quartiles') {
           const values=key==='indexes'?indexes(row):quartiles(row);
           for (const value of values) td.append(text('span',value,'jcr-badge'));
-        } else if (key==='categories') td.textContent=[...new Set(cats(row).map(c=>c.category))].join('; ');
-        else {td.textContent=show(row[key]);if (!['publisher','abbrJournal','jciQuartile','aisQuartile','fiveYearJifQuartile'].includes(key)) td.classList.add('jcr-number');}
+        } else if (key==='categoryQuartiles') {const button=text('button',String(cats(row).length)+' '+t('categories'),'jcr-category-details');button.type='button';button.onclick=()=>detail(row);td.append(button);}
+        else if (key==='category') td.textContent=Array.isArray(row.category)?row.category.join('; '):show(row.category);
+        else if (key==='categories') td.textContent=[...new Set(cats(row).map(c=>c.category))].join('; ');
+        else {td.textContent=show(row[key]);if (numericColumns.has(key)) td.classList.add('jcr-number');}
         td.title=key==='quartiles'?cats(row).map(c=>`${c.category}: ${show(c.quartile)} (${show(c.edition)})`).join('\n'):td.textContent;
         td.addEventListener('dblclick',()=>detail(row));tr.append(td);
       }
@@ -116,7 +157,7 @@
     const heading=text('h2','');heading.setAttribute('data-i18n-ignore','');heading.append(link('SO',row.journalName));box.append(heading);
     const identifiers=text('div','');identifiers.setAttribute('data-i18n-ignore','');for (const key of ['issn','eissn']) if(valid(row[key])) {identifiers.append(text('span',key.toUpperCase()+': '),link('IS',row[key]),text('span','  '));}box.append(identifiers);
     box.append(text('h3',t('Category-specific rankings')));
-    for (const c of cats(row)) {const item=text('div','','jcr-cat-detail');item.setAttribute('data-i18n-ignore','');item.append(text('strong',c.category),text('span',`${show(c.edition)} · JIF ${show(c.quartile)} · ${show(c.jifRank)} · JCI ${show(c.jciQuartile)} · ${show(c.jciRank)}`));box.append(item);}
+    for (const c of cats(row)) {const item=text('div','','jcr-cat-detail');item.setAttribute('data-i18n-ignore','');item.append(text('strong',c.category));const dl=document.createElement('dl');for(const [key,value] of Object.entries(c)){if(key==='category')continue;const label=key==='edition'?'Index':key==='quartile'?'JIF quartiles':fields.find(f=>f[0]===key)?.[1]||key;dl.append(text('dt',t(label)),text('dd',show(value)));}item.append(dl);box.append(item);}
     box.append(text('h3',t('All source fields')));const dl=document.createElement('dl');dl.setAttribute('data-i18n-ignore','');
     for (const [key,value] of Object.entries(row)) {if (key==='id'||key==='categoryQuartiles') continue;const label=fields.find(f=>f[0]===key)?.[1]||key;dl.append(text('dt',t(label)),text('dd',Array.isArray(value)?value.join('; '):show(value)));}box.append(dl);
     const raw=document.createElement('details');raw.append(text('summary',t('Original JSON')),text('pre',JSON.stringify(Object.fromEntries(Object.entries(row).filter(([k])=>k!=='id')),null,2)));box.append(raw);
@@ -136,7 +177,7 @@
     } catch(error) {if(error.name!=='AbortError'&&n===sequence)status(error.message,true);}
     finally {if(n===sequence)$('#jcr-grid').setAttribute('aria-busy','false');}
   }
-  function schedule() {page=1;importNotice='';clearTimeout(timer);timer=setTimeout(load,180);}
+  function schedule() {page=1;importNotice='';clearTimeout(timer);timer=setTimeout(load,120);}
   form.addEventListener('submit',e=>{e.preventDefault();clearTimeout(timer);page=1;load();});
   form.addEventListener('input',schedule);
   form.addEventListener('change',()=>{if(form.elements.group.value) {const option=[...$('#jcr-categories').options].find(o=>o.value===form.elements.category.value);if(option&&categoryData.find(c=>c.value===option.value)?.family!==form.elements.group.value)form.elements.category.value='';}updateCategories();schedule();});
@@ -144,10 +185,21 @@
   $('#jcr-year').onchange=async()=>{try {page=1;importNotice='';await facets($('#jcr-year').value);await load();}catch(error){status(error.message,true);}};
   $('#jcr-size').onchange=()=>{page=1;load();};$('#jcr-prev').onclick=()=>{page--;load();};$('#jcr-next').onclick=()=>{page++;load();};
   $('#jcr-close').onclick=()=>{$('#jcr-detail').hidden=true;selectedId='';drawRows();};
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#jcr-close').click();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!columnPanel.hidden){closeColumns();$('#jcr-columns-toggle').focus();}else $('#jcr-close').click();}});
   const columnPanel=$('#jcr-columns');
-  for(const [key,label] of fields) {const entry=text('label','');const input=document.createElement('input');input.type='checkbox';input.checked=columns.has(key);input.disabled=key==='journalName';input.onchange=()=>{input.checked?columns.add(key):columns.delete(key);try{localStorage.setItem('netvault:jcr:columns',JSON.stringify([...columns]));}catch{}drawRows();};entry.append(input,text('span',t(label)));columnPanel.append(entry);}
-  $('#jcr-columns-toggle').onclick=()=>{columnPanel.hidden=!columnPanel.hidden;$('#jcr-columns-toggle').setAttribute('aria-expanded',String(!columnPanel.hidden));};
+  columnPanel.setAttribute('role','dialog');columnPanel.setAttribute('aria-label',t('Visible columns'));
+  const columnSearch=document.createElement('input');columnSearch.type='search';columnSearch.placeholder=t('Find columns');columnSearch.setAttribute('aria-label',t('Find columns'));columnPanel.append(columnSearch);
+  columnSearch.addEventListener('input',()=>{const value=columnSearch.value.trim().toLocaleLowerCase();columnPanel.querySelectorAll('label').forEach(label=>label.hidden=!label.textContent.toLocaleLowerCase().includes(value));});
+  function closeColumns(){columnPanel.hidden=true;$('#jcr-columns-toggle').setAttribute('aria-expanded','false');}
+  function openColumns(x,y){columnPanel.hidden=false;columnSearch.value='';columnPanel.querySelectorAll('label').forEach(label=>label.hidden=false);$('#jcr-columns-toggle').setAttribute('aria-expanded','true');const rect=columnPanel.getBoundingClientRect();columnPanel.style.left=Math.max(8,Math.min(x,innerWidth-rect.width-8))+'px';columnPanel.style.top=Math.max(8,Math.min(y,innerHeight-rect.height-8))+'px';columnSearch.focus();}
+  $('#jcr-head').addEventListener('contextmenu',event=>{event.preventDefault();event.stopPropagation();openColumns(event.clientX,event.clientY);});
+  document.addEventListener('pointerdown',event=>{if(!columnPanel.contains(event.target)&&!event.target.closest('#jcr-columns-toggle'))closeColumns();});
+  window.addEventListener('resize',closeColumns);$('#jcr-grid').addEventListener('wheel',closeColumns,{passive:true});
+
+  const showAll=text('button',t('Show all columns'));showAll.type='button';showAll.onclick=()=>{fields.forEach(f=>columns.add(f[0]));columnPanel.querySelectorAll('input').forEach(i=>{i.checked=true;});try{localStorage.setItem(columnStorage,JSON.stringify([...columns]));}catch{}drawRows();};columnPanel.append(showAll);
+  const resetWidths=text('button',t('Reset column widths'));resetWidths.type='button';resetWidths.onclick=()=>{widths={};saveWidths();drawRows();};columnPanel.append(resetWidths);
+  for(const [key,label] of fields) {const entry=text('label','');const input=document.createElement('input');input.type='checkbox';input.checked=columns.has(key);input.disabled=key==='journalName';input.onchange=()=>{input.checked?columns.add(key):columns.delete(key);try{localStorage.setItem(columnStorage,JSON.stringify([...columns]));}catch{}drawRows();};entry.append(input,text('span',t(label)));columnPanel.append(entry);}
+  $('#jcr-columns-toggle').onclick=()=>{if(!columnPanel.hidden){closeColumns();return;}const rect=$('#jcr-columns-toggle').getBoundingClientRect();openColumns(rect.right-280,rect.bottom+5);};
   const fileInput=$('#jcr-file');if(fileInput)fileInput.onchange=async()=>{
     const file=fileInput.files[0];if(!file)return;
     if(file.size>64*1024*1024){status(t('JCR ZIP exceeds the 64 MB limit.'),true);fileInput.value='';return;}
