@@ -371,3 +371,55 @@ def test_download_429_is_returned_without_adapter_retry(tmp_path, monkeypatch):
         server.server_close()
         thread.join()
         http.http_session().close()
+
+
+
+def test_download_journal_resolves_dois_and_reuses_bulk_downloader(tmp_path, monkeypatch, download_auth):
+    dois = ["10.1234/one", "10.1234/two"]
+    observed = []
+    monkeypatch.setattr(user, "fetch_journal_download_dois", lambda name: observed.append(name) or dois)
+    monkeypatch.setattr(user, "fetch_download_batch", lambda batch: {
+        doi: detail(doi, name=doi.rsplit("/", 1)[-1] + ".pdf") for doi in batch
+    })
+    def run_plan(plan, *args, **kwargs):
+        plan.destination.write_bytes(b"%PDF-example")
+        return "downloaded"
+    monkeypatch.setattr(user, "run_download_plan", run_plan)
+    result = CliRunner().invoke(user.app, [
+        "download", "--journal", "Management Science", "--to", str(tmp_path)
+    ])
+    assert result.exit_code == 0, result.output
+    assert observed == ["Management Science"]
+    assert "2 downloaded" in result.output
+    assert len(list(tmp_path.glob("*.pdf"))) == 2
+
+
+def test_fetch_journal_inventory_validates_row_count(monkeypatch, download_auth):
+    class Response:
+        ok = True
+        headers = {"Content-Type": "text/csv", "X-NetVault-Rows": "2"}
+        content = ("doi,sha256\r\n10.1234/one," + "a" * 64 + "\r\n").encode()
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+    class Session:
+        def get(self, url, **kwargs):
+            assert kwargs["params"] == {"journal": "Management Science", "include_aliases": "false"}
+            return Response()
+    monkeypatch.setattr(user, "http_session", Session)
+    with pytest.raises(RuntimeError, match="Incomplete journal inventory"):
+        user.fetch_journal_download_dois("Management Science")
+
+
+def test_fetch_journal_inventory_deduplicates_dois(monkeypatch, download_auth):
+    class Response:
+        ok = True
+        headers = {"Content-Type": "text/csv", "X-NetVault-Rows": "2"}
+        content = ("doi,sha256\r\n" + ("10.1234/one," + "a" * 64 + "\r\n") * 2).encode()
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+    class Session:
+        def get(self, url, **kwargs): return Response()
+    monkeypatch.setattr(user, "http_session", Session)
+    assert user.fetch_journal_download_dois("Management Science") == ["10.1234/one"]
+    with pytest.raises(Exception, match="Journal name must not be blank"):
+        user.fetch_journal_download_dois(" ")

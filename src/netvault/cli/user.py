@@ -2,6 +2,8 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
+import csv
+import io
 import json
 import os
 from pathlib import Path
@@ -2552,6 +2554,40 @@ def fetch_download_batch(dois: list[str]) -> dict[str, dict]:
     raise RuntimeError("DOI lookup failed")
 
 
+
+def fetch_journal_download_dois(journal: str) -> list[str]:
+    """Read the complete server inventory before creating download plans."""
+    name = journal.strip()
+    if not name:
+        raise typer.BadParameter("Journal name must not be blank", param_hint="--journal")
+    with http_session().get(
+        f"{server_url()}/pdfs/export", headers=auth_headers(),
+        params={"journal": name, "include_aliases": "false"},
+        timeout=(15, 120),
+    ) as response:
+        raise_for_api_error(response)
+        if response.headers.get("Content-Type", "").split(";", 1)[0].lower() != "text/csv":
+            raise RuntimeError("Server did not return a journal inventory CSV")
+        try:
+            expected = int(response.headers["X-NetVault-Rows"])
+            if expected < 0:
+                raise ValueError
+        except (KeyError, ValueError):
+            raise RuntimeError("Server returned an invalid journal inventory row count") from None
+        reader = csv.reader(io.StringIO(response.content.decode("utf-8-sig")), strict=True)
+        if next(reader, None) != ["doi", "sha256"]:
+            raise RuntimeError("Invalid journal inventory columns")
+        dois = []
+        count = 0
+        for row in reader:
+            if len(row) != 2 or not row[0] or not re.fullmatch(r"[0-9a-f]{64}", row[1]):
+                raise RuntimeError("Invalid journal inventory row")
+            count += 1
+            dois.append(row[0])
+        if count != expected:
+            raise RuntimeError(f"Incomplete journal inventory: expected {expected}, got {count}")
+    return list(dict.fromkeys(dois))
+
 def run_download_plan(
     plan: DownloadPlan, base_url: str, headers: dict[str, str], stop: Event | None = None,
 ) -> str:
@@ -2612,10 +2648,13 @@ Examples:
   nv download --file ./dois.txt --to ./downloads
   nv download 10.1016/j.ijpe.2018.04.006 --file ./more-dois.txt --to ./downloads
   nv download --file ./dois.txt --to ./downloads --workers 8
+  nv download --journal "Management Science" --to ./downloads
 
 \b
 Notes:
   --file reads any text file and extracts DOI values with NetVault's DOI regex.
+  --journal matches an exact normalized journal name in the server library.
+  Only PDFs already stored on the NetVault server can be downloaded.
   Duplicate DOI values are downloaded once.
   Server DOI matches are fetched in batches before downloads start.
   Missing DOI values are counted quietly and excluded from download progress.
@@ -2638,11 +2677,14 @@ def download(
         help="Read DOI values from a text file using NetVault's DOI regex.",
     ),
     workers: int = typer.Option(8, "--workers", "-w", min=1, max=32, help="Parallel downloads."),
+    journal: str | None = typer.Option(None, "--journal", "-j", help="Download all stored PDFs for an exact journal name."),
 ) -> None:
     ensure_logged_in()
     requested_dois = collect_dois(dois or [], doi_files)
+    if journal is not None:
+        requested_dois = list(dict.fromkeys([*requested_dois, *fetch_journal_download_dois(journal)]))
     if not requested_dois:
-        raise typer.BadParameter("Provide at least one DOI or --file PATH")
+        raise typer.BadParameter("Provide at least one DOI, --file PATH, or --journal NAME")
 
     to = to.expanduser().resolve()
     to.mkdir(parents=True, exist_ok=True)

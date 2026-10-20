@@ -43,6 +43,25 @@ def inventory_rows(db: Session, issn: str, *, include_aliases: bool = True) -> l
     return rows
 
 
+
+def inventory_rows_by_journal(db: Session, journal: str, *, include_aliases: bool = True) -> list:
+    """Match the indexed normalized journal name, not a substring or fuzzy alias."""
+    key = normalize_journal_name(journal)
+    if not key:
+        raise HTTPException(status_code=422, detail="Journal name must not be empty")
+    conditions = (Pdf.is_deleted.is_(False), Pdf.doi.is_not(None), Pdf.journal_key == key)
+    query = select(Pdf.doi, Pdf.sha256).where(*conditions)
+    if include_aliases:
+        query = query.union(
+            select(Pdf.doi, PdfFileAlias.sha256)
+            .join(PdfFileAlias, PdfFileAlias.pdf_id == Pdf.id)
+            .where(*conditions)
+        )
+    rows = db.execute(query.order_by("doi", "sha256")).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No stored PDFs match this journal name")
+    return rows
+
 def csv_chunks(rows):
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
@@ -59,21 +78,25 @@ def csv_chunks(rows):
 
 @router.get("/export")
 def export_journal_inventory(
-    issn: str = Query(..., min_length=1, max_length=32),
+    issn: str | None = Query(default=None, min_length=1, max_length=32),
+    journal: str | None = Query(default=None, min_length=1, max_length=300),
     include_aliases: bool = Query(default=True, description="Include accepted file hashes for identification"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Export DOI and accepted PDF hashes for an ISSN/eISSN."""
+    """Export DOI and accepted PDF hashes for an ISSN or exact journal name."""
     _ = user
-    normalized = normalize_issn(issn)
-    if normalized is None:
+    if (issn is None) == (journal is None):
+        raise HTTPException(status_code=422, detail="Specify exactly one of issn or journal")
+    normalized = normalize_issn(issn) if issn is not None else None
+    if issn is not None and normalized is None:
         raise HTTPException(status_code=422, detail="Invalid ISSN format or checksum")
     # Materialize two small columns in one query for a consistent row count,
     # without retaining a database cursor during a slow client download.
-    rows = inventory_rows(db, normalized, include_aliases=include_aliases)
+    rows = (inventory_rows(db, normalized, include_aliases=include_aliases)
+            if normalized is not None else inventory_rows_by_journal(db, journal, include_aliases=include_aliases))
     return StreamingResponse(csv_chunks(rows), media_type="text/csv; charset=utf-8", headers={
-        "Content-Disposition": f'attachment; filename="netvault-{normalized}.csv"',
-        "X-NetVault-ISSN": normalized,
+        "Content-Disposition": f'attachment; filename="netvault-{normalized or "journal"}.csv"',
+        **({"X-NetVault-ISSN": normalized} if normalized else {}),
         "X-NetVault-Rows": str(len(rows)),
     })

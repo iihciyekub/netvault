@@ -128,7 +128,12 @@
           <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">download</span> <span class="syntax-option">--file</span> <span class="syntax-path">./dois.txt</span> <span class="syntax-option">--to</span> <span class="syntax-path">./downloads</span></code>
           <button class="copy-button" type="button" data-copy="nv download --file ./dois.txt --to ./downloads" aria-label="Copy DOI list download command"><span data-copy-label>Copy</span></button>
         </div>
+        <div class="command-row">
+          <code><span class="syntax-command">nv</span> <span class="syntax-subcommand">download</span> <span class="syntax-option">--journal</span> <span class="syntax-path">"Management Science"</span> <span class="syntax-option">--to</span> <span class="syntax-path">./downloads</span></code>
+          <button class="copy-button" type="button" data-copy="nv download --journal &quot;Management Science&quot; --to ./downloads" aria-label="Copy journal download command"><span data-copy-label>Copy</span></button>
+        </div>
       </div>
+      <p>Use --journal to download every PDF already stored on NetVault for an exact journal title. It does not fetch external papers.</p>
       <p class="command-help-gap">After an interruption, run the same command with the same <code>--to</code> directory. Verified complete files are skipped and <code>.part</code> files resume with checksum verification.</p>
       <p class="command-help-gap">Downloads use 8 parallel workers by default. Admin downloads have no hourly count limit; regular users keep the server limit. If the limit is reached, run the same command later. New downloads and errors append to <code>.netvault/history.jsonl</code> in the destination.</p>
     </div>

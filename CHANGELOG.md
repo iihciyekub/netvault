@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.7.87 — 2026-10-20
+
+- Support `nv download --journal "Management Science"` (alias `-j`) to download all PDFs already stored for an exact normalized journal title, without requiring an ISSN or a manual DOI list.
+- Extend the authenticated journal CSV inventory endpoint with an exclusive `journal` query parameter while preserving existing `issn` behavior; use an indexed exact journal key and exclude deleted entries.
+- Reuse the existing DOI batch matching, concurrent checksum-verified transfers, skip-existing behavior and partial-file resume, with complete inventory validation and regression tests for journal matching and failures.
+- Document journal-title downloads in the CLI guide and README.
+
+
 ## 0.7.86 — 2026-10-19
 
 - Show live DOI scan progress during `nv upload` on large folders instead of collecting all PDF scan results before the first progress update. Keep workers and queued futures bounded, and retain input-order DOI priority.
