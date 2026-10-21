@@ -2600,6 +2600,15 @@ body.with-sidebar {
 .journal-rank-panel [data-rank-pin]:hover { background: var(--soft); color: var(--fg); }
 .journal-rank-panel [data-rank-pin][aria-pressed="true"] { background: var(--choice-bg); color: var(--choice-fg); }
 .journal-rank-panel [data-rank-pin][aria-pressed="false"] i { transform: rotate(35deg); }
+.journal-rank-panel [data-rank-pin][aria-pressed="true"] i { animation: rank-pin-reminder 4s ease-in-out infinite; transform-origin: 50% 30%; }
+@keyframes rank-pin-reminder {
+  0%, 15%, 100% { transform: rotate(0); }
+  3%, 9% { transform: rotate(-12deg); }
+  6%, 12% { transform: rotate(12deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .journal-rank-panel [data-rank-pin][aria-pressed="true"] i { animation: none; }
+}
 .journal-rank-panel [data-rank-pin]:disabled { opacity: .35; cursor: default; }
 .rank-tools { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; }
 .rank-tools label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; }
@@ -5229,10 +5238,19 @@ body.dashboard-body:has([data-journal-library]) {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   min-height: 36px;
   padding: 0 11px 7px 14px;
   border-bottom: 1px solid var(--line);
+}
+.dashboard-body .journal-rank-panel .rank-meta-row > [data-rank-pin] {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 .dashboard-body .journal-rank-panel .rank-meta-row .rank-header-actions {
   display: inline-flex;
