@@ -1,4 +1,6 @@
 # Localize NetVault interface, preserve IDs/PDF titles/commands exactly.
+Pin journal rankings	固定期刊等级信息	固定期刊等級資訊
+Unpin journal rankings	取消固定期刊等级信息	取消固定期刊等級資訊
 WoS categories	WoS 分类	WoS 分類
 Loading journal details…	正在加载期刊详情…	正在載入期刊詳情…
 No matching journal in the JCR catalogue.	JCR 目录中未匹配到该期刊。	JCR 目錄中未比對到該期刊。

@@ -33,7 +33,7 @@ def _fixture() -> str:
     code = urls + app[app.index("  let rankSequence ="):app.index("  const journalLimitValue =")]
     css = (STATIC / "styles.css").resolve().as_uri()
     labels = "".join(
-        f'<div class="heat-journal" data-journal-name="Journal {i:02d}">'
+        f'<div class="heat-journal" role="button" tabindex="0" data-journal-name="Journal {i:02d}">'
         f'<span class="heat-journal-name">Journal {i:02d}</span></div>'
         for i in range(COLD_SAMPLE_COUNT)
     )
@@ -44,7 +44,7 @@ def _fixture() -> str:
     )
     totals_and_names = "".join(
         f'<div class="heat-total" data-journal-row="{i}" data-journal-name="Journal {i:02d}">123</div>'
-        f'<div class="heat-journal" data-journal-row="{i}" data-journal-name="Journal {i:02d}">'
+        f'<div class="heat-journal" role="button" tabindex="0" data-journal-row="{i}" data-journal-name="Journal {i:02d}">'
         f'<span class="heat-journal-name">Journal {i:02d}</span></div>'
         for i in range(COLD_SAMPLE_COUNT)
     )
@@ -58,7 +58,8 @@ def _fixture() -> str:
         f'<div class="heatmap-fixed-body" data-heatmap-fixed-body>{totals_and_names}</div></div>'
         '<div class="journal-context-menu" data-journal-context-menu data-rank-url="/web/journal-rank" hidden></div>'
         '<section class="journal-rank-panel" data-rank-panel aria-label="Journal rankings">'
-        '<header><h2 data-rank-title>Journal rankings</h2></header>'
+        '<header><h2 data-rank-title>Journal rankings</h2>'
+        '<button data-rank-pin disabled aria-pressed="false" aria-label="Pin journal rankings"><i></i></button></header>'
         '<div class="rank-meta-row"><div class="rank-header-actions">'
         '<button data-rank-copy data-copy="" disabled aria-label="Copy journal name"><i></i></button>'
         '<a data-rank-wos-link aria-disabled="true" tabindex="-1" aria-label="Open in Web of Science"><i></i></a>'
@@ -179,6 +180,36 @@ const checkSelection = (index) => {
   if(selectedStyle.boxShadow!=="none" || selectedStyle.borderRadius!=="7px")
     throw Error("Selected journal item must use a quiet rounded chat-list row without a stripe");
   document.documentElement.dataset.theme="dark";
+  // The shipped click/keyboard handlers pin the clicked journal. Hovering
+  // any other surface must leave the title, actions and row cue untouched.
+  const pin=qs('[data-rank-pin]');
+  const checkPinned = (index, pinned) => {
+    checkSelection(index);
+    if ((ranking.dataset.rankPinned==='true')!==pinned
+        || pin.getAttribute('aria-pressed')!==String(pinned)) throw Error('Wrong pin state');
+    if(pin.disabled || pin.getAttribute('aria-label')!==(pinned?'Unpin journal rankings':'Pin journal rankings'))
+      throw Error('Pin button state/label mismatch');
+  };
+  centralNames[2].querySelector('.heat-journal-name').click(); checkPinned(2,true);
+  for(const target of [journals[3],centralNames[4],totals[5],emptyCells[6],filledCells[7]]) {
+    hoverStatistic(target); checkPinned(2,true);
+  }
+  centralNames[3].click(); checkPinned(3,true);
+  hover(2); checkPinned(3,true);
+  centralNames[3].click(); checkPinned(3,false);
+  hover(6); checkSelection(6);
+  journals[7].click(); checkPinned(7,true);
+  journals[7].click(); checkPinned(7,false);
+  const key=(index,key,repeat=false)=>centralNames[index].dispatchEvent(
+    new KeyboardEvent('keydown',{key,repeat,bubbles:true,cancelable:true}));
+  key(8,'Enter'); checkPinned(8,true);
+  hover(3); checkPinned(8,true);
+  key(9,' '); checkPinned(9,true);
+  key(9,' ',true); checkPinned(9,true);
+  key(9,' '); checkPinned(9,false);
+  pin.click(); checkPinned(9,true);
+  pin.click(); checkPinned(9,false);
+  hover(4); checkSelection(4);
   // The asynchronous result for an earlier journal can finish after a
   // second hover. That response may warm cache but may NEVER repaint the
   // sidebar for the wrong journal.
@@ -191,8 +222,8 @@ const checkSelection = (index) => {
   if(title.textContent!=="Uncached Journal" ||
      !qs("[data-rank-status]").textContent.includes("Fetching"))
     throw Error("Uncached hover did not update title/status immediately");
-  hover(4);
-  checkSelection(4);
+  centralNames[4].click(); checkPinned(4,true);
+  hover(5); checkPinned(4,true);
   active=Array.from(document.querySelectorAll('.journal-library-items .heat-journal[data-rank-current]'));
   if(active.length!==1 || active[0]!==journals[4])
     throw Error("Old selected journal still highlighted after a fast switch");
@@ -207,6 +238,7 @@ const checkSelection = (index) => {
      !tbody.textContent.includes("Q1"))
     throw Error("A stale asynchronous response repainted newer journal rankings");
   checkSelection(4);
+  checkPinned(4,true);
   if(!journals[4].hasAttribute("data-rank-current"))
     throw Error("An old asynchronous request changed the highlighted journal");
   // Search/pagination replaces journal nodes. The retained panel selection

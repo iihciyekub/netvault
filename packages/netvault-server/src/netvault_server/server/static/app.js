@@ -2165,6 +2165,7 @@
   const showRankPanel = (name, url, hover = false, journalNode = null) => {
     const panel = qs("[data-rank-panel]");
     if (!panel || !name || !url) return;
+    if (hover && panel.dataset.rankPinned === "true") return;
     highlightRankJournal(name, journalNode);
     if (hover && panel.dataset.journalName === name) return;
     panel.dataset.journalName = name;
@@ -2172,19 +2173,38 @@
     panel.dataset.rankOpenMode = hover ? "hover" : "manual";
     qs("[data-rank-title]", panel).textContent = name;
     syncRankActions(panel, name);
+    const pin = qs("[data-rank-pin]", panel);
+    if (pin) pin.disabled = false;
     void loadJournalDetails(panel, name);
-    if (!hover) qs("[data-rank-refresh]", panel)?.focus({preventScroll:true});
     void loadRanks();
+  };
+  const setRankPinned = (panel, pinned) => {
+    panel.dataset.rankPinned = String(pinned);
+    const button = qs("[data-rank-pin]", panel);
+    if (!button) return;
+    button.setAttribute("aria-pressed", String(pinned));
+    const label = pinned ? "Unpin journal rankings" : "Pin journal rankings";
+    button.setAttribute("aria-label", label);
+    button.title = label;
+  };
+  const selectRankJournal = (journal) => {
+    const panel = qs("[data-rank-panel]");
+    const url = qs("[data-journal-context-menu]")?.dataset.rankUrl;
+    const name = journal.dataset.journalName;
+    if (!panel || !name || !url) return;
+    const unpin = panel.dataset.rankPinned === "true" && panel.dataset.journalName === name;
+    showRankPanel(name, url, false, journal);
+    setRankPinned(panel, !unpin);
   };
   const openRankPanel = () => {
     const menu = qs("[data-journal-context-menu]");
     if (!menu) return;
     showRankPanel(menu.dataset.journalName, menu.dataset.rankUrl);
+    qs("[data-rank-refresh]", qs("[data-rank-panel]"))?.focus({preventScroll:true});
     closeJournalMenu();
   };
   document.addEventListener("pointerover", event => {
-    // Hover lookup is always enabled. Ignore old saved toggle preferences:
-    // pointerover must synchronously switch the permanent ranking panel.
+    // Hover switches immediately unless a journal has been explicitly pinned.
     if (event.pointerType !== "mouse" || event.buttons) return;
     const journal = event.target.closest?.(".heat-journal[data-journal-name]");
     const statistic = journal ? null : event.target.closest?.(
@@ -2210,11 +2230,30 @@
     showRankPanel(name, menu.dataset.rankUrl, true, journal);
   });
   document.addEventListener("click", event => {
+    const journal = event.target.closest(".heat-journal[data-journal-name]");
+    if (journal) {
+      event.preventDefault();
+      if (event.target.closest("[data-journal-more]")) openJournalMenu(journal, event);
+      else selectRankJournal(journal);
+      return;
+    }
+    if (event.target.closest("[data-rank-pin]")) {
+      const panel = qs("[data-rank-panel]");
+      if (panel?.dataset.journalName) setRankPinned(panel, panel.dataset.rankPinned !== "true");
+      return;
+    }
     if (event.target.closest("[data-rank-refresh]")) {
       loadRanks(true);
       const panel = qs("[data-rank-panel]");
       if (panel?.dataset.journalName) void loadJournalDetails(panel, panel.dataset.journalName, true);
     }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const journal = event.target.closest?.('.heat-journal[data-journal-name][role="button"]');
+    if (!journal || journal.matches("button, a") || event.target.closest("[data-journal-more]")) return;
+    event.preventDefault();
+    if (!event.repeat) selectRankJournal(journal);
   });
   let rankBatchTimer = null;
   let lastCompletedRankJob = null;
@@ -3220,23 +3259,6 @@
       return;
     }
 
-    const journal = event.target.closest(".heat-journal[data-journal-name]");
-    if (journal) {
-      event.preventDefault();
-      if (journal.closest("[data-journal-library-items]")) {
-        if (event.target.closest("[data-journal-more]")) openJournalMenu(journal, event);
-        else {
-          const menu = qs("[data-journal-context-menu]");
-          if (menu) showRankPanel(journal.dataset.journalName, menu.dataset.rankUrl, true, journal);
-        }
-      } else {
-        // Regular click selects a journal; its four frequent actions live in
-        // the permanent ranking toolbar. Right-click still offers bulk tools.
-        const url = qs("[data-journal-context-menu]")?.dataset.rankUrl;
-        if (url) showRankPanel(journal.dataset.journalName, url, false, journal);
-      }
-      return;
-    }
     if (event.target.closest("[data-journal-rank]")) { openRankPanel(); return; }
     const link = event.target.closest("a[href]");
     if (!link || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -3262,15 +3284,6 @@
     event.preventDefault();
     closeFilterMenus();
     openJournalListEditor(tab);
-  });
-
-  document.addEventListener("keydown", event => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const journal = event.target.closest?.(".heatmap-fixed-body .heat-journal[data-journal-name]");
-    if (!journal) return;
-    event.preventDefault();
-    const url = qs("[data-journal-context-menu]")?.dataset.rankUrl;
-    if (url) showRankPanel(journal.dataset.journalName, url, false, journal);
   });
 
   document.addEventListener("pointerdown", (event) => {
