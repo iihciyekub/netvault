@@ -2600,6 +2600,16 @@ body.with-sidebar {
 .rank-tools label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 400; }
 .rank-tools input { width: 13px; height: 13px; min-height: 0; margin: 0; padding: 0; }
 .journal-rank-panel [data-rank-status] { margin: 0 12px 5px; font-size: 11px; line-height: 1.35; color: var(--muted); }
+.rank-journal-details { padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.rank-journal-details h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 7px; font-size: 12px; }
+.rank-journal-details h3 small { color: var(--muted); font-size: 10px; font-weight: 400; }
+.rank-journal-details dl { display: grid; grid-template-columns: minmax(65px, auto) minmax(0, 1fr); gap: 6px 10px; margin: 0; font-size: 11px; line-height: 1.45; }
+.rank-journal-details dt { color: var(--muted); }
+.rank-journal-details dd { margin: 0; overflow-wrap: anywhere; }
+.rank-journal-details a { text-decoration: underline; text-underline-offset: 2px; }
+.rank-journal-details p { margin: 0; font-size: 11px; color: var(--muted); }
+.rank-journal-details p:empty { display: none; }
+.rank-journal-details[hidden], .rank-journal-details dl[hidden] { display: none; }
 /* A compact ranking indicator occupies the existing filter toolbar, never
    its own row above the heatmap. The full progress is available as a tooltip. */
 .rank-quick-tools {

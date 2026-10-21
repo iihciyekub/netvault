@@ -357,6 +357,7 @@
 </section>
 <aside class="journal-rank-slot" aria-label="Journal ranking sidebar">
   <section class="journal-rank-panel" data-rank-panel id="rank-drawer-details"
+           data-journal-details-url="{{ path_for('/web/journal-details') }}"
            role="region" aria-labelledby="rank-title" aria-label="Journal rankings">
     <header>
       <h2 id="rank-title" data-rank-title>Journal rankings</h2>
@@ -383,6 +384,18 @@
     </div>
     <p data-rank-status role="status" aria-live="polite">Hover over a journal to view its rankings.</p>
     <div class="rank-table-scroll" tabindex="0" role="region" aria-label="Journal ranking results">
+      <section class="rank-journal-details" data-rank-journal-details hidden aria-label="Journal details">
+        <h3><span>Journal details</span><small data-rank-jcr-year data-i18n-ignore></small></h3>
+        <p data-rank-details-status role="status"></p>
+        <dl data-rank-details-fields hidden>
+          <dt>Journal</dt><dd data-rank-detail="journal_name" data-i18n-ignore></dd>
+          <dt>Publisher</dt><dd data-rank-detail="publisher" data-i18n-ignore></dd>
+          <dt>ISSN</dt><dd data-rank-detail="issn" data-i18n-ignore></dd>
+          <dt>eISSN</dt><dd data-rank-detail="eissn" data-i18n-ignore></dd>
+          <dt>WoS categories</dt><dd data-rank-detail="categories" data-i18n-ignore></dd>
+          <dt>Index</dt><dd data-rank-detail="indexes" data-i18n-ignore></dd>
+        </dl>
+      </section>
       <table data-rank-table hidden>
         <thead><tr><th title="Dataset names are abbreviated; refer to each official source for rankings and classifications.">Dataset</th><th>Rank</th></tr></thead>
         <tbody data-rank-rows></tbody>

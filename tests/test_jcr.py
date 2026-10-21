@@ -52,6 +52,30 @@ def test_hidden_batches_duplicates_lossless_and_year_preservation(tmp_path):
     assert jcr.query(tmp_path, year="2024")["total"] == 1
 
 
+def test_journal_details_exact_latest_and_missing(tmp_path):
+    assert jcr.journal_details(tmp_path, "Test") is None
+    assert not (tmp_path / "jcr").exists()
+    old = row("Test", "2024")
+    current = row("Test", "2025", cats=[
+        dict(category="ENGINEERING, CIVIL", edition="SCIE, SSCI", quartile="Q1"),
+        dict(category="MATERIALS SCIENCE, MULTIDISCIPLINARY", edition="SCIE", quartile="Q2"),
+    ])
+    current["publisher"] = "Current publisher"
+    jcr.import_zip(tmp_path, archive({"JCR.json": [old, current, row("Test Extended")]}))
+    details = jcr.journal_details(tmp_path, "  tEsT  ")
+    assert details == dict(
+        journal_name="Test", year="2025", publisher="Current publisher",
+        issn="1234-567X", eissn="8765-4321",
+        categories=["ENGINEERING, CIVIL", "MATERIALS SCIENCE, MULTIDISCIPLINARY"],
+        indexes=["SCIE", "SSCI"],
+    )
+    assert jcr.journal_details(tmp_path, "Tes") is None
+    assert jcr.journal_details(tmp_path, "' OR 1=1 --") is None
+    duplicate = {**current, "issn": "1111-1111"}
+    jcr.import_zip(tmp_path, archive({"JCR.json": [current, duplicate]}))
+    assert jcr.journal_details(tmp_path, "Test") is None
+
+
 def test_same_category_matching_and_unranked(tmp_path):
     a = row(
         cats=[
@@ -122,6 +146,7 @@ def client(tmp_path, monkeypatch):
 
 
 def test_authenticated_import_csrf_and_browser_endpoints(client):
+    assert client.get("/web/journal-details", params={"name": "TEST"}).status_code == 401
     assert client.get("/web/jcr", follow_redirects=False).status_code == 303
     assert client.get("/web/jcr/facets").status_code == 401
     csrf = client.get("/web/login").cookies["netvault_csrf"]
@@ -143,6 +168,11 @@ def test_authenticated_import_csrf_and_browser_endpoints(client):
         data={"csrf_token": csrf},
     )
     assert response.status_code == 200 and response.json()["report"]["journals"] == 1
+    details = client.get("/web/journal-details", params={"name": "test"})
+    assert details.status_code == 200 and details.json()["journal"]["issn"] == "1234-567X"
+    assert client.get("/web/journal-details", params={"name": "absent"}).json() == {"journal": None}
+    assert client.get("/web/journal-details", params={"name": "x" * 301}).status_code == 422
+    assert 'data-journal-details-url="/web/journal-details"' in client.get("/web").text
     assert client.get("/web/jcr/facets").json()["total"] == 1
     assert client.get("/web/jcr/journals?year=2025&edition=SSCI&quartile=Q1").json()["total"] == 1
     assert client.get("/web/jcr/journals?year=2025&size=201").status_code == 422

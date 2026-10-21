@@ -372,6 +372,15 @@ def journal_rank(request: Request, name: str = Query(min_length=1, max_length=30
         raise HTTPException(status_code=502, detail=str(exc)) from None
 
 
+@router.get("/web/journal-details", include_in_schema=False)
+def journal_details(request: Request, name: str = Query(min_length=1, max_length=300),
+                    db: Session = Depends(get_db)) -> Any:
+    if get_cookie_user(request, db) is None:
+        raise HTTPException(401, 'Authentication required')
+    from . import jcr
+    return {"journal": jcr.journal_details(get_settings().storage_root, name)}
+
+
 @router.post("/web/journal-ranks/cached")
 def journal_ranks_cached(
     request: Request,

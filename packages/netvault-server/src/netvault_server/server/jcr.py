@@ -181,6 +181,7 @@ def connect(root):
         issn TEXT, eissn TEXT, publisher TEXT, jif REAL, jci REAL, citations REAL,
         search TEXT NOT NULL, raw TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS jcr_year_name ON journals(year,name);
+      CREATE INDEX IF NOT EXISTS jcr_exact_name ON journals(name COLLATE NOCASE,year DESC);
       CREATE INDEX IF NOT EXISTS jcr_publisher ON journals(year,publisher);
       CREATE INDEX IF NOT EXISTS jcr_name_sort ON journals(year,name COLLATE NOCASE,id);
       CREATE INDEX IF NOT EXISTS jcr_jif_sort ON journals(year,jif,id);
@@ -202,6 +203,36 @@ def connect(root):
         yield db
     finally:
         db.close()
+
+
+def journal_details(root, name):
+    """Match an exact title in its latest available JCR year, never a search hit."""
+    if not (Path(root) / "jcr" / "catalog.sqlite3").is_file():
+        return None
+    with connect(root) as db:
+        matches = db.execute(
+            "SELECT year,raw FROM journals WHERE name = ? COLLATE NOCASE "
+            "ORDER BY year DESC LIMIT 2", (" ".join(name.split()),)
+        ).fetchall()
+    if not matches or (len(matches) > 1 and matches[0]["year"] == matches[1]["year"]):
+        return None  # Ambiguous titles must not show another journal's identifiers.
+    row = json.loads(matches[0]["raw"])
+    categories = list(dict.fromkeys(
+        clean(cat.get("category")) for cat in row.get("categoryQuartiles", [])
+        if clean(cat.get("category"))
+    ))
+    if not categories:
+        raw = row.get("category") or []
+        categories = [clean(c) for c in (raw if isinstance(raw, list) else [raw]) if clean(c)]
+    indexes = sorted({
+        part.strip() for cat in row.get("categoryQuartiles", [])
+        for part in re.split(r"[,;]", clean(cat.get("edition"))) if part.strip()
+    })
+    return {
+        "journal_name": clean(row.get("journalName")), "year": matches[0]["year"],
+        "publisher": clean(row.get("publisher")), "issn": clean(row.get("issn")),
+        "eissn": clean(row.get("eissn")), "categories": categories, "indexes": indexes,
+    }
 
 
 def zip_file_time(info):

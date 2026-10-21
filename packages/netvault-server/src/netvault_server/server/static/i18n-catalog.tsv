@@ -1,4 +1,8 @@
 # Localize NetVault interface, preserve IDs/PDF titles/commands exactly.
+WoS categories	WoS 分类	WoS 分類
+Loading journal details…	正在加载期刊详情…	正在載入期刊詳情…
+No matching journal in the JCR catalogue.	JCR 目录中未匹配到该期刊。	JCR 目錄中未比對到該期刊。
+Unable to load journal details.	无法加载期刊详情。	無法載入期刊詳情。
 # English label <TAB> 简体中文 <TAB> 繁體中文
 NetVault navigation	NetVault 导航	NetVault 導覽
 Main navigation	主导航	主導覽

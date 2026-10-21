@@ -1934,6 +1934,71 @@
       link.removeAttribute("tabindex");
     }
   };
+  const journalDetailsCache = new Map();
+  const journalDetailsPending = new Map();
+  let journalDetailsSequence = 0;
+  const loadJournalDetails = async (panel, name, refresh = false) => {
+    const section = qs("[data-rank-journal-details]", panel);
+    if (!section || !panel.dataset.journalDetailsUrl) return;
+    const sequence = ++journalDetailsSequence;
+    const fields = qs("[data-rank-details-fields]", section);
+    const status = qs("[data-rank-details-status]", section);
+    const year = qs("[data-rank-jcr-year]", section);
+    section.hidden = false;
+    fields.hidden = true;
+    year.textContent = "";
+    status.textContent = "Loading journal details…";
+    const key = rankIdentity(panel.dataset.journalDetailsUrl, name);
+    try {
+      let data;
+      if (!refresh && journalDetailsCache.has(key)) data = journalDetailsCache.get(key);
+      else {
+        let pending = !refresh && journalDetailsPending.get(key);
+        if (!pending) {
+          const url = new URL(panel.dataset.journalDetailsUrl, location.origin);
+          url.searchParams.set("name", name);
+          pending = (async () => {
+            const response = await fetch(url, {credentials: "same-origin", cache: "no-store"});
+            if (!response.ok) throw Error("Unable to load journal details.");
+            const result = await response.json();
+            if (!Object.hasOwn(result, "journal")) throw Error("Invalid journal details.");
+            if (journalDetailsPending.get(key) === pending) {
+              journalDetailsCache.set(key, result.journal);
+              if (journalDetailsCache.size > 300) journalDetailsCache.delete(journalDetailsCache.keys().next().value);
+            }
+            return result.journal;
+          })();
+          journalDetailsPending.set(key, pending);
+        }
+        try { data = await pending; }
+        finally { if (journalDetailsPending.get(key) === pending) journalDetailsPending.delete(key); }
+      }
+      if (sequence !== journalDetailsSequence || !panel.isConnected) return;
+      if (!data) { status.textContent = "No matching journal in the JCR catalogue."; return; }
+      year.textContent = "JCR " + data.year;
+      for (const field of ["journal_name", "publisher", "issn", "eissn", "categories", "indexes"]) {
+        const cell = qs('[data-rank-detail="' + field + '"]', section);
+        const raw = data[field];
+        const value = Array.isArray(raw) ? raw.join("; ") : String(raw || "");
+        cell.replaceChildren();
+        if (["issn", "eissn"].includes(field) && /^\d{4}-\d{3}[\dX]$/i.test(value)) {
+          const link = document.createElement("a");
+          link.textContent = value;
+          link.href = "https://www.webofscience.com/wos/woscc/general-summary?queryJson="
+            + encodeURIComponent(JSON.stringify([{rowText: "IS=(" + value + ")"}]));
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.setAttribute("data-no-pjax", "");
+          cell.append(link);
+        } else cell.textContent = value || "—";
+      }
+      fields.hidden = false;
+      status.textContent = "";
+    } catch {
+      if (sequence === journalDetailsSequence && panel.isConnected)
+        status.textContent = "Unable to load journal details.";
+    }
+  };
   const renderRanks = () => {
     const panel = qs("[data-rank-panel]");
     if (!panel || !rankResult) return;
@@ -2107,6 +2172,7 @@
     panel.dataset.rankOpenMode = hover ? "hover" : "manual";
     qs("[data-rank-title]", panel).textContent = name;
     syncRankActions(panel, name);
+    void loadJournalDetails(panel, name);
     if (!hover) qs("[data-rank-refresh]", panel)?.focus({preventScroll:true});
     void loadRanks();
   };
@@ -2144,7 +2210,11 @@
     showRankPanel(name, menu.dataset.rankUrl, true, journal);
   });
   document.addEventListener("click", event => {
-    if (event.target.closest("[data-rank-refresh]")) loadRanks(true);
+    if (event.target.closest("[data-rank-refresh]")) {
+      loadRanks(true);
+      const panel = qs("[data-rank-panel]");
+      if (panel?.dataset.journalName) void loadJournalDetails(panel, panel.dataset.journalName, true);
+    }
   });
   let rankBatchTimer = null;
   let lastCompletedRankJob = null;
